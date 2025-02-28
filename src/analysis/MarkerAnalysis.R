@@ -711,191 +711,83 @@ MarkerAnalyzer <- R6::R6Class("MarkerAnalyzer",
                      as.numeric(difftime(diffusion_end_time, diffusion_start_time, units = "secs"))))
       
       ################################################
-      # PART 4: COMPREHENSIVE PIXEL HEATMAP GENERATION
+      # PART 4: DIRECT PIXEL CLUSTERING AND HEATMAP
       ################################################
       heatmap_start_time <- Sys.time()
-      message("Creating comprehensive pixel-level heatmap...")
+      message("Creating pixel-level clustering and heatmap...")
       
-      # Instead of subsampling pixels, let's create summaries by image regions
-      message("Creating regional summaries for each image...")
-      
-      # Initialize lists to store region summaries
-      region_summaries <- list()
-      region_image_indices <- list()
-      region_image_names <- list()
-      region_types <- list()
-      
-      # Process each image separately
-      unique_imgs <- unique(pixel_image_index)
-      
-      for (img_idx in unique_imgs) {
-        img_pixels <- which(pixel_image_index == img_idx)
-        img_name <- unique(pixel_image_names[pixel_image_index == img_idx])[1]
-        
-        if (length(img_pixels) < 50) {
-          message(sprintf("Skipping image %s with too few pixels (%d)", img_name, length(img_pixels)))
-          next
-        }
-        
-        # Get pixel data for this image
-        img_data <- pixel_data[img_pixels, , drop = FALSE]
-        
-        # Calculate summaries for the whole image
-        img_mean <- colMeans(img_data, na.rm = TRUE)
-        img_median <- apply(img_data, 2, median, na.rm = TRUE)
-        img_q75 <- apply(img_data, 2, function(x) quantile(x, 0.75, na.rm = TRUE))
-        img_q90 <- apply(img_data, 2, function(x) quantile(x, 0.90, na.rm = TRUE))
-        
-        # Store summaries
-        region_summaries[[length(region_summaries) + 1]] <- img_mean
-        region_image_indices[[length(region_image_indices) + 1]] <- img_idx
-        region_image_names[[length(region_image_names) + 1]] <- img_name
-        region_types[[length(region_types) + 1]] <- "Mean"
-        
-        region_summaries[[length(region_summaries) + 1]] <- img_median
-        region_image_indices[[length(region_image_indices) + 1]] <- img_idx
-        region_image_names[[length(region_image_names) + 1]] <- img_name
-        region_types[[length(region_types) + 1]] <- "Median"
-        
-        region_summaries[[length(region_summaries) + 1]] <- img_q75
-        region_image_indices[[length(region_image_indices) + 1]] <- img_idx
-        region_image_names[[length(region_image_names) + 1]] <- img_name
-        region_types[[length(region_types) + 1]] <- "75th Percentile"
-        
-        region_summaries[[length(region_summaries) + 1]] <- img_q90
-        region_image_indices[[length(region_image_indices) + 1]] <- img_idx
-        region_image_names[[length(region_image_names) + 1]] <- img_name
-        region_types[[length(region_types) + 1]] <- "90th Percentile"
-        
-        # Try to identify high-expression sub-regions (simple approach)
-        # Get total expression per pixel
-        pixel_sums <- rowSums(img_data)
-        
-        # Identify top 25% high-expression pixels
-        high_expr_pixels <- img_pixels[pixel_sums >= quantile(pixel_sums, 0.75)]
-        if (length(high_expr_pixels) > 50) {
-          high_region_mean <- colMeans(pixel_data[high_expr_pixels, , drop=FALSE], na.rm = TRUE)
-          region_summaries[[length(region_summaries) + 1]] <- high_region_mean
-          region_image_indices[[length(region_image_indices) + 1]] <- img_idx
-          region_image_names[[length(region_image_names) + 1]] <- img_name
-          region_types[[length(region_types) + 1]] <- "Hot Spot"
-        }
+      # Sample pixels for clustering (adjust sample size based on memory constraints)
+      message("Sampling pixels for direct clustering...")
+      max_pixels_for_clustering <- min(100000, nrow(pixel_data))
+      if (nrow(pixel_data) > max_pixels_for_clustering) {
+        sampled_indices <- sample(1:nrow(pixel_data), max_pixels_for_clustering)
+        pixel_subset <- pixel_data[sampled_indices, ]
+        pixel_image_subset <- pixel_image_index[sampled_indices]
+        pixel_image_names_subset <- pixel_image_names[sampled_indices]
+      } else {
+        pixel_subset <- pixel_data
+        pixel_image_subset <- pixel_image_index
+        pixel_image_names_subset <- pixel_image_names
       }
       
-      # Convert lists to matrices/vectors
-      region_matrix <- do.call(rbind, region_summaries)
-      region_image_idx <- unlist(region_image_indices)
-      region_image_name <- unlist(region_image_names)
-      region_type <- unlist(region_types)
+      # Normalize data for better clustering (scale to 0-1 range)
+      message("Normalizing pixel data...")
+      pixel_subset_normalized <- pixel_subset
       
-      # Name columns
-      colnames(region_matrix) <- marker_names
-      
-      # Transform data for better visualization
-      region_matrix_viz <- region_matrix
-      
-      # Calculate 99th percentile for each marker for better scaling
-      upper_limits <- apply(region_matrix_viz, 2, function(x) quantile(x, 0.99, na.rm=TRUE))
+      # Calculate 99th percentile for each marker to avoid outlier influence
+      upper_limits <- apply(pixel_subset, 2, function(x) quantile(x, 0.99, na.rm=TRUE))
       
       # Scale each marker to 0-1 range capped at 99th percentile
-      for (i in 1:ncol(region_matrix_viz)) {
-        region_matrix_viz[,i] <- pmin(region_matrix_viz[,i] / upper_limits[i], 1)
+      for (i in 1:ncol(pixel_subset_normalized)) {
+        pixel_subset_normalized[,i] <- pmin(pixel_subset_normalized[,i] / upper_limits[i], 1)
       }
       
-      # Get marker clustering
-      marker_dist <- dist(t(region_matrix_viz))
+      # Apply direct k-means clustering to pixels
+      message("Performing k-means clustering directly on pixels...")
+      k_clusters <- min(15, ncol(pixel_subset) * 2)  # Adjust number of clusters based on markers
+      
+      # Try using a more memory-efficient implementation if available
+      if (requireNamespace("ClusterR", quietly = TRUE)) {
+        message("Using ClusterR for more efficient k-means...")
+        pixel_km <- ClusterR::KMeans_rcpp(pixel_subset_normalized, k_clusters, num_init = 5, max_iters = 100)
+        pixel_clusters <- pixel_km$clusters
+      } else {
+        pixel_km <- kmeans(pixel_subset_normalized, centers = k_clusters, iter.max = 50, nstart = 5)
+        pixel_clusters <- pixel_km$cluster
+      }
+      
+      # Calculate cluster profiles (mean expression of each marker in each cluster)
+      message("Calculating cluster profiles...")
+      cluster_profiles <- matrix(0, nrow = k_clusters, ncol = ncol(pixel_subset))
+      colnames(cluster_profiles) <- colnames(pixel_subset)
+      rownames(cluster_profiles) <- paste0("Cluster", 1:k_clusters)
+      
+      for (i in 1:k_clusters) {
+        if (sum(pixel_clusters == i) > 0) {
+          cluster_profiles[i,] <- colMeans(pixel_subset_normalized[pixel_clusters == i,, drop=FALSE])
+        }
+      }
+      
+      # Determine top markers for each cluster for better labeling
+      top_cluster_markers <- apply(cluster_profiles, 1, function(x) {
+        ordered_markers <- names(sort(x, decreasing=TRUE))
+        top_markers <- ordered_markers[1:min(3, length(ordered_markers))]
+        return(paste(top_markers, collapse="+"))
+      })
+      
+      # Create more informative row labels
+      cluster_labels <- paste0("Cluster ", 1:k_clusters, " (", top_cluster_markers, ")")
+      rownames(cluster_profiles) <- cluster_labels
+      
+      # Get marker clustering for visualization
+      marker_dist <- dist(t(cluster_profiles))
       marker_hc <- hclust(marker_dist, method="ward.D2")
       marker_dend_viz <- as.dendrogram(marker_hc)
       
-      # Cluster the regions
-      message("Clustering image regions...")
-      best_k <- min(8, nrow(region_matrix_viz))
-      region_km <- kmeans(region_matrix_viz, centers=best_k, iter.max=50, nstart=5)
-      region_clusters <- region_km$cluster
-      
-      # Create better color scales for visualization
-      # Use a sequential blue color palette for expression
-      expression_colors <- colorRampPalette(c("#F7FBFF", "#DEEBF7", "#C6DBEF", "#9ECAE1", "#6BAED6", "#4292C6", "#2171B5", "#08519C", "#08306B"))(100)
-      
-      # Use a categorical palette for sample IDs - not rainbow
-      sample_colors <- NULL
-      if (requireNamespace("RColorBrewer", quietly=TRUE)) {
-        n_samples <- length(unique(region_image_name))
-        sample_palette <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(min(9, n_samples), "Set1"))(n_samples)
-        sample_colors <- setNames(sample_palette, unique(region_image_name))
-      } else {
-        # Fallback if RColorBrewer not available
-        sample_colors <- setNames(
-          grDevices::hcl.colors(length(unique(region_image_name)), "Set2"),
-          unique(region_image_name)
-        )
-      }
-      
-      # Use a distinct palette for region types
-      type_colors <- setNames(
-        c("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"), 
-        c("Mean", "Median", "75th Percentile", "90th Percentile", "Hot Spot")
-      )
-      
-      # Create annotations
-      row_anno <- rowAnnotation(
-        image = region_image_name,
-        region_type = region_type,
-        col = list(
-          image = sample_colors,
-          region_type = type_colors
-        ),
-        show_annotation_name = TRUE,
-        annotation_legend_param = list(
-          region_type = list(title = "Region Type"),
-          image = list(title = "Image")
-        ),
-        annotation_name_gp = gpar(fontsize = 10)
-      )
-      
-      # Create the heatmap with improved aesthetics
-      message(sprintf("Creating region summary heatmap with %d rows and %d columns",
-                     nrow(region_matrix_viz), ncol(region_matrix_viz)))
-      
-      # Sort by cluster and image
-      sort_idx <- order(region_clusters, region_image_name, region_type)
-      
-      hm_region <- Heatmap(
-        as.matrix(region_matrix_viz[sort_idx,]),
-        name = "Expression",
-        col = expression_colors,
-        cluster_rows = FALSE,
-        cluster_columns = marker_dend_viz,
-        show_row_names = FALSE,
-        show_column_names = TRUE,
-        column_names_side = "bottom",
-        right_annotation = row_anno[sort_idx,],
-        column_title = "Marker Expression by Image Region",
-        row_title = "Image Regions",
-        row_split = factor(region_clusters[sort_idx]),
-        column_names_rot = 45,
-        column_names_centered = TRUE,
-        heatmap_legend_param = list(
-          title = "Expression", 
-          at = c(0, 0.25, 0.5, 0.75, 1), 
-          labels = c("Low", "", "Medium", "", "High"),
-          legend_height = unit(4, "cm")
-        )
-      )
-      
-      # Save the region heatmap
-      private$.saveHeatmap(hm_region, "region_summary_heatmap", width = 14, height = 10)
-      
-      # Also create a profile summary across all regions by cluster
-      cluster_profiles <- matrix(0, nrow=best_k, ncol=ncol(region_matrix_viz))
-      colnames(cluster_profiles) <- colnames(region_matrix_viz)
-      rownames(cluster_profiles) <- paste0("Cluster", 1:best_k)
-      
-      for (i in 1:best_k) {
-        if (sum(region_clusters == i) > 0) {
-          cluster_profiles[i,] <- colMeans(region_matrix_viz[region_clusters == i,, drop=FALSE])
-        }
-      }
+      # Create a heatmap of cluster profiles
+      message("Creating cluster profile heatmap...")
+      expression_colors <- colorRampPalette(c("#F7FBFF", "#DEEBF7", "#C6DBEF", "#9ECAE1", 
+                                             "#6BAED6", "#4292C6", "#2171B5", "#08519C", "#08306B"))(100)
       
       cluster_profile_hm <- Heatmap(
         cluster_profiles,
@@ -903,13 +795,14 @@ MarkerAnalyzer <- R6::R6Class("MarkerAnalyzer",
         col = expression_colors,
         cluster_rows = TRUE,
         cluster_columns = marker_dend_viz,
-        column_title = "Region Cluster Profiles",
+        column_title = "Pixel Cluster Profiles",
         show_row_names = TRUE,
         show_column_names = TRUE,
         column_names_rot = 45,
         row_names_side = "left",
+        row_names_gp = gpar(fontsize = 10),
         heatmap_legend_param = list(
-          title = "Mean\nExpression",
+          title = "Expression",
           at = c(0, 0.25, 0.5, 0.75, 1), 
           labels = c("Low", "", "Medium", "", "High"),
           legend_height = unit(4, "cm")
@@ -917,24 +810,106 @@ MarkerAnalyzer <- R6::R6Class("MarkerAnalyzer",
       )
       
       # Save the cluster profile heatmap
-      private$.saveHeatmap(cluster_profile_hm, "region_cluster_profile_heatmap", width = 12, height = 8)
+      private$.saveHeatmap(cluster_profile_hm, "pixel_cluster_profile_heatmap", width = 12, height = 8)
+      
+      # Calculate what percentage of pixels from each image falls into each cluster
+      message("Analyzing cluster distribution across images...")
+      unique_images <- unique(pixel_image_names_subset)
+      image_cluster_dist <- matrix(0, nrow = length(unique_images), ncol = k_clusters)
+      rownames(image_cluster_dist) <- unique_images
+      colnames(image_cluster_dist) <- paste0("Cluster", 1:k_clusters)
+      
+      for (img in unique_images) {
+        img_pixels <- which(pixel_image_names_subset == img)
+        if (length(img_pixels) > 0) {
+          for (k in 1:k_clusters) {
+            image_cluster_dist[img, k] <- sum(pixel_clusters[img_pixels] == k) / length(img_pixels)
+          }
+        }
+      }
+      
+      # Create heatmap showing cluster distribution across images
+      image_cluster_hm <- Heatmap(
+        image_cluster_dist,
+        name = "Percentage",
+        col = colorRampPalette(c("white", "red"))(100),
+        cluster_rows = TRUE,
+        cluster_columns = FALSE,
+        column_title = "Cluster Distribution Across Images",
+        row_title = "Images",
+        column_title_side = "top",
+        row_names_gp = gpar(fontsize = 8),
+        column_names_gp = gpar(fontsize = 8),
+        column_names_rot = 45
+      )
+      
+      # Save image cluster distribution heatmap
+      private$.saveHeatmap(image_cluster_hm, "image_cluster_distribution", width = 14, height = 10)
+      
+      # Sample pixels for heatmap visualization (if too many clusters/pixels)
+      message("Creating sample heatmap of pixels...")
+      max_pixels_for_viz <- min(10000, length(pixel_clusters))
+      if (length(pixel_clusters) > max_pixels_for_viz) {
+        # Sample evenly from each cluster
+        sampled_viz_indices <- unlist(lapply(1:k_clusters, function(k) {
+          cluster_pixels <- which(pixel_clusters == k)
+          if (length(cluster_pixels) > 0) {
+            sample(cluster_pixels, min(ceiling(max_pixels_for_viz/k_clusters), length(cluster_pixels)))
+          } else {
+            integer(0)
+          }
+        }))
+      } else {
+        sampled_viz_indices <- 1:length(pixel_clusters)
+      }
+      
+      # Sort by cluster for visualization
+      viz_order <- order(pixel_clusters[sampled_viz_indices])
+      viz_indices <- sampled_viz_indices[viz_order]
+      
+      # Create annotation for image source
+      img_colors <- setNames(
+        rainbow(length(unique(pixel_image_names_subset))),
+        unique(pixel_image_names_subset)
+      )
+      
+      row_anno <- rowAnnotation(
+        image = pixel_image_names_subset[viz_indices],
+        col = list(image = img_colors),
+        show_annotation_name = TRUE,
+        annotation_legend_param = list(image = list(title = "Image")),
+        annotation_name_gp = gpar(fontsize = 10)
+      )
+      
+      # Create pixel heatmap
+      pixel_hm <- Heatmap(
+        as.matrix(pixel_subset_normalized[viz_indices,]),
+        name = "Expression",
+        col = expression_colors,
+        cluster_rows = FALSE,
+        cluster_columns = marker_dend_viz,
+        show_row_names = FALSE,
+        show_column_names = TRUE,
+        column_names_rot = 45,
+        column_title = "Pixel-level Expression",
+        row_split = factor(pixel_clusters[viz_indices]),
+        right_annotation = row_anno
+      )
+      
+      # Save the pixel heatmap
+      private$.saveHeatmap(pixel_hm, "pixel_level_heatmap", width = 14, height = 12)
       
       heatmap_end_time <- Sys.time()
-      message(sprintf("Region summary heatmaps created in %.2f seconds", 
-                     as.numeric(difftime(heatmap_end_time, heatmap_start_time, units = "secs"))))
+      message(sprintf("Pixel clustering and heatmaps created in %.2f seconds", 
+                    as.numeric(difftime(heatmap_end_time, heatmap_start_time, units = "secs"))))
       
-      # Calculate analysis time
-      analysis_end_time <- Sys.time()
-      message(sprintf("Complete image-aware analysis finished in %.2f seconds", 
-                     as.numeric(difftime(analysis_end_time, analysis_start_time, units = "secs"))))
-      
-      # Return comprehensive results with null checks
+      # Return the whole set of results
       return(list(
         correlation = list(
           overall = if(exists("correlation_results") && !is.null(correlation_results$overall)) 
-                    correlation_results$overall else NULL,
+                   correlation_results$overall else NULL,
           variance = if(exists("correlation_results") && !is.null(correlation_results$variance)) 
-                    correlation_results$variance else NULL,
+                   correlation_results$variance else NULL,
           by_image = if(exists("image_correlations")) image_correlations else list(),
           dendrogram = dend,
           heatmap = hm_corr_combined
@@ -951,10 +926,15 @@ MarkerAnalyzer <- R6::R6Class("MarkerAnalyzer",
           dendrogram = if(exists("dend_diff")) dend_diff else NULL,
           heatmap = if(exists("heatmap_diffusion")) heatmap_diffusion else NULL
         ),
-        pixel_heatmap = hm_region
+        pixel_clusters = list(
+          cluster_profiles = cluster_profiles,
+          cluster_heatmap = cluster_profile_hm,
+          image_distribution = image_cluster_dist,
+          image_heatmap = image_cluster_hm,
+          pixel_heatmap = pixel_hm,
+          cluster_assignments = setNames(pixel_clusters, rownames(pixel_subset))
+        )
       ))
-      
-      # Note: Cluster cleanup happens via on.exit handler
     },
     
     #' Get the sampled pixel data
