@@ -40,7 +40,8 @@ runBatchCorrection <- function() {
   logger$log_info("Using '%s' as batch variable for correction", batch_var)
   
   # Run fastMNN with auto-merge option
-  set.seed(configManager$config$batch_correction$seed %||% 220228)
+  seed <- configManager$config$batch_correction$seed
+  num_pcs <- configManager$config$batch_correction$num_pcs
   logger$log_info("Running fastMNN batch correction...")
   
   # Save original column names to restore later
@@ -53,7 +54,7 @@ runBatchCorrection <- function() {
   max_pcs <- min(50, min(n_features, n_cells) - 1)
   
   # Get requested PCs from config or use calculated max
-  num_pcs <- min(configManager$config$batch_correction$num_pcs %||% 50, max_pcs)
+  num_pcs <- min(num_pcs %||% 50, max_pcs)
   logger$log_info("Using %d principal components for batch correction", num_pcs)
   
   # Try to run fastMNN with adjusted parameters
@@ -70,7 +71,7 @@ runBatchCorrection <- function() {
     logger$log_info("Batch correction completed, low-dimensional embedding saved as 'fastMNN'")
     
     # Compute UMAP on corrected data
-    set.seed(configManager$config$batch_correction$seed %||% 220228)
+    set.seed(seed %||% 220228)
     spe <- runUMAP(spe, dimred = "fastMNN", name = "UMAP_corrected")
     logger$log_info("UMAP computed on batch-corrected data")
     
@@ -116,7 +117,7 @@ runBatchCorrection <- function() {
     logger$log_info("Batch correction completed with fallback method")
     
     # Compute UMAP on corrected data
-    set.seed(configManager$config$batch_correction$seed %||% 220228)
+    set.seed(seed %||% 220228)
     spe <- runUMAP(spe, dimred = "fastMNN", name = "UMAP_corrected")
     logger$log_info("UMAP computed on batch-corrected data")
   })

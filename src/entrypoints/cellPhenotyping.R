@@ -58,9 +58,11 @@ runCellPhenotyping <- function() {
     }
   }
   
-  # Get clustering parameters from config
-  k_param <- configManager$config$phenotyping$k_nearest_neighbors %||% 45
-  use_corrected <- configManager$config$phenotyping$use_corrected_embedding %||% TRUE
+  # Get phenotyping parameters from configuration
+  k_param <- configManager$config$phenotyping$k_nearest_neighbors
+  use_corrected <- configManager$config$phenotyping$use_corrected_embedding
+  seed_value <- configManager$config$phenotyping$seed
+  n_cores <- configManager$config$phenotyping$n_cores
   
   # Prepare data for clustering
   logger$log_info("Preparing data for clustering (k=%d)...", k_param)
@@ -76,14 +78,13 @@ runCellPhenotyping <- function() {
   }
   
   # Run clustering
-  set.seed(configManager$config$phenotyping$seed %||% 220619)
+  set.seed(seed_value %||% 220619)
   logger$log_info("Running clustering...")
   
   if (use_rphenoannoy) {
     # Check what arguments the installed version of Rphenoannoy accepts
     if (length(formals(Rphenoannoy)) > 2) {
       # Newer version with additional parameters
-      n_cores <- configManager$config$phenotyping$n_cores %||% 1
       use_approx <- configManager$config$phenotyping$use_approximate_nn %||% TRUE
       
       logger$log_info("Using extended Rphenoannoy with additional parameters")
@@ -132,8 +133,6 @@ runCellPhenotyping <- function() {
     if (use_rphenoannoy) {
       if (length(formals(Rphenoannoy)) > 2) {
         tryCatch({
-          n_cores <- configManager$config$phenotyping$n_cores %||% 1
-          use_approx <- configManager$config$phenotyping$use_approximate_nn %||% TRUE
           alt_out <- Rphenoannoy(alt_mat, k = k_param, approx = use_approx, parallel = n_cores)
         }, error = function(e) {
           alt_out <<- Rphenoannoy(alt_mat, k = k_param)

@@ -113,7 +113,7 @@ flowchart TD
 
 The pipeline is built on a robust infrastructure that includes:
 
-- **ConfigurationManager**: Handles configuration settings and defaults
+- **ConfigurationManager**: Centralizes all pipeline settings with comprehensive validation
 - **Logger**: Provides structured logging across all pipeline components
 - **DependencyManager**: Manages package dependencies and environment validation
 - **ProgressTracker**: Tracks analysis progress and provides execution summaries
@@ -130,6 +130,149 @@ The `VisualizationFunctions.R` module provides comprehensive visualization capab
 - Cell phenotype visualizations
 - Comprehensive marker analysis heatmaps
 
+## Configuration System
+
+The pipeline uses a centralized configuration system that allows customization of all aspects of the analysis without modifying code.
+
+### Configuration Structure
+
+Configuration is organized into logical sections:
+
+```R
+list(
+  # Data paths
+  paths = list(...),
+  
+  # Analysis parameters
+  analysis_params = list(...),
+  
+  # Output settings
+  output = list(...),
+  
+  # Module-specific settings
+  batch_correction = list(...),
+  phenotyping = list(...),
+  marker_analysis = list(...)
+)
+```
+
+### Key Configuration Parameters
+
+#### Data Paths
+```R
+paths = list(
+  # Directory with the steinbock processed single-cell data
+  steinbock_data = "data/",
+  
+  # Directory with multi-channel images
+  steinbock_images = "data/img/",
+  
+  # Directory with segmentation masks
+  steinbock_masks = "data/masks/",
+  
+  # The panel CSV file containing channel metadata
+  panel = "data/panel.csv",
+  
+  # External metadata for sample-level annotation
+  metadata_annotation = "data/metadata.csv"
+)
+```
+
+#### Batch Correction
+```R
+batch_correction = list(
+  # Column in SPE metadata used to identify batches
+  batch_variable = "sample_id",
+  
+  # Random seed for reproducible results
+  seed = 220228,
+  
+  # Number of principal components to use
+  num_pcs = 50
+)
+```
+
+#### Cell Phenotyping
+```R
+phenotyping = list(
+  # Connectivity parameter (higher = more clusters)
+  k_nearest_neighbors = 45,
+  
+  # Random seed for reproducible clustering
+  seed = 220619,
+  
+  # Whether to use batch-corrected embedding for clustering
+  use_corrected_embedding = TRUE,
+  
+  # Whether to use approximate nearest neighbors (faster)
+  use_approximate_nn = TRUE,
+  
+  # Number of CPU cores for parallel processing
+  n_cores = 1
+)
+```
+
+#### Marker Analysis (Without Segmentation)
+```R
+marker_analysis = list(
+  # Input file path for image data
+  input_file = NULL,
+  
+  # Number of pixels to sample (controls memory usage)
+  n_pixels = 50000000,
+  
+  # Whether to transform data
+  transformation = TRUE,
+  
+  # Memory limit in MB (0 = no limit)
+  memory_limit = 0,
+  
+  # Number of CPU cores for parallel processing
+  n_cores = 1
+)
+```
+
+### Using Custom Configuration
+
+There are several ways to customize the pipeline configuration:
+
+#### 1. Direct Modification After Initialization
+
+```R
+# Create configuration manager with defaults
+configManager <- ConfigurationManager$new()
+
+# Modify specific parameters
+configManager$config$paths$steinbock_data <- "path/to/my/data"
+configManager$config$phenotyping$k_nearest_neighbors <- 30
+configManager$config$batch_correction$batch_variable <- "patient_id"
+
+# Validate the modified configuration
+configManager$validate_config(configManager$config)
+```
+
+#### 2. Using merge_with_defaults Method
+
+```R
+# Create custom configuration
+my_config <- list(
+  paths = list(
+    steinbock_data = "path/to/my/data",
+    panel = "path/to/my/panel.csv"
+  ),
+  phenotyping = list(
+    k_nearest_neighbors = 30
+  ),
+  batch_correction = list(
+    batch_variable = "patient_id"
+  )
+)
+
+# Create configuration manager and merge with defaults
+configManager <- ConfigurationManager$new()
+configManager$merge_with_defaults(my_config)
+```
+
 ## Getting Started
 
 ### Prerequisites
@@ -138,31 +281,58 @@ The `VisualizationFunctions.R` module provides comprehensive visualization capab
 - Bioconductor packages including SpatialExperiment, cytomapper, imcRtools
 - Visualization packages: ggplot2, ComplexHeatmap, viridis
 
-### Basic Usage
+### Setup and Execution
 
-1. **Setup configuration**:
-   - Edit configuration settings in `config.yml` or create a custom configuration
+1. **Clone this repository**:
+   ```bash
+   git clone https://github.com/yourusername/imc-analysis-pipeline.git
+   cd imc-analysis-pipeline
+   ```
 
-2. **Import data**:
+2. **Prepare your data directories**:
+   - Place your Steinbock outputs in the data directory (or configure custom paths)
+   - Ensure you have a panel.csv file with channel metadata
+
+3. **Create a custom configuration (optional)**:
+   Create a file called `my_config.R` with your customizations:
    ```R
+   my_config <- list(
+     paths = list(
+       steinbock_data = "path/to/steinbock/data",
+       panel = "path/to/panel.csv"
+     ),
+     batch_correction = list(
+       batch_variable = "patient_id"
+     )
+   )
+   ```
+
+4. **Run the pipeline**:
+   ```R
+   # Launch R from the project root directory
+   setwd("/path/to/imc-analysis-pipeline")
+   
+   # Load custom configuration (if created)
+   source("my_config.R")
+   
+   # Set up configuration
+   source("src/core/ConfigurationManager.R")
+   configManager <- ConfigurationManager$new()
+   if (exists("my_config")) {
+     configManager$merge_with_defaults(my_config)
+   }
+   
+   # Import data
    source("src/entrypoints/importSteinbockData.R")
    data_objects <- runImportSteinbockData()
-   ```
-
-3. **Annotate data**:
-   ```R
+   
+   # Continue with additional entrypoints as needed
    source("src/entrypoints/annotateSteinbockData.R")
    spe_annotated <- runAnnotateSteinbockData()
-   ```
-
-4. **Process data**:
-   ```R
+   
    source("src/entrypoints/processSteinbockData.R")
    spe_processed <- runProcessSteinbockData()
-   ```
-
-5. **Run analysis**:
-   ```R
+   
    source("src/entrypoints/batchCorrection.R")
    spe_corrected <- runBatchCorrection()
    
@@ -170,9 +340,9 @@ The `VisualizationFunctions.R` module provides comprehensive visualization capab
    spe_phenotyped <- runCellPhenotyping()
    ```
 
-## Alternative Workflows
+### Advanced Usage
 
-### Segmentation-Free Analysis
+#### Running Segmentation-Free Analysis
 
 For datasets where cell segmentation may be problematic:
 
@@ -181,16 +351,18 @@ source("src/entrypoints/cellPhenotyping_noSegmentation.R")
 analyzer <- runMarkerAnalysisNoSegmentation()
 ```
 
+This creates comprehensive marker relationship analyses and visualizations using pixel data directly, bypassing potentially problematic cell segmentation.
 
-### Image Processing
+#### Adjusting Clustering Parameters
 
-To work directly with the multi-channel images:
+To customize the cell phenotyping process:
 
 ```R
-source("src/entrypoints/processImageData.R")
-images <- runProcessImageData()
+configManager$config$phenotyping$k_nearest_neighbors <- 30  # For fewer, larger clusters
+configManager$config$phenotyping$n_cores <- 4               # For parallel processing
+source("src/entrypoints/cellPhenotyping.R")
+spe_phenotyped <- runCellPhenotyping()
 ```
-
 
 ## Output
 
@@ -202,3 +374,25 @@ The pipeline generates:
 - Quality control metrics
 
 All outputs are saved to the configured output directory (default: `output/`).
+
+### Key Output Files
+
+- `spe.rds`: Initial SpatialExperiment object
+- `spe_annotated.rds`: Annotated with external metadata
+- `spe_processed.rds`: After QC and transformation
+- `spe_batch_corrected.rds`: After batch correction
+- `spe_phenotyped.rds`: With cluster assignments
+- `images_processed.rds`: Processed image data
+- `marker_analysis_results.rds`: Results from segmentation-free analysis
+- Various plots and visualizations in PNG/PDF format
+
+## Troubleshooting
+
+Common issues and their solutions:
+
+1. **Memory errors**: Reduce `n_pixels` in segmentation-free analysis or process fewer samples at a time
+2. **Missing channels**: Ensure your panel.csv correctly matches the channel names in your data
+3. **Batch correction failures**: Try reducing `num_pcs` or use a different `batch_variable`
+4. **Log files**: Check the logs/ directory for detailed error messages
+
+For further assistance, please open an issue on the GitHub repository.
