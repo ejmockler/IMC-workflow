@@ -60,10 +60,10 @@ flowchart TD
     C3 --> D3
 
     %% Style Definitions
-    classDef inputNode fill:#e0f7fa,stroke:#0097a7,stroke-width:2px;
-    classDef analysisNode fill:#FFF9C4,stroke:#FBC02D,stroke-width:2px;
-    classDef visualNode fill:#FFE0B2,stroke:#FF6F00,stroke-width:2px;
-    classDef outputNode fill:#C8E6C9,stroke:#388E3C,stroke-width:2px;
+    classDef inputNode fill:#d0e8f2,stroke:#0066cc,stroke-width:2px,color:#333333;
+    classDef analysisNode fill:#fff2cc,stroke:#d6b656,stroke-width:2px,color:#333333;
+    classDef visualNode fill:#ffe6cc,stroke:#d79b00,stroke-width:2px,color:#333333;
+    classDef outputNode fill:#d5e8d4,stroke:#2d6a4f,stroke-width:2px,color:#333333;
 ```
 
 
