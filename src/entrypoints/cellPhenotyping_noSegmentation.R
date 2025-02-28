@@ -13,7 +13,7 @@
 source("src/core/DependencyManager.R")
 source("src/core/ConfigurationManager.R")
 source("src/core/Logger.R")
-source("src/core/MarkerAnalysis.R")
+source("src/analysis/MarkerAnalysis.R")
 
 runMarkerAnalysisNoSegmentation <- function(
   input_file = NULL,
