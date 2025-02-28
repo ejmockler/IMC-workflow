@@ -32,21 +32,26 @@ Logger <- R6::R6Class("Logger",
       self$log_info("Logger initialized")
     },
     
-    log_info = function(msg) {
-      private$write_log("INFO", msg)
+    log_info = function(msg, ...) {
+      # Accept additional arguments for sprintf formatting.
+      formatted_msg <- if (length(list(...)) > 0) sprintf(msg, ...) else msg
+      private$write_log("INFO", formatted_msg)
     },
     
-    log_warning = function(msg) {
-      private$write_log("WARNING", msg)
+    log_warning = function(msg, ...) {
+      formatted_msg <- if (length(list(...)) > 0) sprintf(msg, ...) else msg
+      private$write_log("WARNING", formatted_msg)
     },
     
-    log_error = function(msg) {
-      private$write_log("ERROR", msg)
+    log_error = function(msg, ...) {
+      formatted_msg <- if (length(list(...)) > 0) sprintf(msg, ...) else msg
+      private$write_log("ERROR", formatted_msg)
     },
     
-    log_debug = function(msg) {
+    log_debug = function(msg, ...) {
       if (private$.log_level == "DEBUG") {
-        private$write_log("DEBUG", msg)
+        formatted_msg <- if (length(list(...)) > 0) sprintf(msg, ...) else msg
+        private$write_log("DEBUG", formatted_msg)
       }
     }
   )

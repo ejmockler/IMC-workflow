@@ -4,10 +4,12 @@ AnalysisBase <- R6::R6Class("AnalysisBase",
     data = NULL,
     results = NULL,
     config = NULL,
+    logger = NULL,
     
-    initialize = function(data, config = NULL) {
+    initialize = function(data = NULL, config = NULL, logger = NULL) {
       self$data <- data
       self$config <- config
+      self$logger <- logger
       self$results <- list()
     },
     
@@ -31,16 +33,25 @@ NeighborhoodAnalysis <- R6::R6Class("NeighborhoodAnalysis",
       # Extract coordinates and create initial neighbor data
       df_coords <- as.data.frame(spatialCoords(self$data$spe))
       
-      # Calculate KNN
+      # Calculate KNN or distance-based neighbors
       if (is.null(distance_threshold)) {
+        # KNN-based neighborhood
         knn_results <- get.knn(df_coords, k = k_neighbors)
         neighbors <- knn_results$nn.index
         distances <- knn_results$nn.dist
+        avg_distance <- rowMeans(distances) # Corrected for KNN
       } else {
-        # Use distance-based neighborhood definition
-        dist_matrix <- as.matrix(dist(df_coords))
-        neighbors <- apply(dist_matrix, 1, function(x) which(x <= distance_threshold))
-        distances <- lapply(1:nrow(dist_matrix), function(i) dist_matrix[i, neighbors[[i]]])
+        # Distance-based neighborhood using dbscan::frNN
+        frnn_results <- dbscan::frNN(df_coords, eps = distance_threshold)
+        neighbors <- frnn_results$id
+        distances <- frnn_results$dist
+        avg_distance <- unlist(lapply(distances, function(d) { # Corrected for distance threshold
+          if(length(d) > 0) {
+            mean(d)
+          } else {
+            NA # or 0, depending on how you want to handle no neighbors
+          }
+        }))
       }
       
       # Calculate metrics and create plots
@@ -48,10 +59,10 @@ NeighborhoodAnalysis <- R6::R6Class("NeighborhoodAnalysis",
         neighbors = neighbors,
         distances = distances,
         metrics = list(
-          avg_distance = colMeans(distances),
+          avg_distance = avg_distance, # Using the corrected avg_distance calculation
           neighbor_density = sapply(neighbors, length)
         ),
-        plots = self$create_plots(df_coords, neighbors, distances)
+        plots = private$create_plots(df_coords, neighbors, distances)
       )
       
       invisible(self)
@@ -72,15 +83,29 @@ NeighborhoodAnalysis <- R6::R6Class("NeighborhoodAnalysis",
       # Create neighborhood network plot and other visualizations.
       # (Include only the relevant code for neighborhood analysis here.)
       # For example:
-      edge_df <- do.call(rbind, lapply(1:nrow(df_coords), function(i) {
-          data.frame(
-            x1 = df_coords[i, 1],
-            y1 = df_coords[i, 2],
-            x2 = df_coords[neighbors[i, ], 1],
-            y2 = df_coords[neighbors[i, ], 2]
-          )
-      }))
-      
+      edge_df_list <- lapply(1:nrow(df_coords), function(i) {
+          neighbor_indices <- if(is.matrix(neighbors)) {
+              neighbors[i, ] # Matrix indexing for KNN
+          } else {
+              neighbors[[i]] # List indexing for distance threshold
+          }
+
+          if(length(neighbor_indices) > 0) { # Check if there are neighbors
+              data.frame(
+                x1 = df_coords[i, 1],
+                y1 = df_coords[i, 2],
+                x2 = df_coords[neighbor_indices, 1],
+                y2 = df_coords[neighbor_indices, 2]
+              )
+          } else {
+              NULL # Return NULL if no neighbors
+          }
+      })
+
+      # Remove NULL entries from the list before rbind
+      edge_df <- do.call(rbind, Filter(Negate(is.null), edge_df_list))
+
+
       network_plot <- ggplot() +
         geom_segment(data = edge_df,
                      aes(x = x1, y = y1, xend = x2, yend = y2),
@@ -88,7 +113,7 @@ NeighborhoodAnalysis <- R6::R6Class("NeighborhoodAnalysis",
         geom_point(data = df_coords, aes(x = V1, y = V2), size = 1) +
         labs(title = "Neighborhood Network") +
         theme_minimal()
-      
+
       return(network_plot)
     }
   )
@@ -236,32 +261,53 @@ IntensityAnalysis <- R6::R6Class("IntensityAnalysis",
           )
         } else {
           # Pixel-level analysis with sampling
-          valid_idx <- which(!is.na(intensity_values))
-          if (length(valid_idx) > max_points) {
-            valid_idx <- sample(valid_idx, max_points)
+          valid_coords <- which(!is.na(intensity_values), arr.ind = TRUE)
+          sampled_intensities <- intensity_values[!is.na(intensity_values)]
+          # No downsampling here – we work with all valid pixels
+
+          # Use the FNN package to compute only the k-nearest neighbors for each pixel
+          library(FNN)
+          k_value <- 10  # choose a fixed small number for neighbors
+          knn_results <- FNN::get.knn(valid_coords, k = k_value)
+          neighbors <- knn_results$nn.index   # sparse neighbor indices
+          distances <- knn_results$nn.dist    # corresponding distances
+
+          epsilon <- 1e-6  # small constant to avoid division by zero
+          # Calculate a list of weights based on neighbor distances (sparse approach)
+          weights_list <- lapply(1:nrow(valid_coords), function(i) {
+            1 / (distances[i, ] + epsilon)
+          })
+
+          # Now, compute Moran's I and Geary's C using only the sparse neighbor list.
+          n <- nrow(valid_coords)
+          S0 <- sum(sapply(weights_list, sum))
+          mean_intensity <- mean(sampled_intensities)
+          denom <- sum((sampled_intensities - mean_intensity)^2)
+          num_moran <- 0
+          num_geary <- 0
+
+          # Loop over each valid pixel and its neighbors:
+          for (i in 1:n) {
+            if (length(neighbors[i, ]) > 0) {  # Check if there are any neighbors
+              for (j in seq_along(neighbors[i, ])) {
+                j_index <- neighbors[i, j]
+                w_ij <- weights_list[[i]][j]
+                num_moran <- num_moran + w_ij * (sampled_intensities[i] - mean_intensity) * (sampled_intensities[j_index] - mean_intensity)
+                num_geary <- num_geary + w_ij * (sampled_intensities[i] - sampled_intensities[j_index])^2
+              }
+            }
           }
-          
-          pixel_coords <- expand.grid(
-            x = 1:dim(intensity_values)[1],
-            y = 1:dim(intensity_values)[2]
-          )[valid_idx,]
-          
-          sampled_intensities <- intensity_values[valid_idx]
-          
-          # Calculate spatial statistics
-          dist_matrix <- as.matrix(dist(pixel_coords))
-          weights <- 1 / (dist_matrix + 1)
-          diag(weights) <- 0
-          
-          moran <- list(statistic = ape::Moran.I(sampled_intensities, weights)$observed)
-          geary <- list(statistic = ape::Geary.C(sampled_intensities, weights)$observed)
+          moran_I <- (n / S0) * (num_moran / denom)
+          geary_C <- ((n - 1) / (2 * S0)) * (num_geary / denom)
+
+          # The computed 'moran_I' and 'geary_C' can now be stored as part of the results.
         }
         
         # Store results
         spatial_correlation[chan_idx,] <- c(
-          moran$statistic,
-          geary$statistic,
-          energy::dcor(intensity_values, as.vector(dist_matrix))
+          moran_I,
+          geary_C,
+          energy::dcor(intensity_values, as.vector(distances))
         )
       }
       

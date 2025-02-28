@@ -1,3 +1,15 @@
+# Define a built-in Logger adapter that uses base R functions.
+Logger <- R6::R6Class("Logger",
+  public = list(
+    log_info = function(msg, ...) {
+      message(sprintf(msg, ...))
+    },
+    log_warning = function(msg, ...) {
+      warning(sprintf(msg, ...), call. = FALSE)
+    }
+  )
+)
+
 #' Dependency management for spatial analysis pipeline
 #' @description Handles package dependencies and environment validation
 DependencyManager <- R6::R6Class("DependencyManager",
@@ -7,24 +19,36 @@ DependencyManager <- R6::R6Class("DependencyManager",
     .required_packages = list(
       cran = c(
         "ggplot2", "dplyr", "FNN", "grid", "reshape2", "gridExtra",
-        "spatstat", "ape", "energy", "spdep", "R6"
+        "spatstat", "ape", "energy", "spdep", "R6", "dbscan", "viridis",
+        "devtools", "RcppAnnoy", "dendextend", "entropy", "infotheo"
       ),
       bioc = c(
-        "SpatialExperiment", "cytomapper"
+        "SpatialExperiment", "cytomapper", "imcRtools", "CATALYST", "scater", 
+        "dittoSeq", "batchelor", "scater", "ComplexHeatmap"
+      ),
+      github = list(
+        rphenoannoy = list(repo = "stuchly/Rphenoannoy", ref = NULL)
       )
     ),
     
     install_cran_package = function(pkg) {
       if (!requireNamespace(pkg, quietly = TRUE)) {
-        private$.logger$log_info(sprintf("Installing CRAN package: %s", pkg))
+        private$.logger$log_info("Installing CRAN package: %s", pkg)
         install.packages(pkg, repos = "http://cran.us.r-project.org")
       }
     },
     
     install_bioc_package = function(pkg) {
       if (!requireNamespace(pkg, quietly = TRUE)) {
-        private$.logger$log_info(sprintf("Installing Bioconductor package: %s", pkg))
+        private$.logger$log_info("Installing Bioconductor package: %s", pkg)
         BiocManager::install(pkg, update = FALSE)
+      }
+    },
+    
+    install_github_package = function(pkg_name, repo, ref = NULL) {
+      if (!requireNamespace(pkg_name, quietly = TRUE)) {
+        private$.logger$log_info("Installing GitHub package: %s from %s", pkg_name, repo)
+        devtools::install_github(repo, ref = ref)
       }
     }
   ),
@@ -43,9 +67,14 @@ DependencyManager <- R6::R6Class("DependencyManager",
         !sapply(private$.required_packages$bioc, requireNamespace, quietly = TRUE)
       ]
       
+      missing_github <- names(private$.required_packages$github)[
+        !sapply(names(private$.required_packages$github), requireNamespace, quietly = TRUE)
+      ]
+      
       list(
         cran = missing_cran,
-        bioc = missing_bioc
+        bioc = missing_bioc,
+        github = missing_github
       )
     },
     
@@ -65,6 +94,14 @@ DependencyManager <- R6::R6Class("DependencyManager",
         sapply(missing$bioc, private$install_bioc_package)
       }
       
+      if (length(missing$github) > 0) {
+        private$.logger$log_info("Installing missing GitHub packages...")
+        for (pkg in missing$github) {
+          pkg_info <- private$.required_packages$github[[pkg]]
+          private$install_github_package(pkg, pkg_info$repo, pkg_info$ref)
+        }
+      }
+      
       invisible(self)
     },
     
@@ -77,7 +114,7 @@ DependencyManager <- R6::R6Class("DependencyManager",
       
       # Check package versions
       missing <- self$check_required_packages()
-      if (length(c(missing$cran, missing$bioc)) > 0) {
+      if (length(c(missing$cran, missing$bioc, missing$github)) > 0) {
         self$install_missing_packages()
       }
       

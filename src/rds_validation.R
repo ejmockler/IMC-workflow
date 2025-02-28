@@ -1,6 +1,7 @@
 # Load required packages for dependency management
 library(R6)
-source("analysis/core/DependencyManager.R")
+source("src/core/DependencyManager.R")
+# Source the visualization functions (newly added)
 
 # Validate the environment and install any missing packages before proceeding
 dep_manager <- DependencyManager$new()
@@ -9,6 +10,7 @@ dep_manager$validate_environment()
 # Explicitly load libraries that are needed for the validation process
 # (These packages have been ensured to be installed by DependencyManager)
 library(SpatialExperiment)
+library(cytomapper)
 
 #----------------------------------
 # Comprehensive IMC Data Validation
@@ -61,13 +63,16 @@ load_and_validate_data <- function(paths) {
   images <- readRDS(paths$images)
   masks <- readRDS(paths$masks)
   panel <- read.csv(paths$panel, stringsAsFactors = FALSE)
+
+  message("First image dimensions:")
+  print(dim(images[[1]]))
   
   # Fix marker names in SPE object
   message("\nFixing marker names in SPE object...")
   message("Current marker names:")
   print(rownames(spe))
   
-  # Fix CD11b name
+  # Fix CD11b name in SPE object
   rownames(spe)[rownames(spe) == "CD11b 1"] <- "CD11b"
   
   message("\nUpdated marker names:")
@@ -83,16 +88,50 @@ load_and_validate_data <- function(paths) {
   saveRDS(spe, paths$spe)
   message("\nSPE object updated and saved with corrected marker names.")
   
-  # Fix channel names in images object
-  if (!is.null(images) && "CD11b 1" %in% channelNames(images)) {
-    channelNames(images)[channelNames(images) == "CD11b 1"] <- "CD11b"
+  # ---- New Fallback for Intensities ----
+  if (!("intensities" %in% assayNames(spe))) {
+    if ("exprs" %in% assayNames(spe)) {
+      message("No 'intensities' assay found in SPE. Creating 'intensities' assay from 'exprs'.")
+      assay(spe, "intensities") <- assay(spe, "exprs")
+    } else {
+      warning("Neither 'intensities' nor 'exprs' assay is available in SPE.")
+    }
+  }
+  # ---- End Fallback ----
+  
+  # Print images object details
+  message("images object:")
+  print(images)
+
+  # Fix channel names for the entire images object
+  if (!is.null(images) && length(images) > 0) {
+    # Get all channel names from the images list at once
+    current_channels <- channelNames(images)
+    if ("CD11b 1" %in% current_channels) {
+      new_channels <- current_channels
+      new_channels[new_channels == "CD11b 1"] <- "CD11b"
+      channelNames(images) <- new_channels
+      message("Images object channel names corrected.")
+    }
+    # Save the updated images object
     saveRDS(images, paths$images)
     message("\nImages object updated and saved with corrected channel names.")
   }
   
-  # Fix channel names in masks object
-  if (!is.null(masks) && "CD11b 1" %in% channelNames(masks)) {
-    channelNames(masks)[channelNames(masks) == "CD11b 1"] <- "CD11b"
+  # Print masks object details
+  message("masks object:")
+  print(masks)
+  
+  # Fix channel names for the entire masks object
+  if (!is.null(masks) && length(masks) > 0) {
+    current_channels <- channelNames(masks)
+    if ("CD11b 1" %in% current_channels) {
+      new_channels <- current_channels
+      new_channels[new_channels == "CD11b 1"] <- "CD11b"
+      channelNames(masks) <- new_channels
+      message("Masks object channel names corrected.")
+    }
+    # Save the updated masks object
     saveRDS(masks, paths$masks)
     message("\nMasks object updated and saved with corrected channel names.")
   }
@@ -121,26 +160,107 @@ validate_sample_mapping <- function(spe, imc_files, config) {
   message("\nSPE samples (", length(spe_samples), "):")
   message(paste(sprintf("%03d", spe_samples), collapse = ", "))
   
-  # From the IMC filenames, extract Day, Mouse, ROI using regular expressions,
-  # assuming the naming pattern is like: "D1_M1_ROI1.txt"
-  imc_info <- data.frame(
-    filename = imc_files,
-    day = gsub("D([1-7])_.*", "\\1", imc_files),
-    mouse = gsub(".*_M([1-2])_.*", "\\1", imc_files),
-    roi = gsub(".*_ROI([0-9]+).*", "\\1", imc_files),
-    stringsAsFactors = FALSE
+  # Define patterns for valid IMC files for ROI, Sham, and Test regions.
+  # ROI example: "IMC_241218_Alun_ROI_D7_M1_01_21.txt"
+  # Sham example: "IMC_241218_Alun_ROI_Sam1_03_4.txt"
+  # Test example: "IMC_241218_Alun_ROI_Test01_1.txt"
+  patterns <- list(
+    roi_pattern  = "^IMC_241218_Alun_ROI_D([0-9]+)_M([1-2])_[0-9]+_([0-9]+)\\.txt$",
+    sham_pattern = "^IMC_241218_Alun_ROI_Sam[0-9]+_[0-9]+_([0-9]+)\\.txt$",
+    test_pattern = "^IMC_241218_Alun_ROI_Test[0-9]+_([0-9]+)\\.txt$"
   )
   
-  message("\nIMC file structure:")
-  message("Days: ", paste(unique(imc_info$day), collapse = ", "))
-  message("Mice: ", paste(unique(imc_info$mouse), collapse = ", "))
-  message("ROIs per condition: ", paste(table(imc_info$day, imc_info$mouse), collapse = ", "))
+  valid_files <- character(0)
+  imc_info_list <- list()
   
-  # Report any missing samples based on our expected sample numbers
-  missing_numbers <- setdiff(config$expected_samples, spe_samples)
-  if (length(missing_numbers) > 0) {
-    message("\nMissing sample numbers: ",
-            paste(sprintf("%03d", missing_numbers), collapse = ", "))
+  # Process ROI files
+  roi_files <- grep(patterns$roi_pattern, imc_files, value = TRUE)
+  valid_files <- c(valid_files, roi_files)
+  if (length(roi_files) > 0) {
+    roi_info <- data.frame(
+      filename   = roi_files,
+      type       = "ROI",
+      day        = as.numeric(gsub(patterns$roi_pattern, "\\1", roi_files)),
+      mouse      = as.numeric(gsub(patterns$roi_pattern, "\\2", roi_files)),
+      sample_num = as.numeric(gsub(patterns$roi_pattern, "\\3", roi_files)),
+      stringsAsFactors = FALSE
+    )
+    imc_info_list[[length(imc_info_list) + 1]] <- roi_info
+  }
+  
+  # Process Sham files
+  sham_files <- grep(patterns$sham_pattern, imc_files, value = TRUE)
+  valid_files <- c(valid_files, sham_files)
+  if (length(sham_files) > 0) {
+    sham_info <- data.frame(
+      filename   = sham_files,
+      type       = "Sham",
+      day        = NA,  # No day information for sham regions
+      mouse      = NA,  # No mouse information for sham regions
+      sample_num = as.numeric(gsub(patterns$sham_pattern, "\\1", sham_files)),
+      stringsAsFactors = FALSE
+    )
+    imc_info_list[[length(imc_info_list) + 1]] <- sham_info
+  }
+  
+  # Process Test files
+  test_files <- grep(patterns$test_pattern, imc_files, value = TRUE)
+  valid_files <- c(valid_files, test_files)
+  if (length(test_files) > 0) {
+    test_info <- data.frame(
+      filename   = test_files,
+      type       = "Test",
+      day        = NA,  # No day information for test regions
+      mouse      = NA,  # No mouse information for test regions
+      sample_num = as.numeric(gsub(patterns$test_pattern, "\\1", test_files)),
+      stringsAsFactors = FALSE
+    )
+    imc_info_list[[length(imc_info_list) + 1]] <- test_info
+  }
+  
+  if (length(valid_files) == 0) {
+    warning("No IMC files found matching any expected pattern (ROI, Sham, or Test).")
+    return(NULL)
+  }
+  
+  imc_info <- do.call(rbind, imc_info_list)
+  
+  message("\nValid IMC files found: ", nrow(imc_info))
+  message("\nIMC file structure:")
+  message("Types: ", paste(sort(unique(imc_info$type)), collapse = ", "))
+  
+  if ("ROI" %in% imc_info$type) {
+    message("ROI files - Days: ", paste(sort(unique(na.omit(imc_info$day))), collapse = ", "))
+    message("ROI files - Mice: ", paste(sort(unique(na.omit(imc_info$mouse))), collapse = ", "))
+  }
+  
+  if ("Sham" %in% imc_info$type) {
+    sham_subset <- imc_info[imc_info$type == "Sham", ]
+    message("Sham files - Count: ", nrow(sham_subset))
+    message("Sham files - Sample numbers: ", paste(sort(unique(sham_subset$sample_num)), collapse = ", "))
+  } else {
+    message("No Sham files detected.")
+  }
+  
+  if ("Test" %in% imc_info$type) {
+    test_subset <- imc_info[imc_info$type == "Test", ]
+    message("Test files - Count: ", nrow(test_subset))
+    message("Test files - Sample numbers: ", paste(sort(unique(test_subset$sample_num)), collapse = ", "))
+  } else {
+    message("No Test files detected.")
+  }
+  
+  message("Combined Sample numbers from all file types: ", paste(sort(unique(imc_info$sample_num)), collapse = ", "))
+  
+  # Cross-reference with SPE samples
+  missing_in_spe <- setdiff(imc_info$sample_num, spe_samples)
+  missing_in_imc <- setdiff(spe_samples, imc_info$sample_num)
+  
+  if (length(missing_in_spe) > 0) {
+    warning("IMC files found with sample numbers not in SPE: ", paste(missing_in_spe, collapse = ", "))
+  }
+  if (length(missing_in_imc) > 0) {
+    warning("SPE samples without corresponding IMC files: ", paste(missing_in_imc, collapse = ", "))
   }
   
   return(imc_info)

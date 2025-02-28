@@ -114,16 +114,17 @@ plot_spatial_hotspots <- function(coords, intensity_values, channel_name) {
 #' @param masks Optional masks for visual overlays.
 #' @return A composite plot (arranged using gridExtra) of processed data visualizations.
 visualize_processed_data <- function(image_idx, images, panel_keep, spe, masks = NULL) {
-  # For demonstration: 
-  # 1. Create a density plot of intensities from the first channel.
-  # 2. Create a placeholder plot for mask overlay.
-  
-  # Attempt to retrieve intensities (using the first channel as demonstration).
+  # Attempt to retrieve "intensities" assay; if missing, fall back to "exprs".
   intensities <- tryCatch(assay(spe, "intensities"), error = function(e) NULL)
   if (is.null(intensities)) {
-    stop("No intensity data available in SPE.")
+    message("'intensities' assay not found; attempting to use 'exprs' assay as fallback.")
+    intensities <- tryCatch(assay(spe, "exprs"), error = function(e) NULL)
+  }
+  if (is.null(intensities)) {
+    stop("No intensity or expression data available in SPE.")
   }
   
+  # Left panel: Intensity density plot for Channel 1
   channel1 <- intensities[, 1]
   p1 <- ggplot(data.frame(Intensity = channel1), aes(x = Intensity)) +
     geom_density(fill = "lightblue", alpha = 0.7) +
@@ -133,12 +134,34 @@ visualize_processed_data <- function(image_idx, images, panel_keep, spe, masks =
     ) +
     theme_minimal()
   
-  # Create a dummy plot for masks (if provided) or a placeholder.
-  if (!is.null(masks)) {
+  # Right panel: Real mask overlay plot using contour lines with fixed aspect ratio
+  if (!is.null(masks) && length(masks) >= image_idx) {
+    # Retrieve the image and corresponding mask
+    img <- images[[image_idx]]
+    mask <- masks[[image_idx]]
+    
+    # Check dimensions and warn if they do not match
+    if (!all(dim(img)[1:2] == dim(mask))) {
+      warning("Dimensions of image and mask do not match. Proceeding with original dimensions.")
+    }
+    
+    # Convert the image to a raster for ggplot
+    img_raster <- as.raster(img)
+    
+    # Create a data frame from the mask matrix for contour plotting
+    # We assume that the mask is numeric (binary or integer-valued)
+    mask_df <- data.frame(expand.grid(x = 1:ncol(mask), y = 1:nrow(mask)),
+                          mask = as.vector(mask))
+    
+    # Create a composite overlay plot: image in the background and mask outlines over it.
+    # The contour breaks = 0.5 is chosen for a binary mask (0/1 values).
     p2 <- ggplot() +
-      geom_blank() +
+      annotation_raster(img_raster, xmin = 0, xmax = ncol(img), ymin = 0, ymax = nrow(img)) +
+      geom_contour(data = mask_df, aes(x = x, y = y, z = mask),
+                   breaks = 0.5, colour = "red", size = 0.8) +
       labs(title = paste("Image", image_idx, "Mask Overlay")) +
-      theme_minimal()
+      theme_void() +
+      coord_fixed(ratio = 1)  # Ensure the original aspect ratio is preserved
   } else {
     p2 <- ggplot() +
       geom_blank() +
@@ -348,22 +371,29 @@ TemporalVisualization <- R6::R6Class("TemporalVisualization",
       # Extract temporal data
       temporal_data <- self$results$temporal
       
-      # Create population changes plot
-      pop_plot <- ggplot(reshape2::melt(temporal_data$cell_counts$immune)) +
-        geom_bar(aes(x = Var1, y = value, fill = Var2), stat = "identity") +
-        labs(title = "Immune Cell Population Changes",
-             x = "Day", y = "Cell Count") +
-        theme_minimal()
+      # Enhanced population changes plot
+      pop_plot <- ggplot(reshape2::melt(temporal_data$cell_counts$immune), 
+                         aes(x = factor(Var1), y = value, fill = Var2)) +
+        geom_bar(stat = "identity", position = "dodge") +
+        labs(title = "Immune Cell Population Changes Over Time",
+             x = "Day",
+             y = "Cell Count",
+             fill = "Cell Type") +
+        theme_minimal() +
+        theme(text = element_text(size = 14))
       
-      # Create spatial distribution plot
+      # Enhanced spatial distribution plot
       spatial_plot <- ggplot(temporal_data$spatial_df, 
-                           aes(x = day, y = distance, color = cell_type)) +
+                             aes(x = day, y = distance, color = cell_type)) +
         geom_boxplot() +
-        labs(title = "Changes in Spatial Distribution",
-             x = "Day", y = "Distance") +
-        theme_minimal()
+        labs(title = "Spatial Distribution of Cells Over Time",
+             x = "Day",
+             y = "Nearest Neighbor Distance",
+             color = "Cell Type") +
+        theme_minimal() +
+        theme(text = element_text(size = 14))
       
-      # Arrange plots
+      # Arrange both plots side-by-side
       gridExtra::grid.arrange(pop_plot, spatial_plot, ncol = 2)
     }
   )
@@ -391,4 +421,106 @@ HotspotVisualization <- R6::R6Class("HotspotVisualization",
       do.call(gridExtra::grid.arrange, c(plots, list(ncol = 2)))
     }
   )
-) 
+)
+
+# Add the following new function to handle visualization of raw TIFF images and masks
+
+visualize_raw_imc_data <- function(image_idx, images, masks, panel, imc_info, channels = NULL) {
+  if (image_idx > length(images)) {
+    stop("Image index is out of range")
+  }
+  
+  # Debug prints
+  message("Image dimensions:")
+  print(dim(images[[image_idx]]))
+  message("Range of image values:")
+  print(range(images[[image_idx]], na.rm = TRUE))
+  
+  # Retrieve the image and corresponding mask
+  img <- images[[image_idx]]
+  msk <- masks[[image_idx]]
+  
+  # For multi-channel images, create a composite by taking the mean across selected channels
+  if (length(dim(img)) == 3) {
+    available_channels <- channelNames(images)
+    message("Available channels: ", paste(available_channels, collapse = ", "))
+    
+    # If channels specified, validate and use them
+    if (!is.null(channels)) {
+      channel_indices <- match(channels, available_channels)
+      if (any(is.na(channel_indices))) {
+        warning("Some channels not found: ", 
+                paste(channels[is.na(channel_indices)], collapse = ", "))
+        channel_indices <- channel_indices[!is.na(channel_indices)]
+      }
+      if (length(channel_indices) == 0) stop("No valid channels specified")
+      
+      # Debug print to verify channel selection
+      message("Using channels: ", paste(available_channels[channel_indices], collapse = ", "))
+      message("Channel indices: ", paste(channel_indices, collapse = ", "))
+      
+      # Extract only the specified channels before averaging
+      img <- img[,,channel_indices, drop = FALSE]
+      img <- apply(img, c(1, 2), mean)
+      
+      # Update available_channels to only show selected ones
+      available_channels <- available_channels[channel_indices]
+    } else {
+      message("Creating composite from all ", dim(img)[3], " channels")
+      img <- apply(img, c(1, 2), mean)
+    }
+  }
+  
+  # Robust normalization using quantiles to handle outliers
+  q_low <- quantile(img, 0.01, na.rm = TRUE)
+  q_high <- quantile(img, 0.99, na.rm = TRUE)
+  img_norm <- (img - q_low) / (q_high - q_low)
+  img_norm[img_norm < 0] <- 0
+  img_norm[img_norm > 1] <- 1
+  
+  # Convert to data frame for ggplot
+  img_df <- expand.grid(x = 1:ncol(img), y = 1:nrow(img))
+  img_df$intensity <- as.vector(img_norm)
+  
+  # Create mask data frame if mask exists
+  # if (!is.null(msk)) {
+  #   mask_df <- data.frame(
+  #     x = rep(1:ncol(msk), each = nrow(msk)),
+  #     y = rep(1:nrow(msk), times = ncol(msk)),
+  #     mask = as.vector(msk)
+  #   )
+  # }
+  
+  # Get metadata for title
+  filename <- names(images)[image_idx]
+  
+  # Create plot
+  p <- ggplot() +
+    # Plot image as tiles with viridis color scheme for better visualization
+    geom_tile(data = img_df, aes(x = x, y = y, fill = intensity)) +
+    scale_fill_viridis_c(
+      option = "magma",
+      name = "Intensity"
+    ) +
+    # Add mask contours if mask exists
+    # {if (!is.null(msk)) 
+    #   geom_contour(data = mask_df, aes(x = x, y = y, z = mask),
+    #                breaks = 0.5, colour = "red", size = 0.8)
+    # } +
+    labs(
+      title = sprintf("Image & Mask Overlay: %s", filename),
+      subtitle = paste("Using channels:", paste(available_channels, collapse = ", "))
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text = element_blank(),
+      axis.title = element_blank(),
+      panel.grid = element_blank(),
+      plot.title = element_text(size = 10),
+      plot.subtitle = element_text(size = 8)
+    ) +
+    coord_fixed(ratio = 1)
+  
+  print(p)
+  return(p)
+}

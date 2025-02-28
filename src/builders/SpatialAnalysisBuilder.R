@@ -47,7 +47,11 @@ SpatialAnalysisBuilder <- R6::R6Class("SpatialAnalysisBuilder",
       )
       
       # Initialize and run analysis
-      analysis <- analysis_class$new(private$.data, private$.config)
+      analysis <- analysis_class$new(
+        data = private$.data,
+        config = private$.config,
+        logger = private$.logger
+      )
       analysis$run(...)
       
       # Store results

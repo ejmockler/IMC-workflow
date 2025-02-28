@@ -17,3 +17,5 @@
 logs/
 output/
 data/
+
+venv/
