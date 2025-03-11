@@ -52,9 +52,9 @@ harmonizeMetadata <- function(spe, metadata_configs) {
     
     # Determine whether we are merging into colData or rowData.
     if (config$target == "colData") {
-      base_meta <- as.data.frame(colData(spe))
+      base_meta <- as.data.frame(SummarizedExperiment::colData(spe))
     } else if (config$target == "rowData") {
-      base_meta <- as.data.frame(rowData(spe))
+      base_meta <- as.data.frame(SpatialExperiment::rowData(spe))
     } else {
       stop("Unsupported target: ", config$target)
     }
@@ -68,11 +68,47 @@ harmonizeMetadata <- function(spe, metadata_configs) {
     
     # Update the spe slot with the merged metadata.
     if (config$target == "colData") {
-      colData(spe) <- DataFrame(joined)
+      SummarizedExperiment::colData(spe) <- DataFrame(joined)
     } else if (config$target == "rowData") {
-      rowData(spe) <- DataFrame(joined)
+      SpatialExperiment::rowData(spe) <- DataFrame(joined)
     }
   }
+  
+  return(spe)
+}
+
+#' @description Harmonize SPE metadata with additional table(s)
+#' @param spe SpatialExperiment to harmonize
+#' @param metadata_tables List of data.frames with metadata
+#' @param join_column Column to join on
+#' @param join_type Type of join ('left', 'right', 'inner', 'full')
+#' @return SpatialExperiment with harmonized metadata
+harmonize = function(spe, metadata_tables, join_column = "sample_id", join_type = "left") {
+  # Extract colData as data.frame
+  base_meta <- as.data.frame(SummarizedExperiment::colData(spe))
+  
+  # Convert metadata_tables to list if it's a single data.frame
+  if (is.data.frame(metadata_tables)) {
+    metadata_tables <- list(metadata_tables)
+  }
+  
+  # Join each metadata table with the base metadata
+  joined <- base_meta
+  for (meta_table in metadata_tables) {
+    if (!join_column %in% colnames(joined) || !join_column %in% colnames(meta_table)) {
+      stop(sprintf("Join column '%s' not found in one of the tables", join_column))
+    }
+    
+    joined <- switch(join_type,
+                   "left" = dplyr::left_join(joined, meta_table, by = join_column),
+                   "right" = dplyr::right_join(joined, meta_table, by = join_column),
+                   "inner" = dplyr::inner_join(joined, meta_table, by = join_column),
+                   "full" = dplyr::full_join(joined, meta_table, by = join_column),
+                   stop(sprintf("Invalid join type: %s", join_type)))
+  }
+  
+  # Update colData
+  SummarizedExperiment::colData(spe) <- S4Vectors::DataFrame(joined)
   
   return(spe)
 } 

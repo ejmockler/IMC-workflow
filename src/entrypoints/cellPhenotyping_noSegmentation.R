@@ -10,10 +10,15 @@
 #' @example
 #'   analyzer <- runMarkerAnalysisNoSegmentation()
 
+# Load required libraries
+library(R6)
+
+# Source necessary files
 source("src/core/DependencyManager.R")
 source("src/core/ConfigurationManager.R")
 source("src/core/Logger.R")
 source("src/analysis/MarkerAnalysis.R")
+source("src/core/ImageIO.R")
 
 runMarkerAnalysisNoSegmentation <- function(
   input_file = NULL,
@@ -30,7 +35,7 @@ runMarkerAnalysisNoSegmentation <- function(
   
   # Initialize dependencies
   dependencyManager <- DependencyManager$new(logger = logger)
-  dependencyManager$validate_environment()
+  dependencyManager$install_missing_packages()
   
   # Get parameters from config or use provided values
   input_file <- input_file %||% configManager$config$marker_analysis$input_file %||% "output/images_processed.rds"
@@ -49,22 +54,17 @@ runMarkerAnalysisNoSegmentation <- function(
   logger$log_info("Using %d pixels for analysis", n_pixels)
   logger$log_info("Using %d cores for parallel processing", n_cores)
   
-  # Load required packages for parallel processing
-  if (!requireNamespace("foreach", quietly = TRUE)) {
-    install.packages("foreach")
-    library(foreach)
-  }
-  if (!requireNamespace("doParallel", quietly = TRUE)) {
-    install.packages("doParallel")
-    library(doParallel)
-  }
+  # Ensure parallel processing packages are loaded
+  dependencyManager$ensure_package("foreach")
+  dependencyManager$ensure_package("doParallel")
   
   # Create MarkerAnalyzer object
   analyzer <- MarkerAnalyzer$new(
     input_file = input_file,
     output_dir = output_dir,
     n_pixels = n_pixels,
-    transform_data = transformation
+    transform_data = transformation,
+    logger = logger
   )
   
   # Run image-aware analysis

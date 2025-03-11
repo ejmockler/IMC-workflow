@@ -32,110 +32,76 @@ ConfigurationManager <- R6::R6Class("ConfigurationManager",
     #' @return A list with nested configuration parameters
     get_default_config = function() {
       list(
-        # Data path configurations
+        # Consolidated paths section
         paths = list(
-          # Directory with the steinbock processed single-cell data
-          steinbock_data   = "data/", 
-          
-          # Directory with multi-channel images
-          steinbock_images = "data/img/",
-          
-          # Directory with segmentation masks
-          steinbock_masks  = "data/masks/",
-          
-          # The panel CSV file containing channel metadata
-          panel            = "data/panel.csv",
-          
-          # External metadata file for sample-level annotation
-          metadata_annotation = "data/Data_annotations_Karen/Metadata-Table 1.csv"
+          data_dir = "data/",
+          image_dir = "data/img/",
+          masks_dir = "data/masks/",
+          gated_cells_dir = "data/gated_cells/",
+          output_dir = "output/",
+          panels = list(
+            default = "data/panel.csv",
+            alternative = "data/panel2.csv"
+          ),
+          metadata = "data/Data_annotations_Karen/Metadata-Table 1.csv"
         ),
         
-        # General analysis parameters used across multiple modules
-        analysis_params = list(
-          # Number of neighbors for spatial analyses (e.g., cell neighborhoods)
-          k_neighbors         = 6,
-          
-          # Maximum distance (in pixels) to consider cells as neighbors
-          distance_threshold  = 50,
-          
-          # Maximum points to use for visualizations to prevent memory issues
-          max_points          = 5000
-        ),
-        
-        # Visualization settings for plots and figures
-        visualization_params = list(
-          # Default width for saved plots (in inches)
-          width  = 10,
-          
-          # Default height for saved plots (in inches)
-          height = 8,
-          
-          # Resolution for raster outputs (PNG, TIFF)
-          dpi    = 300
-        ),
-        
-        # Output settings for saving analysis results
-        output = list(
-          # Directory where all results will be saved
-          dir         = "output",
-          
-          # Whether to save plots generated during analysis
-          save_plots  = TRUE,
-          
-          # Whether to save intermediate data objects
-          save_data   = TRUE
-        ),
-        
-        # Batch correction settings for sample/patient integration
-        batch_correction = list(
-          # Column in SPE metadata used to identify batches
-          batch_variable = "sample_id",
-          
-          # Random seed for reproducible results
-          seed = 220228,
-          
-          # Number of principal components to use for batch correction
-          num_pcs = 50
-        ),
-        
-        # Cell phenotyping parameters for clustering
-        phenotyping = list(
-          # Connectivity parameter for Rphenoannoy/Rphenograph clustering
-          # Controls the granularity of clustering (higher = more clusters)
-          k_nearest_neighbors = 45,
-          
-          # Random seed for reproducible clustering
-          seed = 220619,
-          
-          # Whether to use batch-corrected embedding for clustering
-          use_corrected_embedding = TRUE,
-          
-          # Whether to use approximate nearest neighbors (faster but less precise)
-          use_approximate_nn = TRUE,
-          
-          # Number of CPU cores to use for parallel processing (1 = no parallelization)
-          n_cores = 1
-        ),
-        
-        # Parameters for marker analysis without segmentation
-        marker_analysis = list(
-          # Input file path for image data (NULL = use default path)
-          input_file = NULL,
-          
-          # Number of pixels to sample for analysis (controls memory usage)
-          n_pixels = 50000000,
-          
-          # Whether to transform data (e.g., log, arcsinh)
+        # Consolidated cell analysis parameters
+        cell_analysis = list(
+          # General parameters
           transformation = TRUE,
+          qc_filter = TRUE,
+          min_cell_area = 10,
           
-          # Whether to save visualization plots
+          # Combined phenotyping parameters (for both unsupervised and gated)
+          use_gated_cells = FALSE,  # Switch between workflows
+          gated_cell_files = list(
+            "immune" = "Immune_cells.rds",
+            "endothelial" = "Endothelial_cells.rds",
+            "fibroblasts" = "Fibroblasts.rds",
+            "m2_macrophages" = "M2_Macrophages.rds",
+            "non_m2_macrophages" = "Non_M2_Macrophages.rds"
+          ),
+          
+          # Unsupervised parameters
+          k_nearest_neighbors = 45,
+          batch_correction = TRUE,
+          batch_variable = "sample_id",
+          n_pcs = 50
+        ),
+        
+        # Consolidated spatial analysis parameters
+        spatial_analysis = list(
+          build_graphs = TRUE,
+          graph_types = c("knn", "expansion", "delaunay"),
+          distance_threshold = 50,
+          k_neighbors = 20,
+          
+          # Communities
+          community_methods = c("graph_based", "celltype_aggregation"),
+          size_threshold = 10,
+          
+          # Interactions
+          test_interactions = TRUE,
+          interaction_methods = c("classic", "patch")
+        ),
+        
+        # Visualization and reporting
+        visualization = list(
           save_plots = TRUE,
-          
-          # Memory limit in MB (0 = no limit)
+          max_points = 5000,
+          plot_dimensions = c(width = 10, height = 8, dpi = 300),
+          cell_size = 1,
+          color_scheme = "viridis"
+        ),
+        
+        # Simplified system parameters
+        system = list(
+          n_cores = 1,
           memory_limit = 0,
-          
-          # Number of CPU cores for parallel processing
-          n_cores = 1
+          seed = 220619,
+          save_intermediate = TRUE,
+          verbose = TRUE
         )
       )
     },
@@ -163,86 +129,60 @@ ConfigurationManager <- R6::R6Class("ConfigurationManager",
     #' @return The validated configuration (invisibly)
     validate_config = function(config) {
       # Ensure required input paths are present.
-      required_paths <- c("steinbock_data", "steinbock_images", "steinbock_masks", "panel")
+      required_paths <- c("data_dir", "image_dir", "masks_dir", "panels$default")
       missing_paths <- required_paths[!required_paths %in% names(config$paths)]
       if (length(missing_paths) > 0) {
         stop("Missing required paths in configuration: ", paste(missing_paths, collapse = ", "))
       }
       
       # Validate that input directories exist.
-      if (!dir.exists(config$paths$steinbock_data)) {
-        stop("The specified steinbock_data directory does not exist: ", config$paths$steinbock_data)
+      if (!dir.exists(config$paths$data_dir)) {
+        stop("The specified data_dir directory does not exist: ", config$paths$data_dir)
       }
       
-      if (!dir.exists(config$paths$steinbock_images)) {
-        stop("The specified steinbock_images directory does not exist: ", config$paths$steinbock_images)
+      if (!dir.exists(config$paths$image_dir)) {
+        stop("The specified image_dir directory does not exist: ", config$paths$image_dir)
       }
       
-      if (!dir.exists(config$paths$steinbock_masks)) {
-        stop("The specified steinbock_masks directory does not exist: ", config$paths$steinbock_masks)
+      if (!dir.exists(config$paths$masks_dir)) {
+        stop("The specified masks_dir directory does not exist: ", config$paths$masks_dir)
       }
       
       # Validate that the panel file exists.
-      if (!file.exists(config$paths$panel)) {
-        stop("Panel file not found: ", config$paths$panel)
+      if (!file.exists(config$paths$panels$default)) {
+        stop("Panel file not found: ", config$paths$panels$default)
       }
       
-      # Validate general analysis parameters
-      if (!is.null(config$analysis_params$k_neighbors)) {
-        if (config$analysis_params$k_neighbors < 1) {
-          stop("analysis_params.k_neighbors must be positive")
+      # Validate cell analysis parameters
+      if (!is.null(config$cell_analysis$k_nearest_neighbors)) {
+        if (config$cell_analysis$k_nearest_neighbors < 1) {
+          stop("cell_analysis.k_nearest_neighbors must be positive")
         }
       }
       
-      if (!is.null(config$analysis_params$distance_threshold)) {
-        if (config$analysis_params$distance_threshold <= 0) {
-          stop("analysis_params.distance_threshold must be positive")
+      if (!is.null(config$cell_analysis$n_pcs)) {
+        if (config$cell_analysis$n_pcs < 1) {
+          stop("cell_analysis.n_pcs must be positive")
         }
       }
       
-      # Validate output configuration: create output directory if it does not exist.
-      if (!is.null(config$output$dir)) {
-        if (!dir.exists(config$output$dir)) {
-          dir.create(config$output$dir, recursive = TRUE)
+      # Validate spatial analysis parameters
+      if (!is.null(config$spatial_analysis$k_neighbors)) {
+        if (config$spatial_analysis$k_neighbors < 1) {
+          stop("spatial_analysis.k_neighbors must be positive")
         }
       }
       
-      # Validate phenotyping parameters
-      if (!is.null(config$phenotyping$k_nearest_neighbors)) {
-        if (config$phenotyping$k_nearest_neighbors < 1) {
-          stop("phenotyping.k_nearest_neighbors must be positive")
+      if (!is.null(config$spatial_analysis$distance_threshold)) {
+        if (config$spatial_analysis$distance_threshold <= 0) {
+          stop("spatial_analysis.distance_threshold must be positive")
         }
       }
       
-      if (!is.null(config$phenotyping$n_cores)) {
-        if (config$phenotyping$n_cores < 1 || !is.numeric(config$phenotyping$n_cores)) {
-          stop("phenotyping.n_cores must be a positive integer")
-        }
-      }
-      
-      # Validate batch correction parameters
-      if (!is.null(config$batch_correction$num_pcs)) {
-        if (config$batch_correction$num_pcs < 1) {
-          stop("batch_correction.num_pcs must be positive")
-        }
-      }
-      
-      # Validate marker analysis parameters
-      if (!is.null(config$marker_analysis$n_pixels)) {
-        if (config$marker_analysis$n_pixels < 1000) {
-          stop("marker_analysis.n_pixels must be at least 1000")
-        }
-      }
-      
-      if (!is.null(config$marker_analysis$n_cores)) {
-        if (config$marker_analysis$n_cores < 1 || !is.numeric(config$marker_analysis$n_cores)) {
-          stop("marker_analysis.n_cores must be a positive integer")
-        }
-      }
-      
-      if (!is.null(config$marker_analysis$memory_limit)) {
-        if (config$marker_analysis$memory_limit < 0) {
-          stop("marker_analysis.memory_limit must be non-negative")
+      # Validate visualization parameters
+      if (!is.null(config$visualization$max_points)) {
+        if (config$visualization$max_points < 1000) {
+          stop("visualization.max_points must be at least 1000")
         }
       }
       

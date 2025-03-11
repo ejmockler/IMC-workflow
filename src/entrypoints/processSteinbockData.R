@@ -29,34 +29,34 @@ runProcessSteinbockData <- function() {
   
   # ------------------------ Debug: Check Available Metadata ------------------------
   # Log the available names in colData(spe) to identify the correct cell area attribute.
-  available_cols <- colnames(colData(spe))
-  logger$log_info("Available columns in colData(spe): %s", paste(available_cols, collapse = ", "))
+  available_cols <- colnames(SummarizedExperiment::colData(spe))
+  logger$log_info("Available columns in SummarizedExperiment::colData(spe): %s", paste(available_cols, collapse = ", "))
   
-  # Check if "cell_area" exists; if not, fall back to "area"
+  # Identify the correct attribute that holds the cell area
+  area_column <- NULL
   if ("cell_area" %in% available_cols) {
-    areas <- spe$cell_area
-    area_label <- "cell_area"
+    area_column <- "cell_area"
   } else if ("area" %in% available_cols) {
-    areas <- spe$area
-    area_label <- "area"
+    area_column <- "area"
   } else {
-    stop("Neither 'cell_area' nor 'area' is available in colData(spe).")
+    logger$log_error("Could not identify cell area column in colData(spe)")
+    stop("Neither 'cell_area' nor 'area' is available in SummarizedExperiment::colData(spe).")
   }
   
-  logger$log_info("Using '%s' for filtering cell areas.", area_label)
+  logger$log_info("Using '%s' for filtering cell areas.", area_column)
   
   # ------------------------ Dynamic Quality Control Filtering with Debugging ------------------------
   # Print cell area summary and (if interactive) plot its histogram.
-  logger$log_info("Cell %s summary before filtering:", area_label)
-  logger$log_info("%s", paste(capture.output(summary(areas)), collapse = "\n"))
+  logger$log_info("Cell %s summary before filtering:", area_column)
+  logger$log_info("%s", paste(capture.output(summary(spe[[area_column]])), collapse = "\n"))
   
   if (interactive()) {
     tryCatch({
       library(ggplot2)
-      p_area <- ggplot2::ggplot(as.data.frame(areas), ggplot2::aes(x = areas)) +
+      p_area <- ggplot2::ggplot(as.data.frame(spe[[area_column]]), ggplot2::aes(x = spe[[area_column]])) +
                  ggplot2::geom_histogram(bins = 50, fill = "steelblue", color = "black") +
                  ggplot2::theme_minimal() +
-                 ggplot2::ggtitle(paste("Distribution of", area_label))
+                 ggplot2::ggtitle(paste("Distribution of", area_column))
       print(p_area)
     }, error = function(e) {
       logger$log_warning("Could not generate histogram: %s", e$message)
@@ -64,8 +64,8 @@ runProcessSteinbockData <- function() {
   }
   
   # ---- Option 1: Using Median/MAD Approach ----
-  median_area <- median(areas, na.rm = TRUE)
-  mad_area <- mad(areas, na.rm = TRUE)
+  median_area <- median(spe[[area_column]], na.rm = TRUE)
+  mad_area <- mad(spe[[area_column]], na.rm = TRUE)
   multiplier_mad <- 5   # Adjust multiplier if 3 is too strict.
   lower_bound_mad <- max(0, median_area - multiplier_mad * mad_area)
   upper_bound_mad <- median_area + multiplier_mad * mad_area
@@ -73,8 +73,8 @@ runProcessSteinbockData <- function() {
                   multiplier_mad, lower_bound_mad, upper_bound_mad)
   
   # ---- Option 2: Using IQR Approach ----
-  q1 <- quantile(areas, 0.25, na.rm = TRUE)
-  q3 <- quantile(areas, 0.75, na.rm = TRUE)
+  q1 <- quantile(spe[[area_column]], 0.25, na.rm = TRUE)
+  q3 <- quantile(spe[[area_column]], 0.75, na.rm = TRUE)
   iqr <- q3 - q1
   lower_bound_iqr <- max(0, q1 - 1.5 * iqr)
   upper_bound_iqr <- q3 + 1.5 * iqr
@@ -83,8 +83,8 @@ runProcessSteinbockData <- function() {
   
   # Log the number of cells that would be retained using each method.
   n_cells_original <- ncol(spe)
-  cells_mad <- which(areas >= lower_bound_mad & areas <= upper_bound_mad)
-  cells_iqr <- which(areas >= lower_bound_iqr & areas <= upper_bound_iqr)
+  cells_mad <- which(spe[[area_column]] >= lower_bound_mad & spe[[area_column]] <= upper_bound_mad)
+  cells_iqr <- which(spe[[area_column]] >= lower_bound_iqr & spe[[area_column]] <= upper_bound_iqr)
   
   logger$log_info("After median/MAD filtering, %d cells remain.", length(cells_mad))
   logger$log_info("After IQR filtering, %d cells remain.", length(cells_iqr))

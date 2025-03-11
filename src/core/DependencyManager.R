@@ -20,14 +20,17 @@ DependencyManager <- R6::R6Class("DependencyManager",
       cran = c(
         "ggplot2", "dplyr", "FNN", "grid", "reshape2", "gridExtra",
         "spatstat", "ape", "energy", "spdep", "R6", "dbscan", "viridis",
-        "devtools", "RcppAnnoy", "dendextend", "entropy", "infotheo"
+        "devtools", "RcppAnnoy", "dendextend", "entropy", "infotheo", "pheatmap",
+        "foreach", "doParallel", "magrittr", "tidyr", "scales", "circlize",
+        "tidyverse", "umap"
       ),
       bioc = c(
         "SpatialExperiment", "cytomapper", "imcRtools", "CATALYST", "scater", 
-        "dittoSeq", "batchelor", "scater", "ComplexHeatmap"
+        "dittoSeq", "batchelor", "scater", "ComplexHeatmap", "lisaClust"
       ),
       github = list(
-        rphenoannoy = list(repo = "stuchly/Rphenoannoy", ref = NULL)
+        rphenoannoy = list(repo = "stuchly/Rphenoannoy", ref = NULL),
+        spicyR = list(repo = "SydneyBioX/spicyR", ref = NULL)
       )
     ),
     
@@ -126,6 +129,25 @@ DependencyManager <- R6::R6Class("DependencyManager",
       }
       
       invisible(self)
+    },
+    
+    # Helper method to ensure a package is installed
+    ensure_package = function(pkg_name) {
+      if (!requireNamespace(pkg_name, quietly = TRUE)) {
+        if (pkg_name %in% private$.required_packages$cran) {
+          private$install_cran_package(pkg_name)
+        } else if (pkg_name %in% private$.required_packages$bioc) {
+          private$install_bioc_package(pkg_name)
+        } else if (pkg_name %in% names(private$.required_packages$github)) {
+          pkg_info <- private$.required_packages$github[[pkg_name]]
+          private$install_github_package(pkg_name, pkg_info$repo, pkg_info$ref)
+        } else {
+          private$.logger$log_warning("Package %s not in the known dependencies list", pkg_name)
+          # Default to CRAN
+          private$install_cran_package(pkg_name)
+        }
+      }
+      return(requireNamespace(pkg_name, quietly = TRUE))
     }
   )
 ) 

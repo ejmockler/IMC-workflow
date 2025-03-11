@@ -167,9 +167,9 @@ runCellPhenotyping <- function() {
     
     # First check if there are any patient_id or sample_id columns for annotations
     annot_columns <- c(column_name)
-    if ("patient_id" %in% colnames(colData(spe))) {
+    if ("patient_id" %in% colnames(SummarizedExperiment::colData(spe))) {
       annot_columns <- c(annot_columns, "patient_id")
-    } else if ("sample_id" %in% colnames(colData(spe))) {
+    } else if ("sample_id" %in% colnames(SummarizedExperiment::colData(spe))) {
       annot_columns <- c(annot_columns, "sample_id")
     }
     
@@ -212,6 +212,16 @@ runCellPhenotyping <- function() {
     # Save visualizations
     ggsave(file.path(configManager$config$output$dir, "phenograph_clusters.png"), 
            plot = p1, width = 8, height = 6)
+  }
+  
+  # Set up batch information if available
+  batch_var <- configManager$config$phenotyping$batch_variable
+  if (is.null(batch_var)) {
+    if ("patient_id" %in% colnames(SummarizedExperiment::colData(spe))) {
+      batch_var <- "patient_id"
+    } else if ("sample_id" %in% colnames(SummarizedExperiment::colData(spe))) {
+      batch_var <- "sample_id"
+    }
   }
   
   invisible(spe)

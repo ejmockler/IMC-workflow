@@ -28,9 +28,9 @@ runBatchCorrection <- function() {
   # Get the batch variable from config (default to patient_id or sample_id)
   batch_var <- configManager$config$batch_correction$batch_variable
   if (is.null(batch_var)) {
-    if ("patient_id" %in% colnames(colData(spe))) {
+    if ("patient_id" %in% colnames(SummarizedExperiment::colData(spe))) {
       batch_var <- "patient_id"
-    } else if ("sample_id" %in% colnames(colData(spe))) {
+    } else if ("sample_id" %in% colnames(SummarizedExperiment::colData(spe))) {
       batch_var <- "sample_id"
     } else {
       logger$log_error("No suitable batch variable found in SPE colData")

@@ -276,7 +276,10 @@ MarkerAnalyzer <- R6::R6Class("MarkerAnalyzer",
       analysis_start_time <- Sys.time()
       
       # Ensure required packages are loaded
-      if (!requireNamespace("circlize", quietly = TRUE)) {
+      if (!is.null(self$dependency_manager)) {
+        self$dependency_manager$ensure_package("circlize")
+      } else if (!requireNamespace("circlize", quietly = TRUE)) {
+        if (!is.null(self$logger)) self$logger$log_info("Installing circlize package")
         install.packages("circlize")
       }
       library(circlize)  # Load circlize for colorRamp2 function
