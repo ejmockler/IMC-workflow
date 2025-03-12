@@ -22,7 +22,7 @@ DependencyManager <- R6::R6Class("DependencyManager",
         "spatstat", "ape", "energy", "spdep", "R6", "dbscan", "viridis",
         "devtools", "RcppAnnoy", "dendextend", "entropy", "infotheo", "pheatmap",
         "foreach", "doParallel", "magrittr", "tidyr", "scales", "circlize",
-        "tidyverse", "umap"
+        "tidyverse", "umap", "fossil", "mclust", "vegan", "reshape2"
       ),
       bioc = c(
         "SpatialExperiment", "cytomapper", "imcRtools", "CATALYST", "scater", 
@@ -150,4 +150,4 @@ DependencyManager <- R6::R6Class("DependencyManager",
       return(requireNamespace(pkg_name, quietly = TRUE))
     }
   )
-) 
+)

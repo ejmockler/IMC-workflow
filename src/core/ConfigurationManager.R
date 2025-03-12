@@ -102,6 +102,26 @@ ConfigurationManager <- R6::R6Class("ConfigurationManager",
           seed = 220619,
           save_intermediate = TRUE,
           verbose = TRUE
+        ),
+        
+        # Add to the config structure
+        phenotyping = list(
+          mode = "segmentation",  # Options: "segmentation" or "segmentation_free"
+          
+          # Segmentation-based parameters (from cellPhenotyping.R)
+          segmentation = list(
+            k_nearest_neighbors = 45,
+            use_corrected_embedding = TRUE,
+            run_both_embeddings = FALSE
+          ),
+          
+          # Segmentation-free parameters (for MarkerAnalyzer)
+          segmentation_free = list(
+            n_pixels = 50000000,
+            transform_method = "standard",
+            threshold_method = "median",
+            k_clusters = NULL
+          )
         )
       )
     },
