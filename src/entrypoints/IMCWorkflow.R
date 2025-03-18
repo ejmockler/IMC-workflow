@@ -6,6 +6,7 @@ source("src/core/ResultsManager.R")
 source("src/core/Reporter.R")
 source("src/core/Dataloader.R")
 source("src/core/MetadataHarmonizer.R")
+source("src/core/ImageProcessor.R")
 
 # Analysis modules - only load top-level managers
 source("src/analysis/spatial/SpatialAnalyzer.R")  # Will load its own components
@@ -21,6 +22,7 @@ source("src/visualization/marker_visualization.R")
 source("src/visualization/phenotype_visualization.R")
 source("src/visualization/spatial_visualization.R")
 source("src/visualization/gated_cell_visualization.R")
+source("src/visualization/channel_overlay_visualization.R")  # Add the new channel overlay module
 
 # Load common utilities
 `%||%` <- function(x, y) if (is.null(x)) y else x
@@ -70,62 +72,147 @@ simple_logger <- function() {
   return(logger)
 }
 
-#' Run the IMC workflow with specified options
+#' Run the IMC workflow
 #'
-#' @param config_file Path to configuration file (optional)
-#' @param workflow_type Type of workflow to run (unsupervised, gated, or both)
+#' Main entry point for the IMC workflow
+#'
+#' @param config_file Path to configuration file
+#' @param workflow_type Type of workflow to run
 #' @param steps Analysis steps to run
-#' @param output_dir Output directory (optional, overrides config)
+#' @param output_dir Output directory
 #' @return List of SpatialExperiment objects
 runIMCWorkflow <- function(
   config_file = NULL,
   workflow_type = c("unsupervised", "gated", "both"),
-  steps = c("load", "batch_correction", "phenotyping", "spatial", "visualize", "report"),
+  steps = c("load", "batch_correction", "phenotyping", "spatial", "visualize", "report", "process_images", "channel_overlay"),
   output_dir = NULL
 ) {
-  # Initialize
+  # Match arguments
   workflow_type <- match.arg(workflow_type)
-  config <- ConfigurationManager$new()
-  if (!is.null(config_file)) config$merge_with_defaults(config_file)
   
-  # Override output directory if provided
-  if (!is.null(output_dir)) config$config$paths$output_dir <- output_dir
-  
-  # Create logger
+  # Initialize logger
   logger <- simple_logger()
-  log_file <- file.path(config$config$paths$output_dir, "logs", "workflow.log")
-  logger$set_log_file(log_file)
   logger$info("Starting IMC Workflow")
   
-  # Initialize all required modules
-  data_loader <- DataLoader$new(config$config, logger)
-  preprocessing_manager <- PreprocessingManager$new(config$config, logger)
-  spatial_analyzer <- SpatialAnalyzer$new(config$config, logger)
-  marker_analyzer <- MarkerAnalyzer$new(
-    output_dir = config$config$paths$output_dir,
-    logger = logger
-  )
-  cell_phenotyper <- CellPhenotyper$new(config$config, logger)
-  reporter <- Reporter$new(config$config, logger)
-  image_processor <- ImageProcessor$new(config$config, logger)
-  metadata_harmonizer <- MetadataHarmonizer$new(config$config, logger)
-
-  # Create a visualization config from the main config
-  viz_config <- get_default_viz_config()
-  viz_config$dimensions$width <- config$config$visualization$plot_dimensions$width %||% 10
-  viz_config$dimensions$height <- config$config$visualization$plot_dimensions$height %||% 8
-  viz_config$dimensions$dpi <- config$config$visualization$plot_dimensions$dpi %||% 300
-  viz_config$point_size <- config$config$visualization$point_size %||% 1.5
+  # Debug statements to track execution
+  cat("DEBUG: Step 1 - Initializing modules\n")
   
-  # Run selected workflow
+  # Initialize configuration
+  config <- ConfigurationManager$new()
+  
+  # Set output directory if provided
+  if (!is.null(output_dir)) {
+    config$config$paths$output_dir <- output_dir
+  }
+  
+  # Load config file if provided
+  if (!is.null(config_file)) {
+    if (file.exists(config_file)) {
+      user_config <- yaml::read_yaml(config_file)
+      config$merge_with_defaults(user_config)
+    } else {
+      logger$warning(paste("Config file not found:", config_file))
+    }
+  }
+  
+  # Initialize preprocessing components
+  logger$info("Initializing preprocessing components")
+  preprocessing_manager <- PreprocessingManager$new(config = config, logger = logger)
+  
+  # Initialize spatial analysis components
+  logger$info("Loading spatial analysis components")
+  spatial_analyzer <- SpatialAnalyzer$new(config = config, logger = logger)
+  
+  # Debug statements
+  cat("DEBUG: Step 2 - Creating MarkerAnalyzer\n")
+  
+  # Only initialize MarkerAnalyzer if we use it, and we'll initialize it
+  # when we have images for segmentation-free analysis
+  marker_analyzer <- NULL  # Will be initialized when needed
+  
+  # Debug statements
+  cat("DEBUG: Step 3 - Creating CellPhenotyper\n")
+  
+  # Initialize cell phenotyper
+  cell_phenotyper <- CellPhenotyper$new(config = config, logger = logger)
+  logger$info("CellPhenotyper initialized")
+  
+  # Debug statements
+  cat("DEBUG: Step 4 - Creating Reporter\n")
+  
+  # Initialize reporter
+  reporter <- Reporter$new(config = config, logger = logger)
+  
+  # Debug statements
+  cat("DEBUG: Step 5 - Creating ImageProcessor\n")
+  
+  # Initialize image processor
+  image_processor <- ImageProcessor$new(config = config, logger = logger)
+  
+  # Debug statements
+  cat("DEBUG: Step 6 - Creating MetadataHarmonizer\n")
+  
+  # Initialize metadata harmonizer
+  metadata_harmonizer <- MetadataHarmonizer$new(config = config, logger = logger)
+  
+  # Debug statements
+  cat("DEBUG: Step 7 - Creating visualization config\n")
+  
+  # Initialize visualization configuration
+  viz_config <- list(
+    dimensions = list(
+      width = config$config$visualization$width,
+      height = config$config$visualization$height,
+      dpi = config$config$visualization$dpi
+    ),
+    max_points = config$config$visualization$max_points,
+    color_scheme = config$config$visualization$color_scheme
+  )
+  
+  # Debug statements
+  cat("DEBUG: Step 8 - Starting data loading\n")
+  
+  # Debug the configuration paths
+  if (!is.null(config) && !is.null(config$config) && !is.null(config$config$paths)) {
+    cat("DEBUG: config$config$paths exists\n")
+    cat("DEBUG: data_dir =", config$config$paths$data_dir, "\n")
+    cat("DEBUG: panels$default =", config$config$paths$panels$default, "\n")
+  } else {
+    cat("DEBUG: config$config$paths is NULL or incomplete\n")
+  }
+  
+  # Initialize data loader
+  # Need to create a wrapper around config to match what DataLoader expects
+  data_loader_config <- list(
+    paths = config$config$paths
+  )
+  data_loader <- DataLoader$new(config = data_loader_config, logger = logger)
+  
+  # Store SpatialExperiment objects
   spe_objects <- list()
   
-  # Data loading
-  if ("load" %in% steps) {
-    if (workflow_type %in% c("unsupervised", "both")) {
-      logger$info("Running unsupervised cell phenotyping workflow")
+  # Debug statements
+  cat("DEBUG: Step 9 - Running unsupervised workflow\n")
+  
+  # Run unsupervised workflow
+  if (workflow_type %in% c("unsupervised", "both")) {
+    logger$info("Running unsupervised cell phenotyping workflow")
+    
+    # Debug statements
+    cat("DEBUG: Step 10 - Calling loadUnsupervisedData\n")
+    
+    # Load unsupervised data within a tryCatch block to catch errors
+    tryCatch({
       spe_objects$unsupervised <- data_loader$loadUnsupervisedData()
+      
+      # Debug statements
+      cat("DEBUG: Step 11 - Harmonizing metadata\n")
+      
+      # Harmonize metadata
       spe_objects$unsupervised <- metadata_harmonizer$harmonize(spe_objects$unsupervised)
+      
+      # Debug statements
+      cat("DEBUG: Step 12 - Preprocessing quality control\n")
       
       # Use preprocessing manager for quality control
       spe_objects$unsupervised <- preprocessing_manager$preprocess(
@@ -133,25 +220,23 @@ runIMCWorkflow <- function(
         is_gated = FALSE,
         steps = "quality_control"
       )
-    }
-    
-    if (workflow_type %in% c("gated", "both")) {
-      logger$info("Running gated cell workflow")
-      spe_objects$gated <- data_loader$loadGatedCellData()
-      spe_objects$gated <- metadata_harmonizer$harmonize(spe_objects$gated)
       
-      # Use preprocessing manager for quality control
-      spe_objects$gated <- preprocessing_manager$preprocess(
-        spe_objects$gated, 
-        is_gated = TRUE,
-        steps = "quality_control"
-      )
-    }
+      # Debug statements
+      cat("DEBUG: Step 13 - Checking if batch_correction is in steps\n")
+    }, error = function(e) {
+      cat("DEBUG: Error in data loading or preprocessing:", e$message, "\n")
+      logger$error(paste("Failed to load or preprocess data:", e$message))
+      # Create an empty SPE to avoid downstream errors
+      spe_objects$unsupervised <- NULL
+    })
   }
   
   # Batch correction
   if ("batch_correction" %in% steps && "unsupervised" %in% names(spe_objects)) {
     logger$info("Running batch correction on unsupervised data")
+    
+    # Debug statements
+    cat("DEBUG: Step 14 - Running batch correction\n")
     
     # Use preprocessing manager for batch correction
     spe_objects$unsupervised <- preprocessing_manager$preprocess(
@@ -163,10 +248,16 @@ runIMCWorkflow <- function(
   
   # Phenotyping
   if ("phenotyping" %in% steps) {
+    # Debug statements
+    cat("DEBUG: Step 15 - Starting phenotyping\n")
+    
     phenotyping_mode <- config$config$phenotyping$mode %||% "segmentation"
     
     if (phenotyping_mode == "segmentation" && "unsupervised" %in% names(spe_objects)) {
       logger$info("Running segmentation-based cell phenotyping on unsupervised data")
+      
+      # Debug statements
+      cat("DEBUG: Step 16 - Running segmentation-based phenotyping\n")
       
       # Use the CellPhenotyper class for segmentation-based phenotyping
       spe_objects$unsupervised <- cell_phenotyper$phenotypeCells(
@@ -180,22 +271,32 @@ runIMCWorkflow <- function(
       
       # Generate visualizations if configured
       if (config$config$visualization$save_plots) {
+        # Debug statements
+        cat("DEBUG: Step 17 - Creating phenotype composition plot\n")
+        
         # Use visualization manager for phenotype visualizations
-        plot <- create_visualization(
-          spe = spe_objects$unsupervised,
-          plot_type = "phenotype_composition",
-          output_file = file.path(config$config$paths$output_dir, "phenotype_composition.pdf"),
-          config = list(
-            max_cells = config$config$visualization$max_points
-          ),
-          phenotype_column = "phenograph_corrected",
-          reduction = "UMAP"
-        )
+        tryCatch({
+          plot <- create_visualization(
+            spe = spe_objects$unsupervised,
+            plot_type = "phenotype_composition",
+            output_file = file.path(config$config$paths$output_dir, "phenotype_composition.pdf"),
+            config = list(
+              max_cells = config$config$visualization$max_points
+            ),
+            phenotype_column = "phenograph_corrected",
+            reduction = "UMAP"
+          )
+        }, error = function(e) {
+          cat("DEBUG: Error in phenotype composition plot:", e$message, "\n")
+        })
       }
     }
     
     if (phenotyping_mode == "segmentation_free") {
       logger$info("Running segmentation-free phenotyping")
+      
+      # Debug statements
+      cat("DEBUG: Step 18 - Running segmentation-free phenotyping\n")
       
       # Load images if not already loaded
       images_list <- data_loader$loadImages()
@@ -213,6 +314,9 @@ runIMCWorkflow <- function(
   
   # Spatial analysis
   if ("spatial" %in% steps) {
+    # Debug statements
+    cat("DEBUG: Step 19 - Starting spatial analysis\n")
+    
     logger$info("Running spatial analysis")
     
     if (!is.null(spe_objects$unsupervised)) {
@@ -236,22 +340,72 @@ runIMCWorkflow <- function(
   
   # Visualization
   if ("visualize" %in% steps) {
+    # Debug statements
+    cat("DEBUG: Step 20 - Starting visualization\n")
+    
     logger$info("Generating visualizations")
     
-    for (workflow in names(spe_objects)) {
-      # Use visualization manager for all visualizations
-      create_visualizations(
-        spe = spe_objects[[workflow]],
-        workflow_type = workflow,
-        plot_types = "all",
-        output_dir = config$config$paths$output_dir,
-        config = get_default_viz_config()
-      )
-    }
+    # Ensure output directory exists
+    visualization_dir <- file.path(config$config$paths$output_dir, "visualizations")
+    
+    # Debug statements
+    cat("DEBUG: Visualization directory path:", visualization_dir, "\n")
+    cat("DEBUG: Output directory exists:", dir.exists(config$config$paths$output_dir), "\n")
+    
+    tryCatch({
+      if (!dir.exists(visualization_dir)) {
+        cat("DEBUG: Creating visualization directory\n")
+        dir.create(visualization_dir, recursive = TRUE)
+        logger$info(paste("Created visualization directory:", visualization_dir))
+      }
+      
+      # Debug statement to show the output directory
+      cat("DEBUG: Visualization output directory:", visualization_dir, "\n")
+      
+      for (workflow in names(spe_objects)) {
+        # Skip if the SPE object is NULL
+        if (is.null(spe_objects[[workflow]])) {
+          cat("DEBUG: Skipping visualization for workflow", workflow, "- data is NULL\n")
+          logger$warning(paste("Skipping visualization for", workflow, "workflow - no data available"))
+          next
+        }
+        
+        # Debug the workflow being processed
+        cat("DEBUG: Creating visualizations for workflow:", workflow, "\n")
+        
+        # Determine plot types to generate
+        plot_types <- c("markers", "phenotypes", "spatial")
+        
+        # Add channel overlay if requested
+        if ("channel_overlay" %in% steps) {
+          plot_types <- c(plot_types, "channel_overlays")
+        }
+        
+        # Use visualization manager for all visualizations within try-catch for better error reporting
+        tryCatch({
+          create_visualizations(
+            spe = spe_objects[[workflow]],
+            workflow_type = workflow,
+            plot_types = plot_types,
+            output_dir = visualization_dir,
+            config = viz_config
+          )
+          logger$info(paste("Created visualizations for", workflow, "workflow"))
+        }, error = function(e) {
+          cat("DEBUG: Error in create_visualizations:", e$message, "\n")
+          logger$error(paste("Failed to create visualizations for", workflow, "workflow:", e$message))
+        })
+      }
+    }, error = function(e) {
+      cat("DEBUG: Error in visualization step:", e$message, "\n")
+    })
   }
   
   # Reporting
   if ("report" %in% steps) {
+    # Debug statements
+    cat("DEBUG: Step 21 - Starting reporting\n")
+    
     logger$info("Generating analysis report")
     report_path <- reporter$generateReport(spe_objects)
     logger$info(paste("Report generated at:", report_path))
@@ -259,6 +413,9 @@ runIMCWorkflow <- function(
   
   # Process images if needed
   if ("process_images" %in% steps) {
+    # Debug statements
+    cat("DEBUG: Step 22 - Starting image processing\n")
+    
     logger$info("Processing images")
     images_list <- data_loader$loadImages()
     masks_list <- data_loader$loadMasks()
@@ -272,12 +429,27 @@ runIMCWorkflow <- function(
     
     # Assess mask quality if configured
     if (config$config$processing$assess_mask_quality %||% TRUE) {
+      # Debug statements
+      cat("DEBUG: Step 23 - Assessing mask quality\n")
+      
       mask_quality <- image_processor$assessMaskQuality(masks_list)
       quality_path <- file.path(config$config$paths$output_dir, "mask_quality.csv")
-      write.csv(mask_quality, quality_path, row.names = FALSE)
-      logger$info(paste("Mask quality assessment saved to:", quality_path))
+      
+      # Debug statements
+      cat("DEBUG: Quality path:", quality_path, "\n")
+      cat("DEBUG: Output directory exists:", dir.exists(config$config$paths$output_dir), "\n")
+      
+      tryCatch({
+        write.csv(mask_quality, quality_path, row.names = FALSE)
+        logger$info(paste("Mask quality assessment saved to:", quality_path))
+      }, error = function(e) {
+        cat("DEBUG: Error writing mask quality CSV:", e$message, "\n")
+      })
     }
   }
+  
+  # Debug statements
+  cat("DEBUG: Step 24 - Workflow complete\n")
   
   return(spe_objects)
 }
@@ -298,30 +470,31 @@ debug_workflow <- function(
   workflow_type = "unsupervised",
   steps = c("load", "visualize")
 ) {
-  # Simple header to show we're debugging
-  cat("============================================\n")
-  cat("          RUNNING IN DEBUG MODE             \n")
-  cat("============================================\n\n")
-  
-  # Create debug output directory
-  debug_output_dir <- file.path(getwd(), "debug_output")
-  if (!dir.exists(debug_output_dir)) {
-    dir.create(debug_output_dir, recursive = TRUE)
-    cat(paste("Created debug output directory:", debug_output_dir, "\n"))
-  }
-  
-  # Create logs subdirectory
-  logs_dir <- file.path(debug_output_dir, "logs")
-  if (!dir.exists(logs_dir)) {
-    dir.create(logs_dir, recursive = TRUE)
-  }
-  
-  # Run the workflow
-  cat(paste("Workflow type:", workflow_type, "\n"))
-  cat(paste("Steps:", paste(steps, collapse = ", "), "\n"))
-  
-  # Store results in global environment for inspection
+  # Wrap entire execution in tryCatch to get better error information
   tryCatch({
+    # Simple header to show we're debugging
+    cat("============================================\n")
+    cat("          RUNNING IN DEBUG MODE             \n")
+    cat("============================================\n\n")
+    
+    # Create debug output directory
+    debug_output_dir <- file.path(getwd(), "debug_output")
+    if (!dir.exists(debug_output_dir)) {
+      dir.create(debug_output_dir, recursive = TRUE)
+      cat(paste("Created debug output directory:", debug_output_dir, "\n"))
+    }
+    
+    # Create logs subdirectory
+    logs_dir <- file.path(debug_output_dir, "logs")
+    if (!dir.exists(logs_dir)) {
+      dir.create(logs_dir, recursive = TRUE)
+    }
+    
+    # Run the workflow
+    cat(paste("Workflow type:", workflow_type, "\n"))
+    cat(paste("Steps:", paste(steps, collapse = ", "), "\n"))
+    
+    # Store results in global environment for inspection
     .GlobalEnv$debug_results <- runIMCWorkflow(
       config_file = NULL,
       workflow_type = workflow_type,
@@ -340,8 +513,94 @@ debug_workflow <- function(
     cat("          ERROR IN DEBUG RUN                \n")
     cat("============================================\n")
     cat(paste("Error:", e$message, "\n"))
+    cat("Trace:\n")
+    traceback()
   })
 }
 
 # Execute debug workflow when sourcing the file
 debug_workflow()
+
+# ====================================
+# CHANNEL OVERLAY DEBUGGING
+# ====================================
+
+#' Run channel overlay visualization in debug mode
+#' 
+#' This function provides a simple way to test the channel overlay visualization
+#' It uses the saved images and masks from a previous run
+#' 
+#' @param output_dir Directory to save visualizations to
+#' @return Invisibly returns path to output directory
+debug_channel_overlay <- function(
+  output_dir = "debug_output/visualizations/channel_overlays"
+) {
+  # Wrap entire execution in tryCatch to get better error information
+  tryCatch({
+    # Simple header to show we're debugging
+    cat("============================================\n")
+    cat("     DEBUGGING CHANNEL OVERLAY VISUALIZATION\n")
+    cat("============================================\n\n")
+    
+    # Create debug output directory
+    if (!dir.exists(output_dir)) {
+      dir.create(output_dir, recursive = TRUE)
+      cat(paste("Created output directory:", output_dir, "\n"))
+    }
+    
+    # Check for images and masks
+    images_path <- "debug_output/images.rds"
+    masks_path <- "debug_output/masks.rds"
+    
+    if (!file.exists(images_path)) {
+      stop("Images file not found at ", images_path)
+    }
+    
+    if (!file.exists(masks_path)) {
+      warning("Masks file not found at ", masks_path, " - single cell preview will be skipped")
+      masks <- NULL
+    } else {
+      masks <- readRDS(masks_path)
+      cat("Loaded masks from ", masks_path, "\n")
+    }
+    
+    # Load images
+    images <- readRDS(images_path)
+    cat("Loaded images from ", images_path, "\n")
+    
+    # Source required files
+    source("src/visualization/core_visualization.R")
+    source("src/visualization/channel_overlay_visualization.R")
+    
+    # Create channel overlays
+    result_paths <- create_channel_overlay_visualization(
+      images = images,
+      masks = masks,
+      spe = NULL,
+      output_dir = output_dir,
+      channels_to_highlight = NULL,
+      max_cells = 25,
+      color_scheme = "viridis",
+      width = 12,
+      height = 10,
+      dpi = 300
+    )
+    
+    cat("\n============================================\n")
+    cat("          CHANNEL OVERLAY COMPLETE          \n")
+    cat("============================================\n")
+    cat(paste("Results saved to:", output_dir, "\n"))
+    
+    invisible(output_dir)
+  }, error = function(e) {
+    cat("\n============================================\n")
+    cat("          ERROR IN OVERLAY DEBUG            \n")
+    cat("============================================\n")
+    cat(paste("Error:", e$message, "\n"))
+    cat("Trace:\n")
+    traceback()
+  })
+}
+
+# uncomment to run just the channel overlay debug
+# debug_channel_overlay()

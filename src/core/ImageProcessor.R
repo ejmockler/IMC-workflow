@@ -17,17 +17,27 @@ ImageProcessor <- R6::R6Class("ImageProcessor",
     #' @param config Configuration parameters
     #' @param logger Logger object
     initialize = function(config = NULL, logger = NULL) {
+      cat("DEBUG: ImageProcessor initialize - Starting\n")
       self$config <- config
       self$logger <- logger %||% Logger$new("ImageProcessor")
       
+      cat("DEBUG: ImageProcessor initialize - Checking required packages\n")
       # Ensure required packages
       if (!requireNamespace("cytomapper", quietly = TRUE)) {
         self$logger$warn("cytomapper package not available, some functionality may be limited")
+        cat("DEBUG: ImageProcessor initialize - cytomapper package not available\n")
+      } else {
+        cat("DEBUG: ImageProcessor initialize - cytomapper package loaded\n")
       }
       
       if (!requireNamespace("S4Vectors", quietly = TRUE)) {
         self$logger$warn("S4Vectors package not available, some functionality may be limited")
+        cat("DEBUG: ImageProcessor initialize - S4Vectors package not available\n")
+      } else {
+        cat("DEBUG: ImageProcessor initialize - S4Vectors package loaded\n")
       }
+      
+      cat("DEBUG: ImageProcessor initialize - Complete\n")
     },
     
     #' @description

@@ -102,20 +102,64 @@ DataLoader <- R6::R6Class("DataLoader",
       requireNamespace("imcRtools", quietly = TRUE)
       requireNamespace("cytomapper", quietly = TRUE)
       
+      cat("DEBUG: importSteinbockData - Starting\n")
+      
       # Get paths from configuration
       steinbock_data_path <- self$config$paths$data_dir
-      steinbock_images_path <- self$config$paths$image_dir
-      steinbock_masks_path <- self$config$paths$masks_dir
+      panel_file <- self$config$paths$panels$default
       
-      # Load SpatialExperiment object
+      cat(sprintf("DEBUG: importSteinbockData - Using data_dir: %s\n", steinbock_data_path))
+      cat(sprintf("DEBUG: importSteinbockData - Using panel_file: %s\n", panel_file))
+      
+      # Get the panel filename only (strip the path)
+      panel_filename <- basename(panel_file)
+      
+      # Check if paths exist
+      cat(sprintf("DEBUG: importSteinbockData - Checking paths exist:\n"))
+      cat(sprintf("DEBUG: data_dir exists: %s\n", dir.exists(steinbock_data_path)))
+      cat(sprintf("DEBUG: intensities folder exists: %s\n", dir.exists(file.path(steinbock_data_path, "intensities"))))
+      cat(sprintf("DEBUG: regionprops folder exists: %s\n", dir.exists(file.path(steinbock_data_path, "regionprops"))))
+      cat(sprintf("DEBUG: neighbors folder exists: %s\n", dir.exists(file.path(steinbock_data_path, "neighbors"))))
+      cat(sprintf("DEBUG: panel file exists: %s\n", file.exists(panel_file)))
+      
+      # Load SpatialExperiment object with explicit settings
       self$logger$info(paste("Loading data from:", steinbock_data_path))
-      spe <- imcRtools::read_steinbock(steinbock_data_path)
+      
+      cat("DEBUG: importSteinbockData - About to call imcRtools::read_steinbock\n")
+      tryCatch({
+        spe <- imcRtools::read_steinbock(
+          path = steinbock_data_path,
+          intensities_folder = "intensities",  # Use default or customize
+          regionprops_folder = "regionprops",  # Use default or customize  
+          graphs_folder = "neighbors",         # Use default or customize
+          panel_file = panel_file              # Use our configured panel path
+        )
+        cat("DEBUG: importSteinbockData - Successfully loaded data with read_steinbock\n")
+      }, error = function(e) {
+        cat(sprintf("DEBUG: importSteinbockData - Error in read_steinbock: %s\n", e$message))
+        stop(e)
+      })
+      
+      cat("DEBUG: importSteinbockData - After read_steinbock\n")
       
       # Optionally load images and masks
-      if (dir.exists(steinbock_images_path) && dir.exists(steinbock_masks_path)) {
+      if (dir.exists(self$config$paths$image_dir) && dir.exists(self$config$paths$masks_dir)) {
         self$logger$info("Loading images and masks")
-        images <- cytomapper::loadImages(steinbock_images_path)
-        masks <- cytomapper::loadImages(steinbock_masks_path, as.is = TRUE)
+        cat("DEBUG: importSteinbockData - Loading images and masks\n")
+        
+        tryCatch({
+          images <- cytomapper::loadImages(self$config$paths$image_dir)
+          cat("DEBUG: importSteinbockData - Images loaded successfully\n")
+        }, error = function(e) {
+          cat(sprintf("DEBUG: importSteinbockData - Error loading images: %s\n", e$message))
+        })
+        
+        tryCatch({
+          masks <- cytomapper::loadImages(self$config$paths$masks_dir, as.is = TRUE)
+          cat("DEBUG: importSteinbockData - Masks loaded successfully\n")
+        }, error = function(e) {
+          cat(sprintf("DEBUG: importSteinbockData - Error loading masks: %s\n", e$message))
+        })
         
         # Set channel names to match SPE
         cytomapper::channelNames(images) <- rownames(spe)
@@ -154,8 +198,12 @@ DataLoader <- R6::R6Class("DataLoader",
       if (!is.null(metadata_path) && file.exists(metadata_path)) {
         self$logger$info(paste("Merging external metadata from:", metadata_path))
         
-        # Read metadata file
-        metadata <- read.csv(metadata_path, stringsAsFactors = FALSE)
+        # Read metadata file with options to preserve original column names
+        metadata <- read.csv(metadata_path, stringsAsFactors = FALSE, check.names = FALSE, strip.white = TRUE)
+        
+        # DEBUG: Print column names to see what's actually in the metadata file
+        cat("DEBUG: Metadata file column names:\n")
+        cat(paste(colnames(metadata), collapse = ", "), "\n")
         
         # Determine join keys (can customize based on your files)
         join_key_spe <- "sample_id" 
@@ -167,9 +215,32 @@ DataLoader <- R6::R6Class("DataLoader",
           return(spe)
         }
         
-        if (!(join_key_csv %in% colnames(metadata))) {
-          self$logger$warn(paste("Join key", join_key_csv, "not found in metadata file"))
-          return(spe)
+        # Clean up column names for more robust matching - trim whitespace
+        col_names_clean <- trimws(colnames(metadata))
+        join_key_csv_clean <- trimws(join_key_csv)
+        
+        # Check if the column exists (exactly or with trimmed whitespace)
+        if (!(join_key_csv %in% colnames(metadata)) && !(join_key_csv_clean %in% col_names_clean)) {
+          # Print more details about the search
+          cat("DEBUG: Looking for join key:", join_key_csv, "\n")
+          cat("DEBUG: It wasn't found in the metadata columns shown above.\n")
+          
+          # Try to find similar columns that might be the right one
+          similar_cols <- grep(gsub(" ", ".*", join_key_csv, ignore.case = TRUE), colnames(metadata), ignore.case = TRUE, value = TRUE)
+          cat("DEBUG: Similar column names found:", paste(similar_cols, collapse = ", "), "\n")
+          
+          # If we found similar columns, use the first one
+          if (length(similar_cols) > 0) {
+            join_key_csv <- similar_cols[1]
+            cat("DEBUG: Using alternative column:", join_key_csv, "\n")
+          } else {
+            self$logger$warn(paste("Join key", join_key_csv, "not found in metadata file"))
+            return(spe)
+          }
+        } else if (!(join_key_csv %in% colnames(metadata)) && join_key_csv_clean %in% col_names_clean) {
+          # If we found a match with trimmed whitespace, use that column
+          join_key_csv <- colnames(metadata)[which(col_names_clean == join_key_csv_clean)][1]
+          cat("DEBUG: Using column with trimmed whitespace:", join_key_csv, "\n")
         }
         
         # Create mapping table
@@ -335,6 +406,48 @@ DataLoader <- R6::R6Class("DataLoader",
                       length(spe_list), ncol(result)))
       
       return(result)
+    },
+    
+    # Load images from the configured image directory
+    loadImages = function() {
+      # Ensure required packages are loaded
+      requireNamespace("cytomapper", quietly = TRUE)
+      
+      # Get image directory from configuration
+      image_dir <- self$config$paths$image_dir
+      
+      if (!dir.exists(image_dir)) {
+        self$logger$error(paste("Image directory does not exist:", image_dir))
+        stop("Image directory not found")
+      }
+      
+      self$logger$info(paste("Loading images from:", image_dir))
+      
+      # Load images using cytomapper
+      images <- cytomapper::loadImages(image_dir)
+      
+      return(images)
+    },
+    
+    # Load masks from the configured masks directory
+    loadMasks = function() {
+      # Ensure required packages are loaded
+      requireNamespace("cytomapper", quietly = TRUE)
+      
+      # Get masks directory from configuration
+      masks_dir <- self$config$paths$masks_dir
+      
+      if (!dir.exists(masks_dir)) {
+        self$logger$error(paste("Masks directory does not exist:", masks_dir))
+        stop("Masks directory not found")
+      }
+      
+      self$logger$info(paste("Loading masks from:", masks_dir))
+      
+      # Load masks using cytomapper (with as.is=TRUE for proper handling of mask values)
+      masks <- cytomapper::loadImages(masks_dir, as.is = TRUE)
+      
+      return(masks)
     }
   )
 )

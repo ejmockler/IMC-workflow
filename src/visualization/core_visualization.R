@@ -10,33 +10,65 @@
 #' @param dpi Resolution in dots per inch
 #' @return Invisibly returns the filename
 save_plot <- function(plot, filename, width = 10, height = 8, dpi = 300) {
+  # Debug information
+  cat("DEBUG: save_plot called with filename:", filename, "\n")
+  cat("DEBUG: File exists check:", file.exists(filename), "\n")
+  cat("DEBUG: Directory exists check:", dir.exists(dirname(filename)), "\n")
+  
+  # Validate filename
+  if (is.null(filename) || !is.character(filename) || length(filename) != 1 || nchar(filename) == 0) {
+    stop("Invalid filename: must be a non-empty character string")
+  }
+  
   # Create directory if it doesn't exist
-  dir.create(dirname(filename), showWarnings = FALSE, recursive = TRUE)
+  dir_path <- dirname(filename)
+  cat("DEBUG: Creating directory:", dir_path, "\n")
+  
+  tryCatch({
+    dir.create(dir_path, showWarnings = TRUE, recursive = TRUE)
+  }, error = function(e) {
+    cat("DEBUG: Error creating directory:", e$message, "\n")
+    stop(paste("Failed to create directory:", dir_path, "-", e$message))
+  })
+  
+  # Verify directory was created
+  if (!dir.exists(dir_path)) {
+    stop(paste("Failed to create directory:", dir_path))
+  }
   
   # Determine file format from extension
   ext <- tolower(tools::file_ext(filename))
+  cat("DEBUG: File extension:", ext, "\n")
   
   # Save plot
-  if (ext == "pdf") {
-    pdf(filename, width = width, height = height)
-    print(plot)
-    dev.off()
-  } else if (ext %in% c("png", "jpg", "jpeg", "tiff")) {
-    if (ext == "jpg") ext <- "jpeg"
-    do.call(ext, list(filename = filename, width = width, height = height, 
-                     units = "in", res = dpi))
-    print(plot)
-    dev.off()
-  } else {
-    warning(paste("Unsupported file format:", ext, "- saving as PDF"))
-    pdf_filename <- paste0(tools::file_path_sans_ext(filename), ".pdf")
-    pdf(pdf_filename, width = width, height = height)
-    print(plot)
-    dev.off()
-    return(invisible(pdf_filename))
-  }
+  tryCatch({
+    if (ext == "pdf") {
+      cat("DEBUG: Saving as PDF\n")
+      pdf(filename, width = width, height = height)
+      print(plot)
+      dev.off()
+    } else if (ext %in% c("png", "jpg", "jpeg", "tiff")) {
+      cat("DEBUG: Saving as", ext, "\n")
+      if (ext == "jpg") ext <- "jpeg"
+      do.call(ext, list(filename = filename, width = width, height = height, 
+                       units = "in", res = dpi))
+      print(plot)
+      dev.off()
+    } else {
+      cat("DEBUG: Unsupported format, saving as PDF\n")
+      warning(paste("Unsupported file format:", ext, "- saving as PDF"))
+      pdf_filename <- paste0(tools::file_path_sans_ext(filename), ".pdf")
+      pdf(pdf_filename, width = width, height = height)
+      print(plot)
+      dev.off()
+      return(invisible(pdf_filename))
+    }
+  }, error = function(e) {
+    cat("DEBUG: Error saving plot:", e$message, "\n")
+    stop(paste("Failed to save plot to", filename, "-", e$message))
+  })
   
-  message(paste("Saved plot to", filename))
+  cat("DEBUG: Successfully saved plot to", filename, "\n")
   return(invisible(filename))
 }
 
