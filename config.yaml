@@ -1,0 +1,103 @@
+# Configuration for Pixel-wise IMC Analysis Pipeline
+
+# --- Input/Output Paths ---
+paths:
+  data_dir: "/Users/noot/Documents/IMC/data/241218_IMC_Alun/" # Directory containing input .txt files
+  output_dir: "/Users/noot/Documents/IMC/output_plots/"    # Base directory for all outputs
+  metadata_file: "/Users/noot/Documents/IMC/data/Data_annotations_Karen/Metadata-Table 1.csv" # Path to metadata file with ROI annotations
+
+# --- Data Loading & Preprocessing ---
+data:
+  metadata_cols: # Columns to ignore as channels/features
+    - 'Start_push'
+    - 'End_push'
+    - 'Pushes_duration'
+    - 'X'
+    - 'Y'
+    - 'Z'
+    - 'MinorAxisLength'
+    - 'Orientation'
+    - 'Eccentricity'
+  master_protein_channels: # Master list of expected protein channels (for validation)
+    - 'CD45(Y89Di)'
+    - 'Ly6G(Pr141Di)'
+    - 'CD11b(Nd143Di)'
+    - 'CD140a(Nd148Di)'
+    - 'CD140b(Eu151Di)'
+    - 'CD31(Sm154Di)'
+    - 'CD34(Er166Di)'
+    - 'CD206(Tm169Di)'
+    - 'CD44(Yb171Di)'
+    # - 'DNA1(Ir191Di)'
+    # - 'DNA2(Ir193Di)'
+    # - '190BCKG(BCKG190Di)'
+    # - '80ArAr(ArAr80Di)'
+    # - '130Ba(Ba130Di)'
+    # - '131Xe(Xe131Di)'
+
+  default_arcsinh_cofactor: 5.0 # Fallback cofactor if optimization fails
+
+# --- Analysis Parameters ---
+analysis:
+  clustering:
+    n_neighbors: 65     # Number of neighbors for spatial graph (Leiden)
+    resolution_params: [0.3, 0.001] # List of Leiden resolutions to test
+    seed: 42            # Random seed for reproducibility
+  umap:
+    n_components: 8     # Number of components for UMAP embedding (if run)
+    min_dist: 0.1       # UMAP min_dist parameter
+    metric: 'euclidean' # UMAP distance metric
+    n_neighbors: 15     # UMAP n_neighbors parameter (max value, adjusted down if fewer communities)
+  differential_expression:
+    # Define channels to exclude from UMAP based on differential profiles
+    non_protein_markers_for_umap:
+      - '80ArAr(ArAr80Di)'
+      - '130Ba(Ba130Di)'
+      - '131Xe(Xe131Di)'
+      - '190BCKG(BCKG190Di)'
+      - 'DNA1(Ir191Di)'
+      - 'DNA2(Ir193Di)'
+
+# --- Processing & Plotting Options ---
+processing:
+  parallel_jobs: -2   # Number of CPU cores for parallel processing (-1 = all, -2 = all except 1)
+  use_gpu: auto       # Use GPU acceleration: true, false, or auto (detect RAPIDS/CUDA)
+  plot_dpi: 150       # DPI for saving plots
+  visualization:
+    scatter_size: 1        # Size for spatial scatter plots
+    scatter_marker: '.'    # Marker for spatial scatter plots
+    max_grid_cols: 4       # Max columns for spatial expression grid plot
+    comparison_cmap: 'viridis' # Colormap for raw vs scaled comparison plot
+
+# --- Experiment Level Analysis ---
+experiment_analysis:
+  resolution_to_aggregate: 0.3 # Leiden resolution output to use
+  metadata_roi_col: 'File Name'   # Column name in metadata file that matches ROI strings
+  output_subdir: 'experiment_summary' # Subdirectory for experiment results
+
+  # --- Metadata Column Names ---
+  # Define the actual column names from your metadata file
+  condition_col: 'Condition'     # e.g., 'Treatment', 'Group'
+  timepoint_col: 'Day'         # e.g., 'Timepoint'
+  region_col: 'Region'         # e.g., 'Tissue_Area'
+  replicate_col: 'Mouse'       # e.g., 'Subject_ID' - IMPORTANT for stats
+
+  # --- Meta-Clustering Settings ---
+  perform_metaclustering: True      # Set to False to skip meta-clustering and use original communities
+  metacluster_distance_threshold: null # Set based on profile_clustermap_for_threshold.png
+  metacluster_metric: 'euclidean'    # Distance metric for profile clustering
+  metacluster_linkage: 'ward'        # Linkage method for hierarchical clustering
+  metacluster_scale_profiles: True   # Whether to scale profiles before clustering
+
+  # --- Statistical Analysis ---
+  # Formula for PERMANOVA on composition (uses column names defined above)
+  permanova_formula: "Condition + Day + Region + Condition*Day" # Example: Include interaction
+  # Add GLMM formulas here later if needed for individual meta-clusters
+
+  # --- Visualization ---
+  # Columns from metadata for plotting aesthetics
+  plot_hue_col: 'Condition'
+  plot_style_col: 'Day'
+  # Add other plot settings if needed
+
+  # Add other experiment-level parameters here (e.g., stats tests, plot settings) 
