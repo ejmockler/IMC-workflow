@@ -5,6 +5,7 @@
 *.txt
 *.RData
 *.RData
+__pycache__/
 
 .DS_Store
 .Rapp.history
@@ -15,7 +16,7 @@
 .Rhistory
 
 adhoc analysis/
-output_plots/
+output_plots*/
 logs/
 output/
 data/
