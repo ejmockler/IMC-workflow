@@ -14,7 +14,6 @@ from sklearn.preprocessing import MinMaxScaler
 # ==============================================================================
 # Helper Functions
 # ==============================================================================
-
 def extract_roi(filename: str) -> str:
     """Extracts ROI identifier from filename using regex.
 
@@ -22,15 +21,15 @@ def extract_roi(filename: str) -> str:
         filename: The full path or basename of the file.
 
     Returns:
-        The extracted ROI string (e.g., "ROI_Sam1_03_4") or a fallback name.
+        The extracted ROI string (e.g., "ROI_Sam1_03_4" or "ROI_Test01_1").
     """
-    # Look for pattern like ROI_xxx_##_##
-    match = re.search(r'(ROI_\w+_\d+_\d+)', filename)
+    # Look for patterns like ROI_xxx_##_##
+    match = re.search(r'(ROI_\w+_\d+(?:_\d+)?)', filename)
     if match:
         return match.group(1)
-    # Fallback: use filename without extension if regex fails
-    print(f"Warning: Could not extract standard ROI format from {filename}. Using filename base as ROI.")
-    return os.path.splitext(os.path.basename(filename))[0]
+    
+    # If no match is found, raise an error instead of using a fallback
+    raise ValueError(f"Could not extract standard ROI format from {filename}.")
 
 # ==============================================================================
 # Cofactor Calculation
@@ -315,7 +314,7 @@ def load_and_validate_roi_data(
 
 
 # ==============================================================================
-# Data Scaling
+# Data Transformation and Scaling
 # ==============================================================================
 
 def apply_per_channel_arcsinh_and_scale(
@@ -325,83 +324,74 @@ def apply_per_channel_arcsinh_and_scale(
     default_cofactor: float # Make default mandatory to pass from config
 ) -> Tuple[pd.DataFrame, Dict[str, float]]:
     """
-    Applies per-channel Arcsinh transformation using provided cofactors,
-    followed by MinMaxScaler across all specified channels.
+    Applies per-channel Arcsinh transformation using provided cofactors and then scales
+    each channel to the [0, 1] range using MinMaxScaler. Ensures output is float32.
 
     Args:
-        data_df: DataFrame containing the raw expression data (should have channels cols).
-        channels: List of channel column names to transform and scale.
-        cofactors_map: Dictionary mapping channel names to their optimal cofactors.
-        default_cofactor: Cofactor value to use if a channel is missing from cofactors_map.
+        data_df: DataFrame containing raw data.
+        channels: List of channel columns to transform and scale.
+        cofactors_map: Dictionary mapping channel names to their specific cofactor.
+        default_cofactor: Default cofactor to use if a channel is not in cofactors_map.
 
     Returns:
         A tuple containing:
-        - scaled_df: DataFrame with the transformed and scaled data for the specified channels.
-                     The index will match the input data_df. Returns empty DataFrame on error.
-        - used_cofactors: Dictionary mapping channel name to the cofactor value actually used.
-
-    Raises:
-        ValueError: If input DataFrame is missing required channel columns.
+        - scaled_df: DataFrame with transformed and scaled data (float32).
+        - used_cofactors: Dictionary mapping channels to the cofactor actually used.
     """
-    print(f"\n--- Applying Per-Channel Arcsinh (using optimal cofactors) and Scaling ---")
+    print("\n--- Applying Per-Channel Arcsinh (using optimal cofactors) and Scaling ---")
     start_time = time.time()
-
-    # Check if all requested channels are in the dataframe
-    missing_channels = [ch for ch in channels if ch not in data_df.columns]
-    if missing_channels:
-        raise ValueError(f"Input DataFrame is missing required channel columns: {missing_channels}")
-
-    # Select only the channels to be processed, operate on a copy
-    transform_data = data_df[channels].copy()
-
-    # Handle potential NaNs/Infs before transformation (should have been caught by validation, but belt-and-suspenders)
-    if transform_data.isnull().values.any() or np.isinf(transform_data.values).any():
-        print("   Warning: NaN/Inf values found in raw data before scaling. Replacing with 0.")
-        transform_data = transform_data.fillna(0).replace([np.inf, -np.inf], 0)
-
-    transformed_cols = {}
+    transformed_data = {} # Use a dictionary to store transformed series
     used_cofactors = {}
 
-    # Apply arcsinh transformation channel by channel
+    # 1. Apply Arcsinh Transformation
     print("   Applying arcsinh transformation with specific cofactors...")
     for channel in channels:
-        cofactor = cofactors_map.get(channel) # Get specific cofactor
-        if cofactor is None:
-            print(f"    Warning: Cofactor not found for channel '{channel}'. Using default {default_cofactor}.")
-            cofactor = default_cofactor
-        elif cofactor <= 0:
-             print(f"    Warning: Non-positive cofactor {cofactor} provided for channel '{channel}'. Using default {default_cofactor} instead.")
-             cofactor = default_cofactor
+        if channel not in data_df.columns:
+            print(f"   Warning: Channel '{channel}' not found in data_df. Skipping transformation.")
+            continue
+        
+        cofactor = cofactors_map.get(channel, default_cofactor)
+        used_cofactors[channel] = cofactor
+        
+        # Apply transformation - Ensure we handle potential non-numeric data gracefully
+        try:
+            # Convert to numeric, coercing errors to NaN
+            numeric_data = pd.to_numeric(data_df[channel], errors='coerce')
+            # Fill NaNs that resulted from coercion or were already present
+            numeric_data_filled = numeric_data.fillna(0)
+            # Apply arcsinh
+            transformed_series = np.arcsinh(numeric_data_filled / cofactor)
+            # Store as float32 immediately
+            transformed_data[channel] = transformed_series.astype(np.float32) 
+        except Exception as e:
+            print(f"   Error transforming channel '{channel}': {e}. Skipping.")
+            traceback.print_exc()
+            # Optionally, fill with zeros or skip adding to dict
+            # transformed_data[channel] = pd.Series(np.zeros(len(data_df)), index=data_df.index, dtype=np.float32)
 
-        used_cofactors[channel] = cofactor # Store the cofactor actually used
+    # Check if any channels were successfully transformed
+    if not transformed_data:
+        print("   ERROR: No channels were successfully transformed.")
+        # Return an empty DataFrame and the used cofactors map
+        return pd.DataFrame(index=data_df.index), used_cofactors
+        
+    # Create DataFrame from dictionary
+    transformed_df = pd.DataFrame(transformed_data, index=data_df.index)
 
-        # Apply transformation - ensure data is non-negative
-        channel_data = transform_data[channel].values.astype(float) # Ensure float
-        channel_data[channel_data < 0] = 0 # Ensure non-negative before division
-        transformed_cols[channel] = np.arcsinh(channel_data / cofactor)
-        # print(f"    Channel '{channel}' transformed using cofactor: {cofactor:.2f}") # Verbose
-
-    # Create a DataFrame from the transformed columns
-    transformed_df = pd.DataFrame(transformed_cols, index=transform_data.index)
-
-    # Apply MinMaxScaler across all transformed channels
+    # 2. Apply Scaling (MinMaxScaler to [0, 1])
     print("   Applying MinMaxScaler to transformed data...")
-    scaler = MinMaxScaler()
-    # Handle case where transformed_df might be empty or all NaNs after transformation attempt
-    if transformed_df.empty or transformed_df.isnull().values.all():
-        print("   Warning: Transformed data is empty or all NaN. Cannot apply MinMaxScaler. Returning empty scaled DataFrame.")
-        return pd.DataFrame(columns=channels, index=data_df.index), used_cofactors
-
+    scaler = MinMaxScaler() # Scales each feature (channel) to [0, 1]
     try:
-        scaled_data_np = scaler.fit_transform(transformed_df.values) # Fit and transform
-        # Create the final scaled DataFrame
-        scaled_df = pd.DataFrame(scaled_data_np, columns=channels, index=transformed_df.index)
-    except ValueError as e:
-        print(f"   Error during MinMaxScaler: {e}. Returning empty scaled DataFrame.")
+        # Fit and transform
+        scaled_values = scaler.fit_transform(transformed_df)
+        # Create new DataFrame with scaled values, ensuring float32
+        scaled_df = pd.DataFrame(scaled_values, index=transformed_df.index, columns=transformed_df.columns).astype(np.float32)
+    except Exception as e:
+        print(f"   ERROR during scaling: {e}. Returning unscaled transformed data.")
         traceback.print_exc()
-        return pd.DataFrame(columns=channels, index=data_df.index), used_cofactors
-
+        # Return the transformed (but unscaled) data if scaling fails
+        # Ensure it's float32
+        scaled_df = transformed_df.astype(np.float32) 
 
     print(f"--- Transformation and scaling finished in {time.time() - start_time:.2f} seconds ---")
-
     return scaled_df, used_cofactors 

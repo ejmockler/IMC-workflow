@@ -177,6 +177,10 @@ def _cluster_pixels(roi_raw_data: pd.DataFrame, roi_channels: List[str], scaled_
     """Performs spatial Leiden clustering on pixel data for a specific resolution."""
     print(f"\nClustering pixels spatially (Resolution: {resolution_param})...")
     start_time = time.time()
+    # Get GPU config setting
+    use_gpu_config = config.get('processing', {}).get('use_gpu', False)
+    if use_gpu_config:
+        print("   GPU acceleration enabled via configuration.")
     pixel_coordinates = roi_raw_data[['X', 'Y']].copy().loc[scaled_pixel_expression.index]
     pixel_community_df, pixel_graph, community_partition, exec_time = run_spatial_leiden(
         analysis_df=pixel_coordinates,
@@ -185,7 +189,8 @@ def _cluster_pixels(roi_raw_data: pd.DataFrame, roi_channels: List[str], scaled_
         n_neighbors=config['analysis']['clustering']['n_neighbors'],
         resolution_param=resolution_param, # Use passed parameter
         seed=config['analysis']['clustering']['seed'],
-        verbose=True # Keep verbose on
+        verbose=True, # Keep verbose on
+        use_gpu_config=use_gpu_config # Pass GPU config setting
     )
     if pixel_community_df is None or pixel_graph is None or community_partition is None:
         print(f"   ERROR: Leiden clustering failed for resolution {resolution_param}.")
@@ -393,10 +398,12 @@ def analyze_roi(file_idx: int, file_path: str, total_files: int, config: Dict, \
                          avg_col_name = f'{channel}_asinh_scaled_avg'
                          current_pixel_results_df[avg_col_name] = current_pixel_results_df['community'].map(scaled_community_profiles[channel]).fillna(0)
 
-                # Save the final combined results dataframe for this resolution
-                final_results_save_path = os.path.join(resolution_output_dir, f"pixel_analysis_results_final_{roi_string}_res_{resolution}.csv")
+                final_results_save_path = os.path.join(
+                    resolution_output_dir,
+                    f"pixel_results_annotated_{roi_string}_res_{resolution}.csv"
+                )
                 current_pixel_results_df.to_csv(final_results_save_path, index=True)
-                print(f"\n   Final pixel results for resolution {resolution} saved to: {os.path.basename(final_results_save_path)}")
+                print(f"\n   Annotated pixel results for resolution {resolution} saved to: {os.path.basename(final_results_save_path)}")
                 success_flag = True
 
             except Exception as resolution_e:
@@ -479,6 +486,28 @@ if __name__ == '__main__':
     # --- 2b. Load Metadata (Early) ---
     metadata_file = config['paths'].get('metadata_file')
     metadata = None
+    metadata_map = {}
+    first_timepoint = None
+    
+    # Define helper function locally within the main block or globally if preferred
+    def get_roi_string_from_path(p):
+        """
+        Extracts the ROI string (e.g. ROI_D7_M1_01_21) from 
+        a full filename like IMC_241218_Alun_ROI_D7_M1_01_21.txt
+        """
+        fname = os.path.basename(p)
+        base, _ = os.path.splitext(fname)
+        # Updated Regex: Look for ROI_ followed by alphanumeric/underscore, 
+        # ensuring it's anchored reasonably (e.g., preceded by _ or start)
+        # and extending towards the end. Adjust if pattern is different.
+        match = re.search(r'(?:^|_)(ROI_[A-Za-z0-9_]+)', base) 
+        if match:
+            return match.group(1)
+        else:
+            # Fallback or error handling needed if pattern MUST exist
+            print(f"Warning: Could not extract standard ROI string from '{fname}'. Using base '{base}'.")
+            return base
+            
     if metadata_file and os.path.exists(metadata_file):
         try:
             metadata = pd.read_csv(metadata_file)
@@ -492,26 +521,19 @@ if __name__ == '__main__':
                  raise ValueError(f"Metadata timepoint column '{timepoint_col}' not found in {metadata_file}")
 
             # Create a map from filename base (ROI string) to metadata row for faster lookup
-            # Define helper function (can be defined globally or here)
-            def get_roi_string_from_path(p):
-                """Extracts the base filename without the .txt extension."""
-                fname = os.path.basename(p)
-                # Check if it ends with .txt (case-insensitive) and remove it
-                if fname.lower().endswith(".txt"):
-                    # Return the filename minus the last 4 characters (".txt")
-                    base_name = fname[:-4]
-                    # print(f"DEBUG: Extracted '{base_name}' from '{fname}'") # Optional debug
-                    return base_name
-                else:
-                    # Handle unexpected filenames (optional, depends on your data)
-                    # print(f"DEBUG: Filename '{fname}' does not end with .txt") # Optional debug
-                    return None # Or return fname if non-.txt files are possible keys
-
             metadata[metadata_roi_col] = metadata[metadata_roi_col].astype(str) # Ensure consistent type
-            metadata_map = metadata.set_index(metadata_roi_col).to_dict('index')
+            
+            # --- Create metadata_map using the extracted ROI string ---
+            temp_metadata_map = {}
+            for _, row in metadata.iterrows():
+                 roi_key_in_meta = row[metadata_roi_col] 
+                 # Assume the metadata ROI col directly contains the key like 'ROI_D1_M1_01_9'
+                 temp_metadata_map[roi_key_in_meta] = row.to_dict() 
+            metadata_map = temp_metadata_map
+            print(f"   Created metadata map with {len(metadata_map)} entries.")
+            # --- End map creation ---
 
             # Identify the first timepoint value
-            # Handle both numeric and potentially string/categorical timepoints
             timepoint_values = metadata[timepoint_col].unique()
             try:
                 # Attempt numeric sort first
@@ -581,20 +603,29 @@ if __name__ == '__main__':
         first_tp_files: List[str] = []
         for fp in imc_files:
             rk = get_roi_string_from_path(fp)
-            # Use the potentially partial match logic from the notebook if needed, or stick to exact match?
-            # Let's stick to exact match for now unless the partial logic is confirmed necessary.
-            if rk and rk in metadata_map and str(metadata_map[rk].get(timepoint_col)) == str(first_timepoint):
-                first_tp_files.append(fp)
-            # Example of partial match logic if needed:
-            # found_key = None
-            # md_entry = None
-            # for map_key, metadata_entry in metadata_map.items():
-            #     if rk in map_key:
-            #         md_entry = metadata_entry
-            #         found_key = map_key
-            #         break
-            # if found_key and str(md_entry.get(timepoint_col)) == str(first_timepoint):
-            #      first_tp_files.append(fp)
+            if not rk: # Skip if ROI string couldn't be extracted
+                continue
+
+            # Implement partial string matching: check if rk is *in* any metadata map key
+            found_key = None
+            md_entry = None
+            for map_key, metadata_entry in metadata_map.items():
+                # Check if the extracted roi_string (rk) is a substring of the metadata key (map_key)
+                if rk in map_key:
+                    md_entry = metadata_entry
+                    found_key = map_key
+                    # print(f"   DEBUG: Partial match found: ROI string '{rk}' in metadata key '{map_key}'") # Optional debug
+                    break # Found the first match, assume it's the correct one
+
+            # Check if a partial match was found and if the timepoint matches
+            if found_key and md_entry:
+                if str(md_entry.get(timepoint_col)) == str(first_timepoint):
+                    first_tp_files.append(fp)
+                    # print(f"   DEBUG: Added {fp} to first_tp_files (Timepoint match)") # Optional debug
+                # else: # Optional debug
+                    # print(f"   DEBUG: Partial match found for {rk}, but timepoint mismatch ({md_entry.get(timepoint_col)} != {first_timepoint})")
+            # else: # Optional debug
+                # print(f"   DEBUG: No partial match found for ROI string '{rk}' in metadata keys.")
 
         if not first_tp_files:
             print(f"WARNING: No ROIs found for first timepoint {first_timepoint}. Cannot generate reference order.")
@@ -727,6 +758,10 @@ if __name__ == '__main__':
 
     # --- 4. Run Parallel Processing ---
     print(f"\n--- Starting main parallel analysis for {len(imc_files)} ROIs ---")
+    # Check if metadata_map exists before using it in the loop
+    if not metadata_map:
+        print("WARNING: metadata_map is empty. Proceeding without passing specific ROI metadata to analyze_roi.")
+        
     analysis_results = Parallel(n_jobs=n_jobs, verbose=10)(
         # Pass the loaded config, reference order, and specific ROI metadata to each worker
         delayed(analyze_roi)(
@@ -734,8 +769,9 @@ if __name__ == '__main__':
             file_path,
             len(imc_files),
             config,
-            roi_metadata=metadata_map.get(get_roi_string_from_path(file_path)), # Pass specific metadata row/dict
-            reference_channel_order=reference_channel_order, # Pass the fixed order
+            # Safely get metadata using the extracted ROI string
+            roi_metadata=metadata_map.get(get_roi_string_from_path(file_path)), 
+            reference_channel_order=reference_channel_order, # Pass the calculated order
             first_timepoint_value=first_timepoint # Pass the value for comparison
             )
         for i, file_path in enumerate(imc_files) # Process all files

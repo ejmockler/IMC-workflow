@@ -156,94 +156,164 @@ def plot_ordination(
         if 'fig' in locals() and plt.fignum_exists(fig.number):
              plt.close(fig)
 
-def plot_profile_clustermap(
-    profiles_with_meta_df: pd.DataFrame,
-    channel_cols: List[str],
-    config: Dict[str, Any], # Pass config for parameters
-    output_path: str,
-    plot_dpi: int = 150
-):
-    """Generates a clustermap of aggregated community profiles to help choose
-       a distance threshold for hierarchical clustering.
+def plot_profile_clustermap(profile_data: pd.DataFrame,
+                           title: str,
+                           output_path: str,
+                           plot_dpi: int = 150,
+                           fixed_channel_order: Optional[List[str]] = None) -> Optional[List[str]]:
+    """
+    Generates and saves a clustermap (or heatmap if order is fixed) of profile data.
 
     Args:
-        profiles_with_meta_df: DataFrame containing aggregated profiles and metadata.
-        channel_cols: List of column names corresponding to protein channels.
-        config: The configuration dictionary (reads meta-clustering settings).
-        output_path: Full path to save the output clustermap image.
-        plot_dpi: DPI for the saved plot.
+        profile_data: DataFrame containing the profile data.
+        title: Title for the plot.
+        output_path: Path to save the plot (.svg or .png recommended).
+        plot_dpi: DPI for saving the plot.
+        fixed_channel_order: If provided, use this exact order for rows/columns
+                             and plot a heatmap instead of a clustermap.
+
+    Returns:
+        A list of channel names in the order they appear on the final plot axes,
+        or None if plotting fails.
     """
-    print("\n--- Generating Profile Clustermap for Threshold Selection ---")
+    print(f"   Attempting to generate profile clustermap: {os.path.basename(output_path)}")
+    if profile_data.empty or len(profile_data.columns) < 2:
+        print("   Skipping profile clustermap: Not enough data or channels.")
+        return None
 
-    exp_config = config.get('experiment_analysis', {})
-    metric = exp_config.get('metacluster_metric', 'euclidean')
-    linkage_method = exp_config.get('metacluster_linkage', 'ward')
-    scale_data = exp_config.get('metacluster_scale_profiles', True)
+    # Determine appropriate figure size based on number of channels
+    n_channels = len(profile_data.columns)
+    figsize_base = max(6, n_channels * 0.4)  # Adjust multiplier as needed
+    figsize = (figsize_base, figsize_base)
 
-    if profiles_with_meta_df is None or profiles_with_meta_df.empty:
-        print("ERROR: Input profiles DataFrame is empty or None.")
-        return
-    if not all(col in profiles_with_meta_df.columns for col in channel_cols):
-        missing = [col for col in channel_cols if col not in profiles_with_meta_df.columns]
-        print(f"ERROR: Input DataFrame missing required channel columns: {missing}")
-        return
+    # Check if channels in fixed order are valid
+    if fixed_channel_order:
+        # --- Plot Clustermap with Fixed Columns, Clustered Rows ---
+        print(f"   Generating clustermap with fixed columns ({len(fixed_channel_order)} channels) and clustered rows...")
+        # Ensure the input matrix has columns in the fixed order
+        matrix_for_plot = profile_data.loc[:, fixed_channel_order]
 
-    # Ensure linkage method is compatible with metric
-    if linkage_method == 'ward' and metric != 'euclidean':
-        print(f"Warning: Ward linkage requires Euclidean metric for clustermap. Overriding metric to 'euclidean'.")
-        metric = 'euclidean'
-
-    try:
-        # Extract profile data
-        profile_data = profiles_with_meta_df[channel_cols].copy()
-
-        # Clean data: check for NaNs/Infs which can break clustering/scaling
-        if profile_data.isnull().values.any() or np.isinf(profile_data.values).any():
-             print("   Warning: NaNs or Infs found in profile data. Filling with 0 before scaling/clustering.")
-             profile_data = profile_data.fillna(0).replace([np.inf, -np.inf], 0)
-
-        # Standardize data (rows=samples, columns=features)
-        plot_data = profile_data
-        if scale_data:
-            print("   Scaling profile data using StandardScaler...")
-            scaler = StandardScaler()
-            # Fit transform columns (features)
-            plot_data_scaled = scaler.fit_transform(profile_data)
-            plot_data = pd.DataFrame(plot_data_scaled, index=profile_data.index, columns=profile_data.columns)
-
-        print(f"   Generating clustermap (Metric: {metric}, Linkage: {linkage_method})...")
-        # Use seaborn's clustermap
-        # standard_scale=1 scales rows (profiles) after clustering - helps visualize patterns within profiles
-        # z_score=1 scales columns (channels) after clustering - helps visualize relative expression across channels
-        # Choose one or none based on desired visualization. standard_scale=1 is often useful here.
-        g = sns.clustermap(
-            plot_data,
-            method=linkage_method,
-            metric=metric,
-            standard_scale=1, # Scale rows (profiles) to have mean 0, std dev 1 for visualization
-            cmap="viridis",    # Choose a suitable colormap
-            figsize=(10, 15) # Adjust figsize as needed
-            # dendrogram_ratio=(.2, .2) # Adjust dendrogram sizes
+        clustermap = sns.clustermap(
+            matrix_for_plot,    # Use the column-ordered matrix
+            method='ward',      # Linkage for rows
+            metric='euclidean', # Distance for rows
+            row_cluster=True,   # Cluster rows
+            col_cluster=False,  # Do NOT cluster columns
+            annot=True,         # Add correlation values
+            fmt='.2f',         # Format for annotations
+            annot_kws={"size": max(4, 8 - n_channels // 10)}, # Adjust font size based on number of channels
+            cmap='viridis',
+            linewidths=.5,
+            figsize=figsize,
+            xticklabels=True,   # Use labels from fixed_channel_order
+            yticklabels=True,
+            dendrogram_ratio=(.15, 0.0), # Row dendrogram only
+            cbar_pos=None
         )
 
-        # Improve plot appearance
-        g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xticklabels(), rotation=90, fontsize=8)
-        g.ax_heatmap.set_yticklabels([]) # Remove profile y-axis labels (too many)
-        g.ax_heatmap.set_ylabel(f"{len(plot_data)} Community Profiles")
-        g.fig.suptitle(f'Hierarchical Clustering of Community Profiles ({metric}/{linkage_method})', y=1.02)
+        # Improve layout and appearance
+        clustermap.ax_heatmap.set_xlabel("Channels (Fixed Order)", fontsize=9)
+        clustermap.ax_heatmap.set_ylabel("Channels (Clustered)", fontsize=9)
+        # Set column labels explicitly to the fixed order
+        plt.setp(clustermap.ax_heatmap.get_xticklabels(), rotation=90, fontsize=max(4, 8 - n_channels // 10))
+        clustermap.ax_heatmap.set_xticks(np.arange(len(fixed_channel_order)) + 0.5)
+        clustermap.ax_heatmap.set_xticklabels(fixed_channel_order)
+        # Set row labels based on clustering
+        plt.setp(clustermap.ax_heatmap.get_yticklabels(), rotation=0, fontsize=max(4, 8 - n_channels // 10))
 
-        # Save the plot
-        print(f"   Saving clustermap to: {output_path}")
-        plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
-        plt.close(g.fig) # Close figure
+        # Add title
+        clustermap.fig.suptitle(title, y=1.02, fontsize=10)
 
-    except Exception as e:
-        print(f"ERROR: Failed during clustermap generation: {e}")
-        import traceback
-        traceback.print_exc()
-        # Ensure figure is closed if error occurred mid-plot
-        if 'g' in locals() and hasattr(g, 'fig') and plt.fignum_exists(g.fig.number):
-             plt.close(g.fig)
+        # Add colorbar
+        cbar_ax = clustermap.fig.add_axes([0.85, 0.8, 0.03, 0.15])
+        plt.colorbar(clustermap.ax_heatmap.get_children()[0], cax=cbar_ax, label="Profile Value")
+
+        # Extract the order of channels after ROW clustering
+        try:
+             row_indices = clustermap.dendrogram_row.reordered_ind
+             # Map row indices back to channel names (using the original index before potential row-subsetting)
+             original_row_channels = matrix_for_plot.index.tolist()
+             ordered_channels_list = [original_row_channels[i] for i in row_indices]
+        except Exception as e:
+             print(f"   WARNING: Could not extract row channel order from clustermap: {e}")
+             # Fallback: Use the order of rows as they appear in the input matrix
+             # This might not be ideal if the matrix was subsetted for rows too.
+             ordered_channels_list = matrix_for_plot.index.tolist()
+
+    else: # This block is now restored to original full clustering
+        # Determine appropriate figure size based on number of channels
+        n_channels = len(profile_data.columns)
+        figsize_base = max(6, n_channels * 0.4)  # Adjust multiplier as needed
+        figsize = (figsize_base, figsize_base)
+
+        plt.figure(figsize=figsize) # Create a figure context for heatmap or clustermap
+
+        ordered_channels_list = None
+
+        try:
+            # --- Plot Clustermap with Hierarchical Clustering ---
+            print(f"   Generating clustermap with clustering ({n_channels} channels)...")
+            clustermap = sns.clustermap(
+                profile_data, # Use original matrix before potential reordering
+                method='ward',      # Linkage method for clustering
+                metric='euclidean', # Distance metric (on correlations)
+                # No row/col_cluster flags needed here, defaults are True
+                annot=True,         # Add correlation values
+                fmt='.2f',         # Format for annotations
+                annot_kws={"size": max(4, 8 - n_channels // 10)}, # Adjust font size based on number of channels
+                cmap='viridis',    # Sequential colormap appropriate for profile data
+                linewidths=.5,
+                figsize=figsize,    # Use calculated figsize
+                xticklabels=True,
+                yticklabels=True,
+                dendrogram_ratio=(.15, .15), # Original ratio for both dendrograms
+                cbar_pos=None # Initially hide default cbar, will add manually if needed
+            )
+
+            # Improve layout and appearance
+            clustermap.ax_heatmap.set_xlabel("Channels", fontsize=9)
+            clustermap.ax_heatmap.set_ylabel("Channels", fontsize=9)
+            plt.setp(clustermap.ax_heatmap.get_xticklabels(), rotation=90, fontsize=max(4, 8 - n_channels // 10))
+            plt.setp(clustermap.ax_heatmap.get_yticklabels(), rotation=0, fontsize=max(4, 8 - n_channels // 10))
+
+            # Add title to the figure (clustermap object is a Figure-level grid)
+            clustermap.fig.suptitle(title, y=1.02, fontsize=10) # Adjust y position
+
+            # Add a colorbar manually in a better position
+            cbar_ax = clustermap.fig.add_axes([0.85, 0.8, 0.03, 0.15]) # Adjust position [left, bottom, width, height]
+            plt.colorbar(clustermap.ax_heatmap.get_children()[0], cax=cbar_ax, label="Profile Value")
+
+            # Extract the order of channels after clustering (both rows and columns)
+            try:
+                 # Get the reordered indices from the dendrogram
+                 row_indices = clustermap.dendrogram_row.reordered_ind
+                 col_indices = clustermap.dendrogram_col.reordered_ind # Original extraction for both
+
+                 # Map indices back to channel names (use row order as primary)
+                 original_channels = profile_data.index.tolist() # Get channels before clustermap reordered them
+                 ordered_channels_list = [original_channels[i] for i in row_indices]
+
+                 # Optional: Check if row/col orders differ (original check)
+                 col_ordered_channels = [original_channels[i] for i in col_indices]
+                 if ordered_channels_list != col_ordered_channels:
+                      print("   WARNING: Row and Column clustering order differs significantly. Using row order.")
+
+            except Exception as e:
+                 print(f"   WARNING: Could not extract channel order from clustermap: {e}")
+                 ordered_channels_list = profile_data.index.tolist() # Fallback to original order (before clustering)
+
+
+            # Save the figure
+            plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
+            plt.close() # Close the figure to free memory
+            print(f"   --- Profile clustermap saved to: {os.path.basename(output_path)}")
+            return ordered_channels_list
+
+        except Exception as e:
+            print(f"   ERROR generating profile clustermap: {e}")
+            traceback.print_exc()
+            plt.close() # Ensure plot is closed on error
+            return None # Return None on failure
 
 def plot_dendrogram(
     linkage_matrix_Z: np.ndarray,

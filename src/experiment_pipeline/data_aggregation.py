@@ -182,8 +182,8 @@ def load_aggregate_community_profiles(config: Dict[str, Any]) -> Optional[pd.Dat
         return None
 
 def load_aggregate_pixel_results(config: Dict[str, Any]) -> Optional[pd.DataFrame]:
-    """Loads and aggregates pixel result CSVs from all ROIs for the target resolution.
-       These files contain per-pixel community assignments.
+    """Loads and aggregates annotated pixel result CSVs from all ROIs for the target resolution.
+       These files contain per-pixel asinh-scaled values, community labels, and primary channel assignments.
 
     Args:
         config: The configuration dictionary.
@@ -200,7 +200,7 @@ def load_aggregate_pixel_results(config: Dict[str, Any]) -> Optional[pd.DataFram
 
     # Define the pattern for final pixel result files
     res_str_filename = f"{resolution:.3f}".rstrip('0').rstrip('.') if isinstance(resolution, float) else str(resolution)
-    file_pattern = f"pixel_analysis_results_final_*_res_{res_str_filename}.csv"
+    file_pattern = f"pixel_results_annotated_*_res_{res_str_filename}.csv"
 
     pixel_result_files = find_roi_output_files(config, file_pattern)
 

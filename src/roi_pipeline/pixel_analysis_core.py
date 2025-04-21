@@ -10,16 +10,29 @@ import numpy as np
 import pandas as pd
 import igraph as ig
 import leidenalg as la
-from scipy.spatial import KDTree
 from scipy.optimize import brentq # For GMM intersection
 from scipy.stats import norm # For GMM PDF
 
-# Optional UMAP import
 try:
     import umap
     _umap_import_success = True
 except ImportError:
     _umap_import_success = False
+# --- Add Faiss import ---
+try:
+    import faiss
+    faiss_available = True
+except ImportError:
+    faiss_available = False
+    # Don't print warning here, handle based on context later
+# --- End Faiss import ---
+# --- Add KDTree import back for fallback ---
+try:
+    from scipy.spatial import KDTree
+    kdtree_available = True
+except ImportError:
+    kdtree_available = False
+# --- End KDTree import ---
 
 # ==============================================================================
 # Spatial Clustering (Leiden)
@@ -33,9 +46,11 @@ def run_spatial_leiden(
     resolution_param: float = 0.1,
     seed: int = 42,
     verbose: bool = True,
+    use_gpu_config: bool = False,  # New parameter to control GPU usage
 ) -> Tuple[Optional[pd.DataFrame], Optional[Any], Optional[Any], Optional[float]]:
     """
     Performs pixel-based Leiden community detection on IMC data using pre-scaled expression data.
+    Uses Faiss (GPU or CPU) for Approximate Nearest Neighbors (ANN) if available.
 
     Args:
         analysis_df: DataFrame containing pixel coordinates ('X', 'Y'). Index must align with scaled_expression_data_for_weights.
@@ -43,10 +58,12 @@ def run_spatial_leiden(
         scaled_expression_data_for_weights: REQUIRED pre-calculated, scaled expression data
                                             (n_pixels, n_channels). Assumed to be arcsinh transformed
                                             (with appropriate cofactors) and MinMaxScaler scaled.
+                                            **Should be float32 for memory optimization.**
         n_neighbors: Number of spatial neighbors for the k-NN graph.
         resolution_param: Resolution parameter for the Leiden algorithm.
         seed: Random seed for Leiden.
         verbose: If True, print progress messages.
+        use_gpu_config: If True, attempt to use GPU (Faiss-GPU or RAPIDS cuML/cugraph) if available, otherwise use CPU (Faiss-CPU or KDTree).
 
     Returns:
         A tuple containing:
@@ -64,11 +81,34 @@ def run_spatial_leiden(
     if verbose:
         print(f"--- Running Spatial Leiden (k={n_neighbors}, res={resolution_param}) on {n_pixels} pixels ---")
 
-    # GPU acceleration check
-    use_gpu = check_gpu_availability(verbose=verbose)
-    if use_gpu:
-        if verbose:
-            print(f"   Using GPU-accelerated k-NN search and Leiden clustering.")
+    # --- Determine Execution Path (GPU Faiss > GPU cuML > CPU Faiss > CPU KDTree) ---
+    gpu_available = check_gpu_availability(verbose=False)
+    should_try_gpu = use_gpu_config and gpu_available
+    
+    # Check RAPIDS separately for cuGraph Leiden later
+    cuML, cupy, cudf, cugraph = None, None, None, None
+    rapids_libs_available_for_leiden = False
+    if should_try_gpu:
+        cuML = get_rapids_lib('cuml')
+        cupy = get_rapids_lib('cupy')
+        cudf = get_rapids_lib('cudf')
+        cugraph = get_rapids_lib('cugraph')
+        if cuML and cupy and cudf and cugraph:
+            rapids_libs_available_for_leiden = True
+            
+    # Path flags
+    use_faiss_gpu = should_try_gpu and faiss_available
+    use_cuml_gpu = should_try_gpu and not use_faiss_gpu and cuML is not None # Fallback GPU kNN if Faiss GPU not used
+    use_faiss_cpu = not should_try_gpu and faiss_available
+    use_kdtree_cpu = not use_faiss_gpu and not use_cuml_gpu and not use_faiss_cpu and kdtree_available
+
+    if verbose:
+        if use_faiss_gpu: print("   Attempting GPU k-NN using Faiss-GPU.")
+        elif use_cuml_gpu: print("   Attempting GPU k-NN using cuML (Faiss-GPU not primary)." )
+        elif use_faiss_cpu: print("   Using CPU k-NN using Faiss-CPU.")
+        elif use_kdtree_cpu: print("   Using CPU k-NN using KDTree (Faiss not available).")
+        else: print("   ERROR: No valid k-NN method available (Faiss, cuML, KDTree). Check installations.")
+    # --- End Path Decision ---
     
     # 1. Validate Pre-scaled Expression Data
     if verbose: print("\n1. Validating pre-scaled expression data...")
@@ -82,93 +122,240 @@ def run_spatial_leiden(
     if scaled_expression_data_for_weights.shape[1] != len(protein_channels):
          print(f"   Warning: Pre-scaled data has {scaled_expression_data_for_weights.shape[1]} columns, "
                f"but {len(protein_channels)} protein_channels were listed.")
-         # Decide if this is an error or just a warning - depends on workflow
-         # For now, proceed assuming the scaled data columns correspond to channels used for weighting
 
-    scaled_data = scaled_expression_data_for_weights # Use the provided data
+    # Ensure expression data is float32
+    try:
+        scaled_data = scaled_expression_data_for_weights.astype(np.float32)
+    except Exception as e:
+        print(f"   Warning: Could not cast scaled_expression_data to float32: {e}. Using original dtype.")
+        scaled_data = scaled_expression_data_for_weights
 
     # 2. Build Spatial k-NN Graph
     if verbose: print(f"\n2. Building spatial k-NN graph (k={n_neighbors})...")
-    start_time = time.time()
-    coords = local_analysis_df[['X', 'Y']].values
-    if use_gpu:
-        cuML = get_rapids_lib('cuml')
-        cupy = get_rapids_lib('cupy')
-        if cuML is None or cupy is None:
-            print("   WARNING: cuML or CuPy not available despite GPU. Falling back to CPU path.")
-            use_gpu = False
+    knn_start_time = time.time()
     
-    if use_gpu:
-        coords_gpu = cupy.asarray(coords)
-        knn = cuML.neighbors.NearestNeighbors(n_neighbors=n_neighbors+1)
-        knn.fit(coords_gpu)
-        dists_gpu, inds_gpu = knn.kneighbors(coords_gpu)
-        # Drop self neighbor at index 0 and flatten
-        distances = dists_gpu[:, 1:]
-        indices = inds_gpu[:, 1:]
-        # Compute weights
-        epsilon = 1e-6
-        weights_gpu = 1.0 / (distances + epsilon)
-        # Create source/target arrays
-        k = indices.shape[1]
-        src_gpu = cupy.repeat(cupy.arange(n_pixels, dtype='int32'), k)
-        dst_gpu = indices.ravel()
-        w_gpu = weights_gpu.ravel()
-        # Convert to CPU for cudf
-        src = src_gpu.get()
-        dst = dst_gpu.get()
-        w = w_gpu.get()
-        cudf = get_rapids_lib('cudf')
-        cugraph = get_rapids_lib('cugraph')
-        if cudf is not None and cugraph is not None:
-            # Build GPU graph
-            edges_df = cudf.DataFrame({'src': src, 'dst': dst, 'weight': w})
+    # Ensure coordinates are float32
+    try:
+        coords = local_analysis_df[['X', 'Y']].values.astype(np.float32)
+    except Exception as e:
+        print(f"   Warning: Could not cast coordinates to float32: {e}. Using original dtype.")
+        coords = local_analysis_df[['X', 'Y']].values
+        
+    src = None
+    dst = None
+    weights = None
+    knn_method_used = "None"
+
+    # --- k-NN Calculation based on selected path --- 
+    if use_faiss_gpu:
+        knn_method_used = "Faiss-GPU"
+        if verbose: print("   Executing k-NN with Faiss-GPU...")
+        try:
+            res = faiss.StandardGpuResources() # Initialize GPU resources
+            cpu_index = faiss.IndexFlatL2(coords.shape[1]) # Build CPU index first
+            gpu_index = faiss.index_cpu_to_gpu(res, 0, cpu_index) # Move index to GPU 0
+            
+            gpu_index.add(coords) # Add data (NumPy array is fine)
+            distances, indices = gpu_index.search(coords, n_neighbors + 1)
+            
+            # Process results (remove self, type casting)
+            distances = distances[:, 1:].astype(np.float32)
+            indices = indices[:, 1:].astype(np.int32)
+            
+            epsilon = 1e-6
+            weights = (1.0 / (distances + epsilon)).astype(np.float32)
+            src = np.repeat(np.arange(n_pixels, dtype=np.int32), n_neighbors)
+            dst = indices.ravel()
+            weights = weights.ravel()
+            
+            del res, cpu_index, gpu_index, distances, indices # Cleanup
+        except Exception as faiss_gpu_e:
+            print(f"   ERROR during Faiss-GPU k-NN: {faiss_gpu_e}. Falling back to CPU Faiss.")
+            traceback.print_exc()
+            use_faiss_gpu = False # Ensure fallback
+            use_faiss_cpu = faiss_available # Attempt CPU Faiss if available
+            use_kdtree_cpu = not use_faiss_cpu and kdtree_available
+            src, dst, weights = None, None, None # Reset for fallback
+            try: del res, cpu_index, gpu_index, distances, indices
+            except NameError: pass
+            
+    if use_cuml_gpu and not src: # Only run if Faiss-GPU didn't run or failed
+        knn_method_used = "cuML-GPU"
+        if verbose: print("   Executing k-NN with cuML (GPU fallback)...")
+        try:
+            cupy.get_default_memory_pool().free_all_blocks()
+            coords_gpu = cupy.asarray(coords, dtype='float32')
+            knn = cuML.neighbors.NearestNeighbors(n_neighbors=n_neighbors+1)
+            knn.fit(coords_gpu)
+            dists_gpu, inds_gpu = knn.kneighbors(coords_gpu)
+            del knn, coords_gpu
+            cupy.get_default_memory_pool().free_all_blocks()
+            distances = dists_gpu[:, 1:].get()
+            indices = inds_gpu[:, 1:].get().astype(np.int32)
+            del dists_gpu, inds_gpu
+            cupy.get_default_memory_pool().free_all_blocks()
+            epsilon = 1e-6
+            weights = (1.0 / (distances + epsilon)).astype(np.float32)
+            src = np.repeat(np.arange(n_pixels, dtype=np.int32), n_neighbors)
+            dst = indices.ravel()
+            weights = weights.ravel()
+            del distances, indices
+        except Exception as cuml_e:
+            print(f"   ERROR during cuML k-NN: {cuml_e}. Falling back to CPU Faiss/KDTree.")
+            traceback.print_exc()
+            use_cuml_gpu = False
+            use_faiss_cpu = faiss_available
+            use_kdtree_cpu = not use_faiss_cpu and kdtree_available
+            src, dst, weights = None, None, None # Reset for fallback
+            try:
+                del knn, coords_gpu, dists_gpu, inds_gpu, distances, indices
+                cupy.get_default_memory_pool().free_all_blocks()
+            except NameError: pass
+            
+    if use_faiss_cpu and not src: # Only run if GPU paths failed or weren't selected
+        knn_method_used = "Faiss-CPU"
+        if verbose: print("   Executing k-NN with Faiss-CPU...")
+        try:
+            index = faiss.IndexFlatL2(coords.shape[1])
+            index.add(coords)
+            distances, indices = index.search(coords, n_neighbors + 1)
+            distances = distances[:, 1:].astype(np.float32)
+            indices = indices[:, 1:].astype(np.int32)
+            epsilon = 1e-6
+            weights = (1.0 / (distances + epsilon)).astype(np.float32)
+            src = np.repeat(np.arange(n_pixels, dtype=np.int32), n_neighbors)
+            dst = indices.ravel()
+            weights = weights.ravel()
+            del index, distances, indices
+        except Exception as faiss_cpu_e:
+            print(f"   ERROR during Faiss-CPU k-NN: {faiss_cpu_e}. Falling back to KDTree.")
+            traceback.print_exc()
+            use_faiss_cpu = False
+            use_kdtree_cpu = kdtree_available
+            src, dst, weights = None, None, None # Reset for fallback
+            try: del index, distances, indices
+            except NameError: pass
+            
+    if use_kdtree_cpu and not src: # Last resort: KDTree
+        knn_method_used = "KDTree-CPU"
+        if verbose: print("   Executing k-NN with KDTree (CPU fallback)...")
+        try:
+            tree = KDTree(coords)
+            distances, indices = tree.query(coords, k=n_neighbors + 1)
+            distances = distances[:, 1:].astype(np.float32)
+            indices = indices[:, 1:].astype(np.int32)
+            epsilon = 1e-6
+            weights = (1.0 / (distances + epsilon)).astype(np.float32)
+            src = np.repeat(np.arange(n_pixels, dtype=np.int32), n_neighbors)
+            dst = indices.ravel()
+            weights = weights.ravel()
+            del tree, distances, indices
+        except Exception as kdtree_e:
+            print(f"   ERROR during KDTree k-NN: {kdtree_e}. Aborting graph construction.")
+            traceback.print_exc()
+            return None, None, None, None
+
+    # Check if neighbor finding was successful
+    if src is None or dst is None or weights is None:
+        print("   ERROR: Failed to compute neighbor lists and weights using any method. Cannot proceed.")
+        return None, None, None, None
+    else:
+        if verbose: print(f"   k-NN search ({knn_method_used}) took {time.time() - knn_start_time:.2f} seconds.")
+
+    # 3. Build igraph Object
+    if verbose: print("\n3. Building Graph Object...")
+    graph_start_time = time.time()
+    try:
+        g_pixels = ig.Graph(n=n_pixels, edges=list(zip(src, dst)), edge_attrs={'weight': weights}, directed=False)
+        g_pixels.simplify(combine_edges='sum') # Combine parallel edges if any
+        if verbose: print(f"   Graph construction took {time.time() - graph_start_time:.2f} seconds.")
+        del src, dst, weights # Free memory after graph creation
+    except Exception as graph_e:
+        print(f"   ERROR building igraph object: {graph_e}")
+        traceback.print_exc()
+        return None, None, None, None
+
+    # 4. Run Leiden Algorithm
+    if verbose: print("\n4. Running Leiden Community Detection...")
+    leiden_start_time = time.time()
+    partition = None
+    communities = None 
+    n_communities = 0
+    # Determine if we should still try GPU Leiden (even if kNN was CPU)
+    use_gpu_leiden = should_try_gpu and rapids_libs_available_for_leiden
+    leiden_method_used = "None"
+
+    if use_gpu_leiden:
+        leiden_method_used = "cuGraph-GPU"
+        if verbose: print("   Attempting Leiden with cuGraph-GPU...")
+        try:
+            # Convert igraph to cuGraph DataFrame representation
+            edges_df = cudf.DataFrame({
+                'src': cupy.array(g_pixels.get_edge_list())[:, 0].astype('int32'),
+                'dst': cupy.array(g_pixels.get_edge_list())[:, 1].astype('int32'),
+                'weight': cupy.array(g_pixels.es['weight']).astype('float32')
+            })
+            
             G_gpu = cugraph.Graph()
             G_gpu.from_cudf_edgelist(edges_df, source='src', destination='dst', edge_attr='weight', renumber=False)
-            if verbose:
-                print(f"   GPU k-NN + graph construction took {time.time() - start_time:.2f} seconds.")
-            # 5. Run Leiden on GPU
-            start_leiden = time.time()
-            parts = cugraph.leiden(G_gpu, resolution=resolution_param, weight='weight')
-            if verbose:
-                print(f"   GPU Leiden took {time.time() - start_leiden:.2f} seconds.")
-            # Assign community labels
-            local_analysis_df['community'] = parts['partition'].to_pandas().values
-            total_time = time.time() - start_total_time
-            return local_analysis_df, G_gpu, parts, total_time
-        else:
-            print("   WARNING: cudf or cugraph not available. Falling back to CPU path.")
-            use_gpu = False
-    # CPU fallback path
-    # Build CPU graph weights
-    if verbose:
-        print(f"   Using CPU KDTree + igraph + leidenalg.")
-    distances_knn, indices_knn = KDTree(coords).query(coords, k=n_neighbors+1)
-    nbrs = indices_knn[:, 1:]
-    epsilon = 1e-6
-    sources, targets, weights = [], [], []
-    for i in range(n_pixels):
-        for j in nbrs[i]:
-            if i < j:
-                dist = np.linalg.norm(scaled_data[i] - scaled_data[j])
-                sources.append(i); targets.append(j)
-                weights.append(1.0 / (dist + epsilon))
-    if verbose:
-        print(f"   CPU k-NN weight calc took {time.time() - start_time:.2f} seconds.")
-    # Construct igraph
-    start_graph = time.time()
-    g_pixels = ig.Graph(n=n_pixels, directed=False)
-    g_pixels.add_edges(zip(sources, targets))
-    g_pixels.es['weight'] = weights
-    if verbose:
-        print(f"   igraph construction took {time.time() - start_graph:.2f} seconds.")
-    # Run CPU Leiden
-    start_leiden = time.time()
-    partition = la.find_partition(g_pixels, la.CPMVertexPartition, weights='weight', resolution_parameter=resolution_param, seed=seed)
-    if verbose:
-        print(f"   CPU Leiden took {time.time() - start_leiden:.2f} seconds.")
-    local_analysis_df['community'] = partition.membership
+            del edges_df # Free memory
+            
+            leiden_df, _ = cugraph.leiden(G_gpu, resolution=resolution_param, random_state=seed)
+            
+            partition_df = leiden_df.to_pandas().set_index('vertex').sort_index()
+            communities = partition_df['partition'].values
+            n_communities = len(partition_df['partition'].unique())
+            partition = communities # Store assignments array
+            
+            del G_gpu, leiden_df, partition_df # Free GPU memory
+            cupy.get_default_memory_pool().free_all_blocks()
+        except Exception as gpu_leiden_e:
+            print(f"   ERROR during GPU Leiden: {gpu_leiden_e}. Falling back to CPU Leiden.")
+            traceback.print_exc()
+            use_gpu_leiden = False # Ensure CPU Leiden runs
+            partition = None # Reset partition
+            communities = None
+            try: # Cleanup GPU memory
+                 del G_gpu, leiden_df, partition_df
+                 cupy.get_default_memory_pool().free_all_blocks()
+            except NameError: pass
+                 
+    if not use_gpu_leiden: # Use CPU Leiden (leidenalg)
+        leiden_method_used = "leidenalg-CPU"
+        if verbose: print("   Executing Leiden with leidenalg-CPU...")
+        try:
+            partition = la.find_partition(
+                g_pixels, 
+                la.RBConfigurationVertexPartition, # Or other partition type if needed
+                weights='weight', 
+                resolution_parameter=resolution_param, 
+                seed=seed
+            )
+            communities = np.array(partition.membership)
+            n_communities = len(partition)
+        except Exception as cpu_leiden_e:
+            print(f"   ERROR during CPU Leiden: {cpu_leiden_e}")
+            traceback.print_exc()
+            return None, None, None, None # Cannot proceed without communities
+
+    if verbose: print(f"   Leiden ({leiden_method_used}) found {n_communities} communities in {time.time() - leiden_start_time:.2f} seconds.")
+
+    # 5. Assign Communities and Return
+    if verbose: print("\n5. Assigning communities to DataFrame...")
+    try:
+        local_analysis_df['community'] = communities
+        local_analysis_df['community'] = local_analysis_df['community'].astype('category') # Use category for memory efficiency
+    except Exception as assign_e:
+         print(f"   ERROR assigning community labels: {assign_e}")
+         traceback.print_exc()
+         return None, None, None, None
+         
     total_time = time.time() - start_total_time
+    if verbose:
+        print(f"--- Spatial Leiden finished in {total_time:.2f} seconds ---")
+
+    # Return the dataframe with communities, the graph, and the partition object
+    # Note: partition might be just the community array if GPU Leiden was used
     return local_analysis_df, g_pixels, partition, total_time
 
 # ==============================================================================

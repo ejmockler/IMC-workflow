@@ -73,19 +73,31 @@ flowchart TD
 ## Prerequisites
 
 *   Python 3.8+
-*   Required Python packages listed in `requirements.txt`. Install them using:
+*   Required CPU Python packages listed in `requirements.txt`. Install them using:
+
     ```bash
     pip install -r requirements.txt
     ```
+    *(This includes `faiss-cpu` for CPU-based ANN and `leidenalg` for CPU-based Leiden clustering)*
+
+*   **Optional GPU Acceleration:**
+    *   **For k-NN (Faiss):** To enable GPU-accelerated Approximate Nearest Neighbors using Faiss, you need a compatible `faiss-gpu` installation. 
+        *   Pre-built `conda` packages are available for specific CUDA versions (e.g., 11.4, 12.1 via `pytorch` channel, 11.8, 12.4 via `pytorch` channel with `faiss-gpu-cuvs`). Consult the [Official Faiss Installation Guide](https://github.com/facebookresearch/faiss/blob/main/INSTALL.md) for the correct command based on your CUDA version.
+        *   If a pre-built package is not available for your CUDA version (like 12.7+), you would need to [build Faiss from source](https://github.com/facebookresearch/faiss/blob/main/INSTALL.md#building-from-source) with GPU support enabled.
+        *   **The pipeline will automatically attempt to use an installed `faiss-gpu` if `use_gpu: true` is set in `config.yaml`.** If it fails or `faiss-gpu` is not detected, it falls back to other methods (cuML, faiss-cpu, KDTree).
+    *   **For Leiden Clustering (RAPIDS):** To enable GPU-accelerated Leiden clustering (and potentially k-NN fallback via cuML), install the RAPIDS suite (`cudf`, `cugraph`, `cuml`, `cupy`). Use the official [RAPIDS Release Selector](https://docs.rapids.ai/install/#selector) to get the correct installation command for your environment (OS, CUDA version, desired RAPIDS version).
+        *   **The pipeline will attempt to use `cugraph` for Leiden if RAPIDS libraries are detected and `use_gpu: true` is set.** If it fails or RAPIDS is not detected, it falls back to CPU `leidenalg`.
+
+*   **(Deprecated)** The `requirements-gpu.txt` file is retained for reference but pip-installing from it is no longer recommended for RAPIDS components.
 
 ## Code Structure
 
 *   **`run_pixel_pipeline.py`**: The main executable script. Orchestrates the workflow, loads config, runs analysis per ROI (looping through resolutions), and manages parallel processing.
 *   **`config.yaml`**: Configuration file for setting paths, parameters, and options.
-*   **`imc_data_utils.py`**: Utilities for data loading, validation, and preprocessing.
-*   **`pixel_analysis_core.py`**: Core analysis functions (spatial graph, Leiden, profiles, DiffEx).
-*   **`pixel_visualization.py`**: Functions for generating plots (clustermaps, spatial grids, UMAP, co-expression matrix).
-*   **`requirements.txt`**: Python package dependencies.
+*   **`src/roi_pipeline/imc_data_utils.py`**: Utilities for data loading, validation, and preprocessing.
+*   **`src/roi_pipeline/pixel_analysis_core.py`**: Core analysis functions (spatial graph using Faiss/cuML/KDTree, Leiden clustering using cuGraph/leidenalg, profiles, DiffEx).
+*   **`src/roi_pipeline/pixel_visualization.py`**: Functions for generating plots (clustermaps, spatial grids, UMAP, co-expression matrix).
+*   **`requirements.txt`**: Python package dependencies (including `faiss-cpu`).
 
 ## Configuration
 
@@ -93,22 +105,35 @@ All pipeline parameters are controlled via `config.yaml`. Key sections include:
 
 *   **`paths`**: Input data directory (`data_dir`) and base output directory (`output_dir`).
 *   **`data`**: Metadata columns, master protein channel list, default arcsinh cofactor.
-*   **`analysis`**:
+*   **`analysis`**: 
     *   `clustering`: KNN neighbors, Leiden `resolution_params` (a list of resolutions to test), random seed.
     *   `umap`: Parameters for UMAP embedding.
     *   `differential_expression`: Markers to exclude from UMAP.
-*   **`processing`**: Parallel jobs setting, plot DPI, visualization appearance settings.
+*   **`processing`**: 
+    *   `use_gpu`: Set to `true` to attempt GPU acceleration (Faiss-GPU/RAPIDS), `false` to force CPU.
+    *   `parallel_jobs`: Setting for parallel processing.
+    *   `plot_dpi`: DPI for saved plots.
+    *   `visualization`: Appearance settings for plots.
 
 Modify `config.yaml`, especially `resolution_params` under `analysis.clustering`, before running.
 
 ## Usage
 
-1.  Ensure prerequisites are installed.
-2.  Configure `config.yaml`.
+1.  Ensure prerequisites are installed (including `faiss-cpu` via `pip install -r requirements.txt`, and optionally `faiss-gpu` or RAPIDS if desired).
+2.  Configure `config.yaml` (set `use_gpu: true` if you installed GPU components and want to use them).
 3.  Run the main script:
     ```bash
     python run_pixel_pipeline.py
     ```
+
+## GPU Acceleration Notes
+
+The pipeline prioritizes GPU methods when `use_gpu: true` is set and compatible libraries are detected:
+
+*   **k-NN Search Priority:** Faiss-GPU > cuML (RAPIDS) > Faiss-CPU > KDTree (SciPy)
+*   **Leiden Clustering Priority:** cuGraph (RAPIDS) > leidenalg (CPU)
+
+If a higher-priority method fails (e.g., `faiss-gpu` error due to CUDA incompatibility, missing library), the code automatically falls back to the next available method in the priority list.
 
 ## Output Description
 
@@ -128,7 +153,7 @@ Outputs are saved within the specified `output_dir`. A subdirectory is created f
     *   `community_diff_profiles_<roi_string>_res_<resolution>.csv`: Differential expression profiles.
     *   `community_primary_channels_<roi_string>_res_<resolution>.csv`: Top primary channel per community.
     *   `umap_coords_diff_profiles_<roi_string>_res_<resolution>.csv`: UMAP coordinates (if run).
-    *   `pixel_analysis_results_final_<roi_string>_res_<resolution>.csv`: Final combined results per pixel for this resolution.
+    *   `pixel_results_annotated_<roi_string>_res_<resolution>.csv`: Per-pixel results enriched with asinh‑scaled values, community assignments, and primary channel annotations for this resolution.
 *   **Plots (SVGs):**
     *   `community_channel_correlation_heatmap_spearman_<roi_string>_res_<resolution>.svg`: Community-level correlation clustermap.
     *   `umap_community_scatter_protein_markers_diff_profiles_<roi_string>_res_<resolution>.svg`: UMAP scatter plot of communities.

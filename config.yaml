@@ -2,9 +2,9 @@
 
 # --- Input/Output Paths ---
 paths:
-  data_dir: "/Users/noot/Documents/IMC/data/241218_IMC_Alun/" # Directory containing input .txt files
-  output_dir: "/Users/noot/Documents/IMC/output_plots/"    # Base directory for all outputs
-  metadata_file: "/Users/noot/Documents/IMC/data/Data_annotations_Karen/Metadata-Table 1.csv" # Path to metadata file with ROI annotations
+  data_dir: "/home/noot/IMC/data/241218_IMC_Alun" # Directory containing input .txt files
+  output_dir: "/home/noot/IMC/output_plots/"    # Base directory for all outputs
+  metadata_file: "/home/noot/IMC/data/Data_annotations_Karen/Metadata-Table 1.csv" # Path to metadata file with ROI annotations
 
 # --- Data Loading & Preprocessing ---
 data:
@@ -28,12 +28,12 @@ data:
     - 'CD34(Er166Di)'
     - 'CD206(Tm169Di)'
     - 'CD44(Yb171Di)'
-    # - 'DNA1(Ir191Di)'
-    # - 'DNA2(Ir193Di)'
-    # - '190BCKG(BCKG190Di)'
-    # - '80ArAr(ArAr80Di)'
-    # - '130Ba(Ba130Di)'
-    # - '131Xe(Xe131Di)'
+    - 'DNA1(Ir191Di)'
+    - 'DNA2(Ir193Di)'
+    - '190BCKG(BCKG190Di)'
+    - '80ArAr(ArAr80Di)'
+    - '130Ba(Ba130Di)'
+    - '131Xe(Xe131Di)'
 
   default_arcsinh_cofactor: 5.0 # Fallback cofactor if optimization fails
 
@@ -41,8 +41,9 @@ data:
 analysis:
   clustering:
     n_neighbors: 65     # Number of neighbors for spatial graph (Leiden)
-    resolution_params: [0.3, 0.001] # List of Leiden resolutions to test
+    resolution_params: [0.001, 0.0001] # List of Leiden resolutions to test
     seed: 42            # Random seed for reproducibility
+    linkage: 'ward'     # Linkage method for hierarchical clustering
   umap:
     n_components: 8     # Number of components for UMAP embedding (if run)
     min_dist: 0.1       # UMAP min_dist parameter
@@ -66,20 +67,19 @@ processing:
   visualization:
     scatter_size: 1        # Size for spatial scatter plots
     scatter_marker: '.'    # Marker for spatial scatter plots
-    max_grid_cols: 4       # Max columns for spatial expression grid plot
     comparison_cmap: 'viridis' # Colormap for raw vs scaled comparison plot
 
 # --- Experiment Level Analysis ---
 experiment_analysis:
   resolution_to_aggregate: 0.3 # Leiden resolution output to use
-  metadata_roi_col: 'File Name'   # Column name in metadata file that matches ROI strings
+  metadata_roi_col: 'File_Name'   # Column name in metadata file that matches ROI strings
   output_subdir: 'experiment_summary' # Subdirectory for experiment results
 
   # --- Metadata Column Names ---
   # Define the actual column names from your metadata file
   condition_col: 'Condition'     # e.g., 'Treatment', 'Group'
-  timepoint_col: 'Day'         # e.g., 'Timepoint'
-  region_col: 'Region'         # e.g., 'Tissue_Area'
+  timepoint_col: 'Injury_Day'         # e.g., 'Timepoint'
+  region_col: 'Tissue_Area'         # e.g., 'Tissue_Area'
   replicate_col: 'Mouse'       # e.g., 'Subject_ID' - IMPORTANT for stats
 
   # --- Meta-Clustering Settings ---
@@ -91,13 +91,13 @@ experiment_analysis:
 
   # --- Statistical Analysis ---
   # Formula for PERMANOVA on composition (uses column names defined above)
-  permanova_formula: "Condition + Day + Region + Condition*Day" # Example: Include interaction
+  permanova_formula: "Condition + Injury_Day + Tissue_Area + Condition*Injury_Day" # Example: Include interaction
   # Add GLMM formulas here later if needed for individual meta-clusters
 
   # --- Visualization ---
   # Columns from metadata for plotting aesthetics
   plot_hue_col: 'Condition'
-  plot_style_col: 'Day'
+  plot_style_col: 'Injury_Day'
   # Add other plot settings if needed
 
   # Add other experiment-level parameters here (e.g., stats tests, plot settings) 

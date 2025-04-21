@@ -13,6 +13,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.colors import LogNorm, ListedColormap
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # Need to handle potential missing dependency for GMM/Otsu in deprecated functions
 try:
@@ -684,10 +685,14 @@ def _plot_mapped_avg_community_coexpression(ax, pixel_results_df_with_avg, chann
 
 def _plot_scaled_pixel_coexpression(ax, pixel_data_scaled, channel1, channel2):
     """Plots spatial co-expression using scaled pixel values (upper triangle)."""
-    scaled_col1 = f'{channel1}_asinh_scaled'
-    scaled_col2 = f'{channel2}_asinh_scaled'
-
-    if scaled_col1 not in pixel_data_scaled.columns or scaled_col2 not in pixel_data_scaled.columns:
+    # Determine actual columns for scaled data: use raw channel names or '_asinh_scaled' suffix
+    if channel1 in pixel_data_scaled.columns and channel2 in pixel_data_scaled.columns:
+        scaled_col1 = channel1
+        scaled_col2 = channel2
+    elif f'{channel1}_asinh_scaled' in pixel_data_scaled.columns and f'{channel2}_asinh_scaled' in pixel_data_scaled.columns:
+        scaled_col1 = f'{channel1}_asinh_scaled'
+        scaled_col2 = f'{channel2}_asinh_scaled'
+    else:
         ax.text(0.5, 0.5, 'Scaled Data Missing', ha='center', va='center', transform=ax.transAxes)
         return
 
@@ -771,17 +776,23 @@ def plot_coexpression_matrix(scaled_pixel_expression: pd.DataFrame, # Contains '
             ax = axes[i, j]
 
             if i == j: # Diagonal: Plot single channel (Scaled Pixel)
-                scaled_col = f'{channel1}_asinh_scaled'
-                if scaled_col in pixel_data_scaled.columns:
-                    plot_data_diag = pixel_data_scaled[['X', 'Y', scaled_col]].dropna()
-                    if not plot_data_diag.empty:
-                        norm = plt.Normalize(vmin=0, vmax=1)
-                        colors = plt.cm.viridis(norm(plot_data_diag[scaled_col]))
-                        ax.scatter(plot_data_diag['X'], plot_data_diag['Y'], c=colors, s=scatter_size, marker=scatter_marker, edgecolors='none', rasterized=True)
-                    else:
-                         ax.text(0.5, 0.5, 'No Data', ha='center', va='center', transform=ax.transAxes)
+                # Determine actual column for scaled pixel expression
+                if channel1 in pixel_data_scaled.columns:
+                    diag_col = channel1
+                elif f'{channel1}_asinh_scaled' in pixel_data_scaled.columns:
+                    diag_col = f'{channel1}_asinh_scaled'
                 else:
-                     ax.text(0.5, 0.5, 'Scaled Data\nMissing', ha='center', va='center', transform=ax.transAxes)
+                    ax.text(0.5, 0.5, 'Scaled Data\nMissing', ha='center', va='center', transform=ax.transAxes)
+                    ax.set_title(f"{channel1}\n(Scaled Pixel)", fontsize=8, pad=2)
+                    continue
+
+                plot_data_diag = pixel_data_scaled[['X', 'Y', diag_col]].dropna()
+                if not plot_data_diag.empty:
+                    norm = plt.Normalize(vmin=0, vmax=1)
+                    colors = plt.cm.viridis(norm(plot_data_diag[diag_col]))
+                    ax.scatter(plot_data_diag['X'], plot_data_diag['Y'], c=colors, s=scatter_size, marker=scatter_marker, edgecolors='none', rasterized=True)
+                else:
+                    ax.text(0.5, 0.5, 'No Data', ha='center', va='center', transform=ax.transAxes)
                 ax.set_title(f"{channel1}\n(Scaled Pixel)", fontsize=8, pad=2)
 
             elif i < j: # Upper triangle: Scaled Pixel Co-expression
@@ -864,74 +875,101 @@ def plot_correlation_clustermap(correlation_matrix: pd.DataFrame,
         print("   Skipping correlation map: Not enough data or channels.")
         return None
 
-    # Check if channels in fixed order are valid
-    if fixed_channel_order:
-        missing_channels = [ch for ch in fixed_channel_order if ch not in correlation_matrix.columns]
-        available_channels_in_order = [ch for ch in fixed_channel_order if ch in correlation_matrix.columns]
-        if missing_channels:
-            print(f"   WARNING: Channels in fixed_channel_order not found in correlation matrix: {missing_channels}. Using available subset.")
-        if not available_channels_in_order or len(available_channels_in_order) < 2:
-             print("   ERROR: No valid channels remaining after applying fixed_channel_order. Cannot generate heatmap.")
-             return None # Cannot proceed
-        # Use the subset of available channels in the specified order
-        fixed_channel_order = available_channels_in_order
-        correlation_matrix = correlation_matrix.loc[fixed_channel_order, fixed_channel_order]
-        channels = fixed_channel_order # Update channels list to match data
-
-
     # Determine appropriate figure size based on number of channels
     n_channels = len(channels)
     figsize_base = max(6, n_channels * 0.4)  # Adjust multiplier as needed
     figsize = (figsize_base, figsize_base)
 
-    plt.figure(figsize=figsize) # Create a figure context for heatmap or clustermap
+    # Check if channels in fixed order are valid
+    if fixed_channel_order:
+        # --- Plot Clustermap with Fixed Columns, Clustered Rows ---
+        print(f"   Generating clustermap with fixed columns ({len(fixed_channel_order)} channels) and clustered rows...")
+        # Ensure the input matrix has columns in the fixed order
+        matrix_for_plot = correlation_matrix.loc[:, fixed_channel_order]
 
-    ordered_channels_list = None
+        clustermap = sns.clustermap(
+            matrix_for_plot,    # Use the column-ordered matrix
+            method='ward',      # Linkage for rows
+            metric='euclidean', # Distance for rows
+            row_cluster=True,   # Cluster rows
+            col_cluster=False,  # Do NOT cluster columns
+            annot=True,         # Add correlation values
+            fmt='.2f',         # Format for annotations
+            annot_kws={"size": max(4, 8 - n_channels // 10)}, # Adjust font size based on number of channels
+            cmap='coolwarm',
+            vmin=-1, vmax=1,
+            linewidths=.5,
+            figsize=figsize,
+            xticklabels=True,   # Use labels from fixed_channel_order
+            yticklabels=True,
+            dendrogram_ratio=(.15, 0.0), # Row dendrogram only
+            cbar_pos=None
+        )
 
-    try:
-        if fixed_channel_order:
-            # --- Plot Heatmap with Fixed Order ---
-            print(f"   Generating heatmap with fixed order ({len(fixed_channel_order)} channels)...")
-            ax = sns.heatmap(
-                correlation_matrix, # Already reordered
-                annot=False, # Annotations usually too dense
-                cmap='coolwarm', # Diverging colormap
-                vmin=-1, vmax=1, # Set range for correlation
-                square=True,
-                linewidths=.5,
-                cbar_kws={"shrink": .5, "label": "Spearman Correlation"},
-                xticklabels=True,
-                yticklabels=True
-            )
-            ax.set_title(title, fontsize=10, pad=15)
-            plt.xticks(rotation=90, fontsize=max(4, 8 - n_channels // 10))
-            plt.yticks(rotation=0, fontsize=max(4, 8 - n_channels // 10))
-            # Ensure ticks match the fixed order
-            ax.set_xticks(np.arange(len(fixed_channel_order)) + 0.5)
-            ax.set_yticks(np.arange(len(fixed_channel_order)) + 0.5)
-            ax.set_xticklabels(fixed_channel_order)
-            ax.set_yticklabels(fixed_channel_order)
+        # Improve layout and appearance
+        clustermap.ax_heatmap.set_xlabel("Channels (Fixed Order)", fontsize=9)
+        clustermap.ax_heatmap.set_ylabel("Channels (Clustered)", fontsize=9)
+        # Set column labels explicitly to the fixed order
+        plt.setp(clustermap.ax_heatmap.get_xticklabels(), rotation=90, fontsize=max(4, 8 - n_channels // 10))
+        clustermap.ax_heatmap.set_xticks(np.arange(len(fixed_channel_order)) + 0.5)
+        clustermap.ax_heatmap.set_xticklabels(fixed_channel_order)
+        # Set row labels based on clustering
+        plt.setp(clustermap.ax_heatmap.get_yticklabels(), rotation=0, fontsize=max(4, 8 - n_channels // 10))
 
-            ordered_channels_list = fixed_channel_order # Return the order used
+        # Add title
+        clustermap.fig.suptitle(title, y=1.02, fontsize=10)
 
-        else:
+        # Add colorbar
+        cbar_ax = clustermap.fig.add_axes([0.85, 0.8, 0.03, 0.15])
+        plt.colorbar(clustermap.ax_heatmap.get_children()[0], cax=cbar_ax, label="Spearman Correlation")
+
+        # Extract the order of channels after ROW clustering
+        try:
+             row_indices = clustermap.dendrogram_row.reordered_ind
+             # Map row indices back to channel names (using the original index before potential row-subsetting)
+             original_row_channels = matrix_for_plot.index.tolist()
+             ordered_channels_list = [original_row_channels[i] for i in row_indices]
+        except Exception as e:
+             print(f"   WARNING: Could not extract row channel order from clustermap: {e}")
+             # Fallback: Use the order of rows as they appear in the input matrix
+             # This might not be ideal if the matrix was subsetted for rows too.
+             ordered_channels_list = matrix_for_plot.index.tolist()
+             
+        # Save the figure
+        plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
+        plt.close() # Close the figure to free memory
+        print(f"   --- Correlation map saved to: {os.path.basename(output_path)}")
+        return ordered_channels_list
+
+    else: # This block is now restored to original full clustering
+        # Determine appropriate figure size based on number of channels
+        n_channels = len(channels)
+        figsize_base = max(6, n_channels * 0.4)  # Adjust multiplier as needed
+        figsize = (figsize_base, figsize_base)
+
+        plt.figure(figsize=figsize) # Create a figure context for heatmap or clustermap
+
+        ordered_channels_list = None
+
+        try:
             # --- Plot Clustermap with Hierarchical Clustering ---
             print(f"   Generating clustermap with clustering ({n_channels} channels)...")
             clustermap = sns.clustermap(
-                correlation_matrix,
+                correlation_matrix, # Use original matrix before potential reordering
                 method='ward',      # Linkage method for clustering
                 metric='euclidean', # Distance metric (on correlations)
-                annot=False,        # Keep annotations off for clarity
+                # No row/col_cluster flags needed here, defaults are True
+                annot=True,         # Add correlation values
+                fmt='.2f',         # Format for annotations
+                annot_kws={"size": max(4, 8 - n_channels // 10)}, # Adjust font size based on number of channels
                 cmap='coolwarm',    # Diverging colormap appropriate for correlations
                 vmin=-1, vmax=1,    # Correlation ranges from -1 to 1
                 linewidths=.5,
                 figsize=figsize,    # Use calculated figsize
                 xticklabels=True,
                 yticklabels=True,
-                dendrogram_ratio=(.15, .15), # Adjust dendrogram size
+                dendrogram_ratio=(.15, .15), # Original ratio for both dendrograms
                 cbar_pos=None # Initially hide default cbar, will add manually if needed
-                # cbar_pos=(0.02, 0.8, 0.03, 0.18), # Example position [left, bottom, width, height]
-                # cbar_kws={"label": "Spearman Correlation"}
             )
 
             # Improve layout and appearance
@@ -947,34 +985,37 @@ def plot_correlation_clustermap(correlation_matrix: pd.DataFrame,
             cbar_ax = clustermap.fig.add_axes([0.85, 0.8, 0.03, 0.15]) # Adjust position [left, bottom, width, height]
             plt.colorbar(clustermap.ax_heatmap.get_children()[0], cax=cbar_ax, label="Spearman Correlation")
 
-            # Extract the order of channels after clustering
+            # Extract the order of channels after clustering (both rows and columns)
             try:
                  # Get the reordered indices from the dendrogram
                  row_indices = clustermap.dendrogram_row.reordered_ind
-                 col_indices = clustermap.dendrogram_col.reordered_ind # Should be same as row for square matrix
+                 col_indices = clustermap.dendrogram_col.reordered_ind # Original extraction for both
 
-                 # Map indices back to channel names
-                 ordered_channels_list = [correlation_matrix.index[i] for i in row_indices]
+                 # Map indices back to channel names (use row order as primary)
+                 original_channels = correlation_matrix.index.tolist() # Get channels before clustermap reordered them
+                 ordered_channels_list = [original_channels[i] for i in row_indices]
 
-                 if not all(correlation_matrix.index[i] == correlation_matrix.columns[col_indices[i]] for i in range(len(row_indices))):
+                 # Optional: Check if row/col orders differ (original check)
+                 col_ordered_channels = [original_channels[i] for i in col_indices]
+                 if ordered_channels_list != col_ordered_channels:
                       print("   WARNING: Row and Column clustering order differs significantly. Using row order.")
 
             except Exception as e:
                  print(f"   WARNING: Could not extract channel order from clustermap: {e}")
-                 ordered_channels_list = channels # Fallback to original order
+                 ordered_channels_list = channels # Fallback to original order (before clustering)
 
 
-        # Save the figure
-        plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
-        plt.close() # Close the figure to free memory
-        print(f"   --- Correlation map saved to: {os.path.basename(output_path)}")
-        return ordered_channels_list
+            # Save the figure
+            plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
+            plt.close() # Close the figure to free memory
+            print(f"   --- Correlation map saved to: {os.path.basename(output_path)}")
+            return ordered_channels_list
 
-    except Exception as e:
-        print(f"   ERROR generating correlation map: {e}")
-        traceback.print_exc()
-        plt.close() # Ensure plot is closed on error
-        return None # Return None on failure
+        except Exception as e:
+            print(f"   ERROR generating correlation map: {e}")
+            traceback.print_exc()
+            plt.close() # Ensure plot is closed on error
+            return None # Return None on failure
 
 
 # --- UMAP Community Plot ---
@@ -1238,3 +1279,125 @@ def plot_raw_vs_scaled_spatial_comparison(roi_raw_data: pd.DataFrame,
     except Exception as e:
          print(f"   Error saving {function_name} to {output_path}: {e}")
     plt.close(fig)
+
+# New function for community-based spatial visualization
+def plot_community_spatial_grid(
+    pixel_results_df: pd.DataFrame,     # Must contain 'X', 'Y', 'community', and channel columns
+    scaled_community_profiles: pd.DataFrame,  # Community averages
+    roi_channels: List[str],            # Channels to plot
+    roi_string: str,                    # For plot title
+    resolution_param: float,            # For plot title
+    output_path: str,                   # Where to save the plot
+    plot_dpi: int = 150,                # DPI for saving 
+    max_channels_per_row: int = 5       # Layout control
+):
+    """
+    Generates a grid of spatial plots showing communities colored by their average expression
+    for each channel. Similar to plot_raw_vs_scaled_spatial_comparison but at community level.
+    
+    Args:
+        pixel_results_df: DataFrame with spatial coordinates, community IDs and expression data
+        scaled_community_profiles: DataFrame with community average expression per channel
+        roi_channels: List of channels to visualize
+        roi_string: ROI identifier for plot title
+        resolution_param: Resolution parameter for plot title
+        output_path: Path to save the output plot
+        plot_dpi: DPI for saving the plot
+        max_channels_per_row: Maximum number of channels to show per row
+    """
+    print(f"   Generating community spatial expression grid...")
+    
+    # Validate inputs
+    if pixel_results_df.empty or 'community' not in pixel_results_df.columns:
+        print("   ERROR: Input data missing or lacks community column.")
+        return
+    if scaled_community_profiles.empty:
+        print("   ERROR: Community profile data is empty.")
+        return
+    if not roi_channels:
+        print("   ERROR: No channels specified to plot.")
+        return
+        
+    # Filter channels to those actually present in the data
+    valid_channels = [ch for ch in roi_channels if ch in scaled_community_profiles.columns]
+    if not valid_channels:
+        print("   ERROR: None of the specified channels found in community profiles.")
+        return
+        
+    # Calculate grid dimensions
+    n_channels = len(valid_channels)
+    n_cols = min(max_channels_per_row, n_channels)
+    n_rows = int(np.ceil(n_channels / n_cols))
+    
+    # Create figure
+    fig_width = n_cols * 3.5  # Width per subplot
+    fig_height = n_rows * 3.5  # Height per subplot
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(fig_width, fig_height), squeeze=False)
+    
+    # Get spatial range for consistent axes
+    x_min, x_max = pixel_results_df['X'].min(), pixel_results_df['X'].max()
+    y_min, y_max = pixel_results_df['Y'].min(), pixel_results_df['Y'].max()
+    
+    # For each channel, plot communities colored by their average expression
+    for idx, channel in enumerate(valid_channels):
+        row_idx = idx // n_cols
+        col_idx = idx % n_cols
+        ax = axes[row_idx, col_idx]
+        
+        # Map community averages to each pixel
+        if channel in scaled_community_profiles.columns:
+            # Create mapping from community ID to average expression
+            comm_avg_map = scaled_community_profiles[channel].to_dict()
+            
+            # Apply mapping to get expression values for each pixel based on its community
+            plot_df = pixel_results_df[['X', 'Y', 'community']].copy()
+            plot_df['avg_expr'] = plot_df['community'].map(comm_avg_map).fillna(0)
+            
+            # Plot
+            scatter = ax.scatter(
+                plot_df['X'], plot_df['Y'], 
+                c=plot_df['avg_expr'], 
+                cmap='viridis', 
+                s=1,  # Small point size for detail
+                marker='.',
+                alpha=0.8,
+                vmin=0, vmax=1  # Assuming scaled 0-1 values
+            )
+            
+            # Add colorbar
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            plt.colorbar(scatter, cax=cax)
+            
+            # Title for each subplot
+            ax.set_title(f"{channel}", fontsize=10)
+            
+            # Set limits for consistency
+            ax.set_xlim(x_min, x_max)
+            ax.set_ylim(y_min, y_max)
+            ax.set_aspect('equal')
+            
+            # Remove ticks for cleaner look
+            ax.set_xticks([])
+            ax.set_yticks([])
+        else:
+            ax.text(0.5, 0.5, f"No data for {channel}", 
+                   ha='center', va='center', transform=ax.transAxes)
+            ax.set_xticks([])
+            ax.set_yticks([])
+    
+    # Hide any unused subplots
+    for idx in range(n_channels, n_rows * n_cols):
+        row_idx = idx // n_cols
+        col_idx = idx % n_cols
+        axes[row_idx, col_idx].axis('off')
+    
+    # Add overall title
+    fig.suptitle(f"Community Average Expression - {roi_string} (Res: {resolution_param})", 
+                fontsize=14, y=0.98)
+    
+    # Adjust layout and save
+    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Make room for suptitle
+    plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
+    plt.close(fig)
+    print(f"   --- Community spatial grid saved to: {os.path.basename(output_path)}")
