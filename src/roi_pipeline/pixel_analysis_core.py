@@ -14,6 +14,13 @@ from scipy.spatial import KDTree
 from scipy.optimize import brentq # For GMM intersection
 from scipy.stats import norm # For GMM PDF
 
+# Optional UMAP import
+try:
+    import umap
+    _umap_import_success = True
+except ImportError:
+    _umap_import_success = False
+
 # ==============================================================================
 # Spatial Clustering (Leiden)
 # ==============================================================================
@@ -401,4 +408,182 @@ def calculate_differential_expression(
         return pd.DataFrame(), pd.Series(dtype=str)
 
     print(f"--- Differential Expression Analysis finished in {time.time() - start_time_diff:.2f} seconds ---")
-    return community_diff_profiles_df, primary_channel_map 
+    return community_diff_profiles_df, primary_channel_map
+
+
+# ==============================================================================
+# UMAP Calculation
+# ==============================================================================
+
+def calculate_and_save_umap(
+    diff_expr_profiles: Optional[pd.DataFrame],
+    scaled_community_profiles: Optional[pd.DataFrame],
+    roi_channels: List[str],
+    resolution_output_dir: str,
+    roi_string: str,
+    resolution_param: float,
+    config: Dict,
+    umap_available: bool # Pass the check result from the main script
+) -> Optional[pd.DataFrame]:
+    """
+    Calculates UMAP embedding based on community profiles (preferentially differential) and saves coordinates.
+
+    Args:
+        diff_expr_profiles: DataFrame of differential expression profiles (communities x channels).
+        scaled_community_profiles: DataFrame of average scaled expression profiles (communities x channels).
+        roi_channels: List of all valid protein channel names for the ROI.
+        resolution_output_dir: Directory to save the UMAP coordinates CSV.
+        roi_string: ROI identifier string.
+        resolution_param: The resolution parameter used for this analysis step.
+        config: The pipeline configuration dictionary.
+        umap_available: Boolean flag indicating if the umap-learn package was successfully imported.
+
+    Returns:
+        DataFrame containing UMAP coordinates (UMAP1, UMAP2, ...) with community IDs as index, or None if skipped/failed.
+    """
+    print("\n--- Running UMAP Analysis --- ")
+    if not umap_available:
+        print("   Skipping UMAP: umap-learn package not available.")
+        return None
+    if not _umap_import_success:
+         print("   Skipping UMAP: umap-learn package failed to import within pixel_analysis_core.")
+         return None
+
+    cfg_analysis = config.get('analysis', {})
+    cfg_umap = cfg_analysis.get('umap', {})
+    cfg_clustering = cfg_analysis.get('clustering', {})
+    cfg_diffex = cfg_analysis.get('differential_expression', {})
+
+    umap_coords = None
+    start_time_umap = time.time()
+
+    try:
+        # Determine input data for UMAP (prioritize DiffExpr if available and valid)
+        umap_input_data = None
+        input_data_source = "None"
+        communities_in_order = None
+
+        if diff_expr_profiles is not None and not diff_expr_profiles.empty:
+            non_protein_markers = cfg_diffex.get('non_protein_markers_for_umap', [])
+            protein_marker_channels_for_umap = [
+                ch for ch in diff_expr_profiles.columns
+                if ch in roi_channels and ch not in non_protein_markers
+            ]
+            if protein_marker_channels_for_umap:
+                umap_input_data = diff_expr_profiles[protein_marker_channels_for_umap].copy()
+                communities_in_order = diff_expr_profiles.index.tolist()
+                input_data_source = "Differential Profiles"
+                print(f"   Using Differential Profiles with {len(protein_marker_channels_for_umap)} protein markers for UMAP.")
+            else:
+                print("   No protein markers found in differential profiles.")
+
+        if umap_input_data is None and scaled_community_profiles is not None and not scaled_community_profiles.empty:
+            print("   Falling back to using Scaled Community Profiles for UMAP.")
+            # Use all channels available in scaled profiles if using them
+            umap_input_data = scaled_community_profiles[list(set(roi_channels) & set(scaled_community_profiles.columns))].copy()
+            communities_in_order = scaled_community_profiles.index.tolist()
+            input_data_source = "Scaled Profiles"
+
+        if umap_input_data is not None and communities_in_order is not None:
+            # Clean input data
+            if umap_input_data.isnull().values.any() or np.isinf(umap_input_data.values).any():
+                 print("   Warning: NaN/Inf values found in UMAP input. Replacing with 0.")
+                 umap_input_data = umap_input_data.fillna(0).replace([np.inf, -np.inf], 0)
+
+            n_communities = len(umap_input_data)
+            umap_n_neighbors = min(cfg_umap.get('n_neighbors', 15), n_communities - 1) if n_communities > 1 else 1
+            current_umap_n_components = max(2, cfg_umap.get('n_components', 2))
+            umap_metric = cfg_umap.get('metric', 'euclidean')
+            umap_min_dist = cfg_umap.get('min_dist', 0.1)
+            umap_seed = cfg_clustering.get('seed', 42)
+
+            if n_communities > umap_n_neighbors and n_communities >= current_umap_n_components:
+                 print(f"   Embedding {n_communities} communities into {current_umap_n_components} dimensions (k={umap_n_neighbors}, metric={umap_metric})...")
+                 # UMAP calculation (CPU/GPU)
+                 use_gpu_umap = check_gpu_availability(verbose=False)
+                 cuml = get_rapids_lib('cuml')
+                 cupy = get_rapids_lib('cupy')
+
+                 if use_gpu_umap and cuml and cupy:
+                     print("      Using GPU-accelerated UMAP (cuML).")
+                     try:
+                         input_gpu = cupy.asarray(umap_input_data.values.astype(np.float32)) # Ensure float32 for cuML
+                         umap_gpu = cuml.UMAP(
+                             n_neighbors=umap_n_neighbors,
+                             min_dist=umap_min_dist,
+                             n_components=current_umap_n_components,
+                             metric=umap_metric,
+                             random_state=umap_seed
+                         )
+                         embedding_gpu = umap_gpu.fit_transform(input_gpu)
+                         embedding = embedding_gpu.get() if hasattr(embedding_gpu, 'get') else embedding_gpu
+                         del input_gpu, umap_gpu, embedding_gpu # Clear GPU memory
+                         if cupy:
+                            mempool = cupy.get_default_memory_pool()
+                            mempool.free_all_blocks()
+                     except Exception as gpu_err:
+                         print(f"      ERROR during GPU UMAP execution: {gpu_err}")
+                         print("      Falling back to CPU UMAP.")
+                         use_gpu_umap = False # Force fallback
+                         embedding = None
+                 else:
+                      use_gpu_umap = False # Ensure flag is false if libs not found
+
+                 if not use_gpu_umap or embedding is None:
+                     if use_gpu_umap: # only print warning if it was attempted
+                        print("      WARNING: cuML/CuPy not available or GPU UMAP failed. Using CPU UMAP.")
+                     else:
+                         print("      Using CPU UMAP (umap-learn). ")
+                     try:
+                        umap_reducer = umap.UMAP(
+                            n_neighbors=umap_n_neighbors,
+                            min_dist=umap_min_dist,
+                            n_components=current_umap_n_components,
+                            metric=umap_metric,
+                            random_state=umap_seed
+                        )
+                        embedding = umap_reducer.fit_transform(umap_input_data.values)
+                     except Exception as cpu_err:
+                          print(f"     ERROR during CPU UMAP execution: {cpu_err}")
+                          embedding = None
+                          traceback.print_exc()
+
+                 # Save UMAP coordinates if embedding was successful
+                 if embedding is not None:
+                     umap_component_names = [f'UMAP{i+1}' for i in range(current_umap_n_components)]
+                     # Ensure index is correct type (e.g., int if community IDs are ints)
+                     try:
+                         index_type = umap_input_data.index.dtype
+                         umap_coords = pd.DataFrame(embedding, index=communities_in_order, columns=umap_component_names)
+                         umap_coords.index = umap_coords.index.astype(index_type)
+                         umap_coords.index.name = 'community' # Explicitly name the index
+                     except Exception as index_err:
+                         print(f"    ERROR setting index for UMAP coordinates: {index_err}")
+                         umap_coords = None # Fail saving if index is wrong
+
+                     if umap_coords is not None:
+                         umap_coords_path = os.path.join(resolution_output_dir, f"umap_coords_{roi_string}_res_{resolution_param}.csv")
+                         try:
+                             umap_coords.to_csv(umap_coords_path)
+                             print(f"      UMAP coordinates saved to: {os.path.basename(umap_coords_path)}")
+                         except Exception as save_err:
+                             print(f"      ERROR saving UMAP coordinates to {umap_coords_path}: {save_err}")
+                             umap_coords = None # Indicate failure if saving fails
+                 else:
+                     print("      UMAP embedding calculation failed.")
+                     umap_coords = None
+
+            else:
+                 print(f"   Skipping UMAP embedding: Not enough communities ({n_communities}) vs neighbors ({umap_n_neighbors}) or components ({current_umap_n_components}).")
+                 umap_coords = None
+        else:
+            print("   Skipping UMAP: No suitable input data (scaled or diff profiles found or provided).")
+            umap_coords = None
+
+    except Exception as umap_err:
+         print(f"   ERROR during UMAP analysis setup or execution: {umap_err}")
+         traceback.print_exc() # Print stack trace for UMAP errors
+         umap_coords = None # Ensure umap_coords is None if error occurs
+
+    print(f"--- UMAP Analysis finished in {time.time() - start_time_umap:.2f} seconds ---")
+    return umap_coords 
