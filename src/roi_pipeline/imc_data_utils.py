@@ -166,7 +166,7 @@ def optimized_gaussian_fit_cofactor(channel_data: pd.Series, initial_range=(1, 2
 
     return optimal_cofactor
 
-def calculate_optimal_cofactors_for_roi(
+def calculate_asinh_cofactors_for_roi(
     roi_df: pd.DataFrame,
     channels_to_process: List[str],
     default_cofactor: float,
@@ -188,13 +188,13 @@ def calculate_optimal_cofactors_for_roi(
     """
     print("\nCalculating optimal Arcsinh cofactors for ROI...")
     start_time_cofactor = time.time()
-    optimal_cofactors = {}
+    asinh_cofactors = {}
 
     for channel in channels_to_process:
         # print(f"  Processing channel: {channel}") # Verbose
         if channel not in roi_df.columns:
             print(f"    Warning: Channel '{channel}' not found in DataFrame. Using default cofactor.")
-            optimal_cofactors[channel] = default_cofactor
+            asinh_cofactors[channel] = default_cofactor
             continue
 
         try:
@@ -205,38 +205,38 @@ def calculate_optimal_cofactors_for_roi(
             # (e.g., enough unique positive values)
             if raw_channel_data.empty or raw_channel_data.nunique() <= 1 or (raw_channel_data > 0).sum() < 100: # Increased threshold
                 # print(f"    Skipping cofactor calculation for {channel}: Not enough unique/positive values.") # Verbose
-                optimal_cofactors[channel] = default_cofactor
+                asinh_cofactors[channel] = default_cofactor
             else:
                  # Call the core optimization function
                  calculated_cofactor = optimized_gaussian_fit_cofactor(raw_channel_data, plot_fits=False)
-                 optimal_cofactors[channel] = calculated_cofactor
+                 asinh_cofactors[channel] = calculated_cofactor
                  # print(f"    Optimal cofactor for {channel}: {calculated_cofactor:.2f}") # Verbose
 
         except Exception as e:
              print(f"    Error calculating cofactor for {channel}: {e}. Using default: {default_cofactor}")
              # traceback.print_exc() # Optional for more detailed debugging
-             optimal_cofactors[channel] = default_cofactor # Fallback cofactor on error
+             asinh_cofactors[channel] = default_cofactor # Fallback cofactor on error
 
     # Ensure all requested channels have a cofactor entry (should be covered by loop/error handling)
     for channel in channels_to_process:
-        if channel not in optimal_cofactors:
+        if channel not in asinh_cofactors:
             print(f"    Warning: Channel '{channel}' was missed in calculation loop. Assigning default.")
-            optimal_cofactors[channel] = default_cofactor
+            asinh_cofactors[channel] = default_cofactor
 
     print(f"--- Cofactor calculation finished in {time.time() - start_time_cofactor:.2f} seconds ---")
-    # print("Calculated Optimal Cofactors:", optimal_cofactors) # Optional summary print
+    # print("Calculated Optimal Cofactors:", asinh_cofactors) # Optional summary print
 
     # --- Add saving logic ---
-    cofactor_file_path = os.path.join(output_dir, f"optimal_cofactors_{roi_string}.json")
+    cofactor_file_path = os.path.join(output_dir, f"asinh_cofactors_{roi_string}.json")
     try:
         with open(cofactor_file_path, 'w') as f:
-            json.dump(optimal_cofactors, f, indent=4)
+            json.dump(asinh_cofactors, f, indent=4)
         print(f"   Optimal cofactors saved to: {cofactor_file_path}")
     except Exception as e:
         print(f"   Error saving optimal cofactors to {cofactor_file_path}: {e}")
     # --- End saving logic ---
 
-    return optimal_cofactors
+    return asinh_cofactors
 
 # ==============================================================================
 # Data Loading and Validation
@@ -246,95 +246,72 @@ def load_and_validate_roi_data(
     file_path: str,
     master_protein_channels: List[str],
     base_output_dir: str,
-    metadata_cols: List[str] # Added metadata_cols as parameter
+    metadata_cols: List[str]
 ) -> Tuple[Optional[str], Optional[str], Optional[pd.DataFrame], Optional[List[str]]]:
-    """
-    Loads data for a specific ROI, validates channels, and sets up output directory.
+    """Loads ROI data, validates channels, and creates output directory."""
+    # --- Derive metadata_key and roi_string separately ---
+    base_name = os.path.basename(file_path)
+    if not base_name.lower().endswith(".txt"):
+        print(f"   ERROR: Input file '{base_name}' does not end with .txt. Skipping.")
+        return None, None, None, None
 
-    Args:
-        file_path: Path to the IMC .txt file.
-        master_protein_channels: List of all protein channels expected across ROIs.
-        base_output_dir: The main directory where ROI-specific subdirectories will be created.
-        metadata_cols: List of columns to exclude from being considered protein channels.
+    # 1) metadata_key: full base filename without extension, for metadata lookup
+    metadata_key = base_name[:-4]
 
+    # 2) roi_string: the short ID beginning 'ROI_…', for naming outputs
+    roi_string = extract_roi(base_name)
+    print(f"   Derived roi_string (for outputs): {roi_string}")
+    print(f"   Derived metadata_key (for metadata lookup): {metadata_key}")
 
-    Returns:
-        A tuple containing:
-        - roi_string: Extracted ROI identifier (or None if extraction fails).
-        - roi_output_dir: Path to the dedicated output directory for this ROI (or None).
-        - current_df_raw: Loaded pandas DataFrame (or None if loading/validation fails).
-        - current_valid_channels: List of protein channels found in this file (or None).
-        Returns (None, None, None, None) upon failure to load or validate.
-    """
-    print(f"--- Loading and Validating: {os.path.basename(file_path)} ---")
-    roi_string = None
-    roi_output_dir = None
+    # --- Create Output Directory ---
+    roi_output_dir = os.path.join(base_output_dir, roi_string)
     try:
-        # Extract ROI information using the helper function
-        roi_string = extract_roi(file_path)
-        if not roi_string:
-            # Error message already printed by extract_roi fallback
-            return None, None, None, None
-
-        print(f"ROI Identifier: {roi_string}")
-
-        # Create ROI-specific output directory
-        roi_output_dir = os.path.join(base_output_dir, roi_string)
         os.makedirs(roi_output_dir, exist_ok=True)
-        # print(f"Output directory for this ROI: {roi_output_dir}") # Verbose
-
-        # Load data
-        print("Loading data...")
-        current_df_raw = pd.read_csv(file_path, sep="\t")
-        print(f"Loaded data with shape: {current_df_raw.shape}")
-
-        # Identify channels present in this specific file that are in the master list
-        available_master_channels = [
-            col for col in master_protein_channels if col in current_df_raw.columns
-        ]
-
-        # Further filter to exclude metadata columns (ensure X, Y are not accidentally excluded if not in metadata_cols)
-        current_valid_channels = [
-             ch for ch in available_master_channels if ch not in metadata_cols
-        ]
-
-
-        # Validate channel count
-        if len(current_valid_channels) < 2:
-            print(
-                f"WARNING: Not enough valid protein channels found in this file "
-                f"({len(current_valid_channels)} found). Requires at least 2. Skipping analysis for this ROI."
-            )
-            return roi_string, roi_output_dir, None, None # Return ROI info but None for data
-
-        print(f"Using {len(current_valid_channels)} channels for analysis.") # Less verbose: {current_valid_channels}")
-
-        # Check for necessary coordinate columns
-        if 'X' not in current_df_raw.columns or 'Y' not in current_df_raw.columns:
-             print(f"ERROR: Missing required coordinate columns 'X' or 'Y' in {file_path}. Skipping.")
-             return roi_string, roi_output_dir, None, None
-
-        # Check for NaNs in coordinates or channels (critical for downstream)
-        critical_cols = ['X', 'Y'] + current_valid_channels
-        if current_df_raw[critical_cols].isnull().values.any():
-             print("ERROR: NaN values found in coordinate or channel data. Cannot proceed. Please clean data first. Skipping.")
-             # Example fill (use with caution, better to clean upstream):
-             # current_df_raw.fillna(0, inplace=True)
-             return roi_string, roi_output_dir, None, None
-
-
-        return roi_string, roi_output_dir, current_df_raw, current_valid_channels
-
-    except FileNotFoundError:
-        print(f"ERROR: File not found at {file_path}.")
-        return roi_string, roi_output_dir, None, None # Return what we have if possible
-    except pd.errors.EmptyDataError:
-        print(f"ERROR: File {file_path} is empty or invalid.")
-        return roi_string, roi_output_dir, None, None # Return what we have if possible
     except Exception as e:
-        print(f"An unexpected error occurred during data loading/validation for {file_path}: {str(e)}")
-        traceback.print_exc()
-        return roi_string, roi_output_dir, None, None # Return what we have if possible
+        print(f"   Error creating output directory for {roi_string}: {e}")
+        return None, None, None, None
+
+    # Load data
+    print("Loading data...")
+    current_df_raw = pd.read_csv(file_path, sep="\t")
+    print(f"Loaded data with shape: {current_df_raw.shape}")
+
+    # Identify channels present in this specific file that are in the master list
+    available_master_channels = [
+        col for col in master_protein_channels if col in current_df_raw.columns
+    ]
+
+    # Further filter to exclude metadata columns (ensure X, Y are not accidentally excluded if not in metadata_cols)
+    current_valid_channels = [
+         ch for ch in available_master_channels if ch not in metadata_cols
+    ]
+
+
+    # Validate channel count
+    if len(current_valid_channels) < 2:
+        print(
+            f"WARNING: Not enough valid protein channels found in this file "
+            f"({len(current_valid_channels)} found). Requires at least 2. Skipping analysis for this ROI."
+        )
+        return roi_string, roi_output_dir, None, None # Return ROI info but None for data
+
+    print(f"Using {len(current_valid_channels)} channels for analysis.") # Less verbose: {current_valid_channels}")
+
+    # Check for necessary coordinate columns
+    if 'X' not in current_df_raw.columns or 'Y' not in current_df_raw.columns:
+         print(f"ERROR: Missing required coordinate columns 'X' or 'Y' in {file_path}. Skipping.")
+         return roi_string, roi_output_dir, None, None
+
+    # Check for NaNs in coordinates or channels (critical for downstream)
+    critical_cols = ['X', 'Y'] + current_valid_channels
+    if current_df_raw[critical_cols].isnull().values.any():
+         print("ERROR: NaN values found in coordinate or channel data. Cannot proceed. Please clean data first. Skipping.")
+         # Example fill (use with caution, better to clean upstream):
+         # current_df_raw.fillna(0, inplace=True)
+         return roi_string, roi_output_dir, None, None
+
+
+    return roi_string, roi_output_dir, current_df_raw, current_valid_channels
 
 
 # ==============================================================================

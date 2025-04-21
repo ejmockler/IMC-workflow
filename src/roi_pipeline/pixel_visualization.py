@@ -141,7 +141,7 @@ def add_coexpression_colorbar(fig, bbox=None):
 # Deprecated / Original Exploratory Plots (Possibly Unused)
 # ==============================================================================
 
-# def plot_channel_pair(ax, sampled_df, channel1, channel2, cofactor=None, optimal_cofactors=None):
+# def plot_channel_pair(ax, sampled_df, channel1, channel2, cofactor=None, asinh_cofactors=None):
 #     \"\"\"
 #     [DEPRECATED/EXPLORATORY] Plot a single channel pair on the given axis with arcsinh transformation.
 #     Likely used in initial notebook exploration, may not be used in batch workflow.
@@ -152,7 +152,7 @@ def add_coexpression_colorbar(fig, bbox=None):
 #     - channel1: first channel name
 #     - channel2: second channel name
 #     - cofactor: Optional fixed arcsinh cofactor
-#     - optimal_cofactors: Dictionary of optimal cofactors by channel
+#     - asinh_cofactors: Dictionary of optimal cofactors by channel
 #
 #     Returns:
 #     - Used cofactor value
@@ -171,9 +171,9 @@ def add_coexpression_colorbar(fig, bbox=None):
 #
 #     # Determine cofactor (same logic as before)
 #     if cofactor is None:
-#         if optimal_cofactors and channel1 in optimal_cofactors and channel2 in optimal_cofactors:
+#         if asinh_cofactors and channel1 in asinh_cofactors and channel2 in asinh_cofactors:
 #             # Use average of the two channels' optimal cofactors if available
-#             cofactor = (optimal_cofactors[channel1] + optimal_cofactors[channel2]) / 2
+#             cofactor = (asinh_cofactors[channel1] + asinh_cofactors[channel2]) / 2
 #         else:
 #             cofactor = 5.0 # Default fallback
 #     cofactor_text = f"arcsinh(x/{cofactor:.1f})"
@@ -249,7 +249,7 @@ def add_coexpression_colorbar(fig, bbox=None):
 #     return cofactor
 #
 # def create_coexpression_figure(channel_pairs, sampled_df, start_idx=0, count=36, title=None,
-#                              cofactor=None, optimal_cofactors=None):
+#                              cofactor=None, asinh_cofactors=None):
 #     \"\"\"
 #     [DEPRECATED/EXPLORATORY] Create a figure with co-expression maps for multiple channel pairs.
 #     Likely used in initial notebook exploration, may not be used in batch workflow.
@@ -275,7 +275,7 @@ def add_coexpression_colorbar(fig, bbox=None):
 #         ax = axs_flat[i]
 #         used_cofactor = plot_channel_pair(ax, sampled_df, channel1, channel2,
 #                                        cofactor=cofactor,
-#                                        optimal_cofactors=optimal_cofactors)
+#                                        asinh_cofactors=asinh_cofactors)
 #         used_cofactors.append(used_cofactor)
 #
 #     # Hide unused axes
@@ -320,7 +320,7 @@ def add_coexpression_colorbar(fig, bbox=None):
 #     plt.show()
 #     return end_idx
 #
-# def generate_histograms(df, channels, optimal_cofactors, roi_string, save_dir, hist_cols, plot_dpi, default_cofactor):
+# def generate_histograms(df, channels, asinh_cofactors, roi_string, save_dir, hist_cols, plot_dpi, default_cofactor):
 #     \"\"\"[DEPRECATED/EXPLORATORY] Generates and saves histograms with GMM and Otsu gating.
 #         Requires scikit-learn and scikit-image.
 #     \"\"\"
@@ -343,7 +343,7 @@ def add_coexpression_colorbar(fig, bbox=None):
 #
 #     for i, channel in enumerate(channels):
 #         ax = axs[i]
-#         cofactor = optimal_cofactors.get(channel, default_cofactor) # Use provided default
+#         cofactor = asinh_cofactors.get(channel, default_cofactor) # Use provided default
 #         raw_data = df[channel].fillna(0)
 #         filtered_data = raw_data[raw_data > 0]
 #
@@ -436,7 +436,7 @@ def add_coexpression_colorbar(fig, bbox=None):
 #
 #     return gating_thresholds
 #
-# def generate_coexpression_maps(df, channels, optimal_cofactors, roi_string, save_dir, plot_dpi, default_cofactor):
+# def generate_coexpression_maps(df, channels, asinh_cofactors, roi_string, save_dir, plot_dpi, default_cofactor):
 #     \"\"\"
 #     [DEPRECATED/EXPLORATORY] Generates and saves co-expression maps arranged in an upper triangular matrix layout.
 #     \"\"\"
@@ -505,10 +505,10 @@ def add_coexpression_colorbar(fig, bbox=None):
 #             else:
 #                 channel1 = sorted_channels[i]
 #                 channel2 = sorted_channels[j]
-#                 # Pass default cofactor explicitly if optimal_cofactors dict might be incomplete
-#                 specific_optimal_cofactors = {ch: optimal_cofactors.get(ch, default_cofactor) for ch in [channel1, channel2]}
+#                 # Pass default cofactor explicitly if asinh_cofactors dict might be incomplete
+#                 specific_asinh_cofactors = {ch: asinh_cofactors.get(ch, default_cofactor) for ch in [channel1, channel2]}
 #                 current_cofactor = plot_channel_pair(ax, df, channel1, channel2,
-#                                                    optimal_cofactors=specific_optimal_cofactors)
+#                                                    asinh_cofactors=specific_asinh_cofactors)
 #                 used_cofactors.append(current_cofactor)
 #                 ax.set_title("")
 #                 ax.set_xlabel("")
@@ -841,87 +841,143 @@ def plot_correlation_clustermap(correlation_matrix: pd.DataFrame,
                                 channels: list,
                                 title: str,
                                 output_path: str,
-                                plot_dpi: int = 150) -> Optional[List[str]]: # Return type added
+                                plot_dpi: int = 150,
+                                fixed_channel_order: Optional[List[str]] = None) -> Optional[List[str]]: # Return type added, new arg
     """
-    Generates a clustermap (heatmap with hierarchical clustering) of a channel correlation matrix.
-    Uses seaborn for plotting.
+    Generates and saves a clustermap (or heatmap if order is fixed) of channel correlations.
 
     Args:
-        correlation_matrix: A pandas DataFrame containing the correlation values.
-        channels: The list of channel names corresponding to the matrix rows/columns.
+        correlation_matrix: DataFrame containing the correlation values.
+        channels: List of channels corresponding to the matrix rows/columns.
         title: Title for the plot.
-        output_path: Full path to save the output plot file.
-        plot_dpi: DPI for the saved plot.
+        output_path: Path to save the plot (.svg or .png recommended).
+        plot_dpi: DPI for saving the plot.
+        fixed_channel_order: If provided, use this exact order for rows/columns
+                             and plot a heatmap instead of a clustermap.
 
     Returns:
-        The list of channel names in the order determined by the clustering,
-        or the original list if clustering fails or is skipped.
+        A list of channel names in the order they appear on the final plot axes,
+        or None if plotting fails.
     """
-    print(f"   Saving correlation clustermap to: {os.path.basename(output_path)}")
-    ordered_channels = channels # Default return value
+    print(f"   Attempting to generate correlation map: {os.path.basename(output_path)}")
+    if correlation_matrix.empty or len(channels) < 2:
+        print("   Skipping correlation map: Not enough data or channels.")
+        return None
+
+    # Check if channels in fixed order are valid
+    if fixed_channel_order:
+        missing_channels = [ch for ch in fixed_channel_order if ch not in correlation_matrix.columns]
+        available_channels_in_order = [ch for ch in fixed_channel_order if ch in correlation_matrix.columns]
+        if missing_channels:
+            print(f"   WARNING: Channels in fixed_channel_order not found in correlation matrix: {missing_channels}. Using available subset.")
+        if not available_channels_in_order or len(available_channels_in_order) < 2:
+             print("   ERROR: No valid channels remaining after applying fixed_channel_order. Cannot generate heatmap.")
+             return None # Cannot proceed
+        # Use the subset of available channels in the specified order
+        fixed_channel_order = available_channels_in_order
+        correlation_matrix = correlation_matrix.loc[fixed_channel_order, fixed_channel_order]
+        channels = fixed_channel_order # Update channels list to match data
+
+
+    # Determine appropriate figure size based on number of channels
+    n_channels = len(channels)
+    figsize_base = max(6, n_channels * 0.4)  # Adjust multiplier as needed
+    figsize = (figsize_base, figsize_base)
+
+    plt.figure(figsize=figsize) # Create a figure context for heatmap or clustermap
+
+    ordered_channels_list = None
 
     try:
-        num_ch = len(channels)
-        if num_ch < 2:
-            print("   Skipping clustermap generation: Need at least 2 channels.")
-            return channels # Return original channels if not enough to cluster
+        if fixed_channel_order:
+            # --- Plot Heatmap with Fixed Order ---
+            print(f"   Generating heatmap with fixed order ({len(fixed_channel_order)} channels)...")
+            ax = sns.heatmap(
+                correlation_matrix, # Already reordered
+                annot=False, # Annotations usually too dense
+                cmap='coolwarm', # Diverging colormap
+                vmin=-1, vmax=1, # Set range for correlation
+                square=True,
+                linewidths=.5,
+                cbar_kws={"shrink": .5, "label": "Spearman Correlation"},
+                xticklabels=True,
+                yticklabels=True
+            )
+            ax.set_title(title, fontsize=10, pad=15)
+            plt.xticks(rotation=90, fontsize=max(4, 8 - n_channels // 10))
+            plt.yticks(rotation=0, fontsize=max(4, 8 - n_channels // 10))
+            # Ensure ticks match the fixed order
+            ax.set_xticks(np.arange(len(fixed_channel_order)) + 0.5)
+            ax.set_yticks(np.arange(len(fixed_channel_order)) + 0.5)
+            ax.set_xticklabels(fixed_channel_order)
+            ax.set_yticklabels(fixed_channel_order)
 
-        fig_size_dim = max(8, num_ch * 0.7)
-        annot_size = 6 if num_ch > 15 else 8
+            ordered_channels_list = fixed_channel_order # Return the order used
 
-        plt.figure() # Create a new figure context for clustermap
-        clustergrid = sns.clustermap(
-            correlation_matrix,
-            method='average',
-            metric='correlation',
-            cmap='vlag', vmin=-1, vmax=1,
-            linewidths=0.5, linecolor='lightgray',
-            annot=True,
-            annot_kws={"size": annot_size},
-            fmt=".2f",
-            figsize=(fig_size_dim, fig_size_dim)
-        )
+        else:
+            # --- Plot Clustermap with Hierarchical Clustering ---
+            print(f"   Generating clustermap with clustering ({n_channels} channels)...")
+            clustermap = sns.clustermap(
+                correlation_matrix,
+                method='ward',      # Linkage method for clustering
+                metric='euclidean', # Distance metric (on correlations)
+                annot=False,        # Keep annotations off for clarity
+                cmap='coolwarm',    # Diverging colormap appropriate for correlations
+                vmin=-1, vmax=1,    # Correlation ranges from -1 to 1
+                linewidths=.5,
+                figsize=figsize,    # Use calculated figsize
+                xticklabels=True,
+                yticklabels=True,
+                dendrogram_ratio=(.15, .15), # Adjust dendrogram size
+                cbar_pos=None # Initially hide default cbar, will add manually if needed
+                # cbar_pos=(0.02, 0.8, 0.03, 0.18), # Example position [left, bottom, width, height]
+                # cbar_kws={"label": "Spearman Correlation"}
+            )
 
-        # Get channel order from the plotted heatmap
-        try:
-            # Access the reordered index from the heatmap axes
-            ordered_channels = clustergrid.dendrogram_row.reordered_ind
-            ordered_channels = correlation_matrix.index[ordered_channels].tolist()
-            print(f"   Determined channel order from clustermap: {ordered_channels}")
-        except AttributeError:
-            # Fallback for older seaborn or if attribute names change
+            # Improve layout and appearance
+            clustermap.ax_heatmap.set_xlabel("Channels", fontsize=9)
+            clustermap.ax_heatmap.set_ylabel("Channels", fontsize=9)
+            plt.setp(clustermap.ax_heatmap.get_xticklabels(), rotation=90, fontsize=max(4, 8 - n_channels // 10))
+            plt.setp(clustermap.ax_heatmap.get_yticklabels(), rotation=0, fontsize=max(4, 8 - n_channels // 10))
+
+            # Add title to the figure (clustermap object is a Figure-level grid)
+            clustermap.fig.suptitle(title, y=1.02, fontsize=10) # Adjust y position
+
+            # Add a colorbar manually in a better position
+            cbar_ax = clustermap.fig.add_axes([0.85, 0.8, 0.03, 0.15]) # Adjust position [left, bottom, width, height]
+            plt.colorbar(clustermap.ax_heatmap.get_children()[0], cax=cbar_ax, label="Spearman Correlation")
+
+            # Extract the order of channels after clustering
             try:
-                 ordered_indices = clustergrid.dendrogram_row.reordered_ind
-                 ordered_channels = [correlation_matrix.index[i] for i in ordered_indices]
-                 print(f"   Determined channel order from clustermap (fallback): {ordered_channels}")
+                 # Get the reordered indices from the dendrogram
+                 row_indices = clustermap.dendrogram_row.reordered_ind
+                 col_indices = clustermap.dendrogram_col.reordered_ind # Should be same as row for square matrix
+
+                 # Map indices back to channel names
+                 ordered_channels_list = [correlation_matrix.index[i] for i in row_indices]
+
+                 if not all(correlation_matrix.index[i] == correlation_matrix.columns[col_indices[i]] for i in range(len(row_indices))):
+                      print("   WARNING: Row and Column clustering order differs significantly. Using row order.")
+
             except Exception as e:
-                 print(f"   WARNING: Could not extract channel order from clustermap: {e}. Using original order.")
-                 ordered_channels = channels # Fallback to original channel list
-        except Exception as e:
-             print(f"   WARNING: Could not extract channel order from clustermap: {e}. Using original order.")
-             ordered_channels = channels # Fallback to original channel list
+                 print(f"   WARNING: Could not extract channel order from clustermap: {e}")
+                 ordered_channels_list = channels # Fallback to original order
 
-        clustergrid.fig.suptitle(title, y=1.02, fontsize=14)
-        plt.setp(clustergrid.ax_heatmap.get_xticklabels(), rotation=60, ha='right', fontsize=9)
-        plt.setp(clustergrid.ax_heatmap.get_yticklabels(), rotation=0, fontsize=9)
 
-        # Adjust layout slightly to prevent title overlap
-        clustergrid.fig.tight_layout(rect=[0, 0, 1, 0.97])
-
+        # Save the figure
         plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
-        print(f"   Correlation clustermap saved to: {output_path}")
-        plt.close(clustergrid.fig)
+        plt.close() # Close the figure to free memory
+        print(f"   --- Correlation map saved to: {os.path.basename(output_path)}")
+        return ordered_channels_list
 
-    except ImportError:
-        print("   Seaborn package not found. Cannot generate clustermap.")
-        ordered_channels = channels # Fallback
     except Exception as e:
-        print(f"   Error during clustermap visualization: {e}")
+        print(f"   ERROR generating correlation map: {e}")
         traceback.print_exc()
-        plt.close('all') # Close any potentially lingering plots
-        ordered_channels = channels # Fallback
+        plt.close() # Ensure plot is closed on error
+        return None # Return None on failure
 
-    return ordered_channels # Return the determined (or fallback) order
+
+# --- UMAP Community Plot ---
 
 def plot_umap_scatter(umap_coords: pd.DataFrame, # Should have UMAP1, UMAP2, index=community_id
                         community_top_channel_map: pd.Series, # index=community_id, value=channel_name
