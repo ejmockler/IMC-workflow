@@ -24,15 +24,6 @@ try:
     faiss_available = True
 except ImportError:
     faiss_available = False
-    # Don't print warning here, handle based on context later
-# --- End Faiss import ---
-# --- Add KDTree import back for fallback ---
-try:
-    from scipy.spatial import KDTree
-    kdtree_available = True
-except ImportError:
-    kdtree_available = False
-# --- End KDTree import ---
 
 # ==============================================================================
 # Spatial Clustering (Leiden)
@@ -51,6 +42,8 @@ def run_spatial_leiden(
     """
     Performs pixel-based Leiden community detection on IMC data using pre-scaled expression data.
     Uses Faiss (GPU or CPU) for Approximate Nearest Neighbors (ANN) if available.
+    Leiden clustering is performed using cuGraph (GPU) if available, otherwise leidenalg (CPU).
+    **Faiss is required for the k-NN step.**
 
     Args:
         analysis_df: DataFrame containing pixel coordinates ('X', 'Y'). Index must align with scaled_expression_data_for_weights.
@@ -63,7 +56,7 @@ def run_spatial_leiden(
         resolution_param: Resolution parameter for the Leiden algorithm.
         seed: Random seed for Leiden.
         verbose: If True, print progress messages.
-        use_gpu_config: If True, attempt to use GPU (Faiss-GPU or RAPIDS cuML/cugraph) if available, otherwise use CPU (Faiss-CPU or KDTree).
+        use_gpu_config: If True, attempt to use GPU (Faiss-GPU, cuGraph-GPU) if available, otherwise use CPU (Faiss-CPU, leidenalg-CPU).
 
     Returns:
         A tuple containing:
@@ -81,33 +74,39 @@ def run_spatial_leiden(
     if verbose:
         print(f"--- Running Spatial Leiden (k={n_neighbors}, res={resolution_param}) on {n_pixels} pixels ---")
 
-    # --- Determine Execution Path (GPU Faiss > GPU cuML > CPU Faiss > CPU KDTree) ---
+    # --- Determine Execution Path (GPU Faiss > CPU Faiss for kNN; GPU cuGraph > CPU leidenalg for Leiden) ---
+    if not faiss_available:
+        print("   ERROR: Faiss library is not installed or importable, which is required for k-NN. Aborting.")
+        return None, None, None, None
+        
     gpu_available = check_gpu_availability(verbose=False)
     should_try_gpu = use_gpu_config and gpu_available
     
-    # Check RAPIDS separately for cuGraph Leiden later
-    cuML, cupy, cudf, cugraph = None, None, None, None
+    # Check RAPIDS libraries needed for GPU Leiden
+    # cuML is no longer checked here as it's not used for KNN fallback
+    cupy, cudf, cugraph = None, None, None
     rapids_libs_available_for_leiden = False
     if should_try_gpu:
-        cuML = get_rapids_lib('cuml')
+        # cuML = get_rapids_lib('cuml') # No longer needed for KNN
         cupy = get_rapids_lib('cupy')
         cudf = get_rapids_lib('cudf')
         cugraph = get_rapids_lib('cugraph')
-        if cuML and cupy and cudf and cugraph:
+        if cupy and cudf and cugraph: # Check only libs needed for Leiden
             rapids_libs_available_for_leiden = True
             
-    # Path flags
-    use_faiss_gpu = should_try_gpu and faiss_available
-    use_cuml_gpu = should_try_gpu and not use_faiss_gpu and cuML is not None # Fallback GPU kNN if Faiss GPU not used
-    use_faiss_cpu = not should_try_gpu and faiss_available
-    use_kdtree_cpu = not use_faiss_gpu and not use_cuml_gpu and not use_faiss_cpu and kdtree_available
+    # Path flags for kNN
+    use_faiss_gpu = should_try_gpu # Faiss availability checked earlier
+    use_faiss_cpu = not use_faiss_gpu # If not trying GPU, use CPU Faiss
 
     if verbose:
-        if use_faiss_gpu: print("   Attempting GPU k-NN using Faiss-GPU.")
-        elif use_cuml_gpu: print("   Attempting GPU k-NN using cuML (Faiss-GPU not primary)." )
-        elif use_faiss_cpu: print("   Using CPU k-NN using Faiss-CPU.")
-        elif use_kdtree_cpu: print("   Using CPU k-NN using KDTree (Faiss not available).")
-        else: print("   ERROR: No valid k-NN method available (Faiss, cuML, KDTree). Check installations.")
+        print("   k-NN Method Selection:")
+        if use_faiss_gpu: print("      Attempting GPU k-NN using Faiss-GPU.")
+        elif use_faiss_cpu: print("      Using CPU k-NN using Faiss-CPU.")
+        # No else needed, as faiss_available was checked upfront
+
+        print("   Leiden Method Selection:")
+        if should_try_gpu and rapids_libs_available_for_leiden: print("      Attempting GPU Leiden using cuGraph.")
+        else: print("      Using CPU Leiden using leidenalg (GPU/RAPIDS not requested or available).")
     # --- End Path Decision ---
     
     # 1. Validate Pre-scaled Expression Data
@@ -119,9 +118,12 @@ def run_spatial_leiden(
              f"Shape mismatch: Pre-scaled data has {scaled_expression_data_for_weights.shape[0]} rows, "
              f"but analysis_df has {n_pixels} rows (pixels)."
          )
+    # Allow mismatch for now, but warn. Consider making this stricter if needed.
     if scaled_expression_data_for_weights.shape[1] != len(protein_channels):
-         print(f"   Warning: Pre-scaled data has {scaled_expression_data_for_weights.shape[1]} columns, "
-               f"but {len(protein_channels)} protein_channels were listed.")
+        print(f"   Warning: Pre-scaled data has {scaled_expression_data_for_weights.shape[1]} columns, "
+              f"but {len(protein_channels)} protein_channels were listed. Using data columns.")
+        # Update protein_channels list if dimensions mismatch? Or assume data is correct?
+        # For now, assume data is correct and proceed, but this might impact downstream interpretation if list is wrong.
 
     # Ensure expression data is float32
     try:
@@ -146,7 +148,7 @@ def run_spatial_leiden(
     weights = None
     knn_method_used = "None"
 
-    # --- k-NN Calculation based on selected path --- 
+    # --- k-NN Calculation: Faiss GPU or Faiss CPU --- 
     if use_faiss_gpu:
         knn_method_used = "Faiss-GPU"
         if verbose: print("   Executing k-NN with Faiss-GPU...")
@@ -172,47 +174,12 @@ def run_spatial_leiden(
         except Exception as faiss_gpu_e:
             print(f"   ERROR during Faiss-GPU k-NN: {faiss_gpu_e}. Falling back to CPU Faiss.")
             traceback.print_exc()
-            use_faiss_gpu = False # Ensure fallback
-            use_faiss_cpu = faiss_available # Attempt CPU Faiss if available
-            use_kdtree_cpu = not use_faiss_cpu and kdtree_available
-            src, dst, weights = None, None, None # Reset for fallback
-            try: del res, cpu_index, gpu_index, distances, indices
-            except NameError: pass
-            
-    if use_cuml_gpu and not src: # Only run if Faiss-GPU didn't run or failed
-        knn_method_used = "cuML-GPU"
-        if verbose: print("   Executing k-NN with cuML (GPU fallback)...")
-        try:
-            cupy.get_default_memory_pool().free_all_blocks()
-            coords_gpu = cupy.asarray(coords, dtype='float32')
-            knn = cuML.neighbors.NearestNeighbors(n_neighbors=n_neighbors+1)
-            knn.fit(coords_gpu)
-            dists_gpu, inds_gpu = knn.kneighbors(coords_gpu)
-            del knn, coords_gpu
-            cupy.get_default_memory_pool().free_all_blocks()
-            distances = dists_gpu[:, 1:].get()
-            indices = inds_gpu[:, 1:].get().astype(np.int32)
-            del dists_gpu, inds_gpu
-            cupy.get_default_memory_pool().free_all_blocks()
-            epsilon = 1e-6
-            weights = (1.0 / (distances + epsilon)).astype(np.float32)
-            src = np.repeat(np.arange(n_pixels, dtype=np.int32), n_neighbors)
-            dst = indices.ravel()
-            weights = weights.ravel()
-            del distances, indices
-        except Exception as cuml_e:
-            print(f"   ERROR during cuML k-NN: {cuml_e}. Falling back to CPU Faiss/KDTree.")
-            traceback.print_exc()
-            use_cuml_gpu = False
-            use_faiss_cpu = faiss_available
-            use_kdtree_cpu = not use_faiss_cpu and kdtree_available
-            src, dst, weights = None, None, None # Reset for fallback
-            try:
-                del knn, coords_gpu, dists_gpu, inds_gpu, distances, indices
-                cupy.get_default_memory_pool().free_all_blocks()
-            except NameError: pass
-            
-    if use_faiss_cpu and not src: # Only run if GPU paths failed or weren't selected
+            use_faiss_gpu = False # Ensure CPU path is taken next
+            use_faiss_cpu = True  # Explicitly set CPU path
+            src, dst, weights = None, None, None # Reset for fallback attempt
+            # No need to cleanup variables here, NameError handled if they weren't assigned
+
+    if use_faiss_cpu and src is None: # Run if GPU wasn't attempted OR if GPU failed
         knn_method_used = "Faiss-CPU"
         if verbose: print("   Executing k-NN with Faiss-CPU...")
         try:
@@ -228,36 +195,16 @@ def run_spatial_leiden(
             weights = weights.ravel()
             del index, distances, indices
         except Exception as faiss_cpu_e:
-            print(f"   ERROR during Faiss-CPU k-NN: {faiss_cpu_e}. Falling back to KDTree.")
+            print(f"   ERROR during Faiss-CPU k-NN: {faiss_cpu_e}. Faiss is required, cannot proceed.")
             traceback.print_exc()
-            use_faiss_cpu = False
-            use_kdtree_cpu = kdtree_available
-            src, dst, weights = None, None, None # Reset for fallback
-            try: del index, distances, indices
-            except NameError: pass
-            
-    if use_kdtree_cpu and not src: # Last resort: KDTree
-        knn_method_used = "KDTree-CPU"
-        if verbose: print("   Executing k-NN with KDTree (CPU fallback)...")
-        try:
-            tree = KDTree(coords)
-            distances, indices = tree.query(coords, k=n_neighbors + 1)
-            distances = distances[:, 1:].astype(np.float32)
-            indices = indices[:, 1:].astype(np.int32)
-            epsilon = 1e-6
-            weights = (1.0 / (distances + epsilon)).astype(np.float32)
-            src = np.repeat(np.arange(n_pixels, dtype=np.int32), n_neighbors)
-            dst = indices.ravel()
-            weights = weights.ravel()
-            del tree, distances, indices
-        except Exception as kdtree_e:
-            print(f"   ERROR during KDTree k-NN: {kdtree_e}. Aborting graph construction.")
-            traceback.print_exc()
+            # Since Faiss (CPU) failed, and it's required, we must abort.
             return None, None, None, None
 
-    # Check if neighbor finding was successful
+    # Check if neighbor finding was successful (only Faiss attempts now)
     if src is None or dst is None or weights is None:
-        print("   ERROR: Failed to compute neighbor lists and weights using any method. Cannot proceed.")
+        print("   ERROR: Failed to compute neighbor lists and weights using Faiss (GPU or CPU). Cannot proceed.")
+        # This case should ideally be caught by the Faiss-CPU exception handling above,
+        # but added as a safeguard.
         return None, None, None, None
     else:
         if verbose: print(f"   k-NN search ({knn_method_used}) took {time.time() - knn_start_time:.2f} seconds.")
@@ -282,6 +229,7 @@ def run_spatial_leiden(
     communities = None 
     n_communities = 0
     # Determine if we should still try GPU Leiden (even if kNN was CPU)
+    # Check for specific libs needed for cugraph Leiden
     use_gpu_leiden = should_try_gpu and rapids_libs_available_for_leiden
     leiden_method_used = "None"
 
@@ -366,84 +314,78 @@ def calculate_and_save_profiles(
     results_df: pd.DataFrame, # This should contain PRE-SCALED data + 'community'
     valid_channels: List[str],
     roi_output_dir: str,
-    roi_string: str
+    roi_string: str,
+    ordered_channels: Optional[List[str]] = None # Add optional ordered list
 ) -> Optional[pd.DataFrame]:
-    """
-    Calculates average community expression profiles from PRE-SCALED data and saves results.
+    """Calculates and saves the mean scaled expression profile for each community.
 
     Args:
-        results_df: DataFrame with Leiden results, including 'community' column
-                    and pre-scaled expression values in columns named in valid_channels.
-        valid_channels: List of protein channel columns containing the pre-scaled data.
-        roi_output_dir: Path to save the output CSV files.
-        roi_string: ROI identifier used for file naming.
+        results_df: DataFrame with pixel data, must include 'community' and scaled channel columns.
+        valid_channels: List of channel columns to include in the profile calculation.
+        roi_output_dir: Directory to save the output CSV.
+        roi_string: String identifier for the ROI/resolution (used in filename).
+        ordered_channels: Optional list of channels to define the column order in the saved CSV.
 
     Returns:
-        A pandas DataFrame containing the average scaled expression profile for each community,
-        or None if an error occurs (e.g., missing 'community' column or empty data).
+        DataFrame of scaled community profiles (communities x channels) or None if fails.
     """
-    print("\n--- Calculating Average Community Profiles (from pre-scaled data) ---")
+    print("   Calculating community expression profiles...")
     start_time = time.time()
-    try:
-        if 'community' not in results_df.columns:
-            print("ERROR: 'community' column not found in results_df. Cannot calculate profiles.")
-            return None
-        if not valid_channels:
-            print("ERROR: No valid channels provided for profile calculation.")
-            return None
-        if results_df.empty:
-             print("ERROR: Input results_df is empty. Cannot calculate profiles.")
-             return None
 
-        # Validate that valid_channels exist in the DataFrame
-        missing_channels = [ch for ch in valid_channels if ch not in results_df.columns]
-        if missing_channels:
-            print(f"ERROR: The following required channels are missing from results_df: {missing_channels}")
-            return None
-
-        # --- SCALING LOGIC REMOVED --- Data is pre-scaled
-
-        # Select the scaled data and community labels
-        profile_data_scaled = results_df[valid_channels + ['community']]
-
-        # Check for NaNs/Infs in the scaled data before grouping
-        if profile_data_scaled[valid_channels].isnull().values.any() or np.isinf(profile_data_scaled[valid_channels].values).any():
-            print("   Warning: NaN/Inf values found in pre-scaled data. Imputing with 0 before averaging.")
-            # Impute within the relevant columns only
-            for channel in valid_channels:
-                # Use .loc for safe assignment on copy
-                profile_data_scaled.loc[:, channel] = np.nan_to_num(profile_data_scaled[channel].values, nan=0.0, posinf=0.0, neginf=0.0)
-
-        # Group by community to get average profiles
-        print("   Grouping by community to calculate average profiles...")
-        if 'community' not in profile_data_scaled.columns:
-             print("   Internal ERROR: 'community' column lost before grouping.")
-             return None # Should not happen based on earlier check
-
-        community_profiles_scaled = profile_data_scaled.groupby('community')[valid_channels].mean()
-
-        # Check if any communities were actually found
-        if community_profiles_scaled.empty:
-             print("   Warning: No communities found after grouping, or all communities had NaN profiles.")
-             return None
-
-        print(f"   Calculated profiles for {len(community_profiles_scaled)} communities.")
-
-        # Save community profiles
-        print("   Saving community profiles...")
-        profiles_save_path = os.path.join(roi_output_dir, f"community_profiles_scaled_{roi_string}.csv")
-        community_profiles_scaled.to_csv(profiles_save_path)
-        print(f"   Scaled community profiles saved to: {profiles_save_path}")
-
-        print(f"--- Profile Calculation finished in {time.time() - start_time:.2f} seconds ---")
-        return community_profiles_scaled
-
-    except KeyError as ke:
-        print(f"ERROR: Missing expected column during profile calculation: {ke}")
-        traceback.print_exc()
+    if 'community' not in results_df.columns:
+        print("   ERROR: 'community' column not found in results_df. Cannot calculate profiles.")
         return None
+
+    # Ensure only channels present in the dataframe are used
+    channels_in_df = [ch for ch in valid_channels if ch in results_df.columns]
+    if not channels_in_df:
+        print("   ERROR: No valid channel columns found in results_df for profile calculation.")
+        return None
+
+    try:
+        # Group by community and calculate mean for the scaled channel columns
+        # Use only channels present in the dataframe for the calculation
+        scaled_community_profiles = results_df.groupby('community')[channels_in_df].mean()
+
+        if scaled_community_profiles.empty:
+             print("   Warning: No communities found or profile calculation resulted in empty DataFrame.")
+             # Save an empty file?
+             empty_profiles_path = os.path.join(roi_output_dir, f"community_profiles_{roi_string}.csv")
+             pd.DataFrame().to_csv(empty_profiles_path)
+             print(f"   Saved empty community profiles file: {os.path.basename(empty_profiles_path)}")
+             return scaled_community_profiles # Return the empty DF
+
+        # --- Reorder columns before saving if ordered_channels is provided ---
+        if ordered_channels is not None:
+            print(f"   Applying specified channel order ({len(ordered_channels)} channels) before saving.")
+            # Find channels common to both the desired order and the calculated profiles
+            final_ordered_columns = [ch for ch in ordered_channels if ch in scaled_community_profiles.columns]
+            missing_in_profiles = [ch for ch in ordered_channels if ch not in scaled_community_profiles.columns]
+            extra_in_profiles = [ch for ch in scaled_community_profiles.columns if ch not in ordered_channels]
+
+            if missing_in_profiles:
+                print(f"     Warning: Channels from ordered list not found in profiles: {missing_in_profiles}")
+            if extra_in_profiles:
+                print(f"     Warning: Channels in profiles not in ordered list (will be dropped from saved file): {extra_in_profiles}")
+            if not final_ordered_columns:
+                 print("     ERROR: No common channels between ordered list and profiles. Cannot apply order. Saving with original order.")
+                 # Fallback to original order if no overlap
+            else:
+                 # Reindex using the common, ordered list
+                 scaled_community_profiles = scaled_community_profiles[final_ordered_columns]
+        else:
+             print("   Saving profiles with original column order.")
+        # --- End Reordering ---
+
+        # Save the profiles
+        profiles_path = os.path.join(roi_output_dir, f"community_profiles_{roi_string}.csv")
+        scaled_community_profiles.to_csv(profiles_path)
+        print(f"   Community profiles saved to: {os.path.basename(profiles_path)}")
+        print(f"   --- Profile calculation finished in {time.time() - start_time:.2f} seconds ---")
+        return scaled_community_profiles
+
     except Exception as e:
-        print(f"An unexpected error occurred during profile calculation or saving: {str(e)}")
+        print(f"   ERROR calculating or saving community profiles: {e}")
         traceback.print_exc()
         return None
 

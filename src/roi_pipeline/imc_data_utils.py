@@ -3,13 +3,14 @@ import re
 import time
 import json
 import traceback
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional, Dict, Any
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 from scipy.optimize import minimize_scalar
 from sklearn.preprocessing import MinMaxScaler
+import scipy.cluster.hierarchy as sch
 
 # ==============================================================================
 # Helper Functions
@@ -395,3 +396,83 @@ def apply_per_channel_arcsinh_and_scale(
 
     print(f"--- Transformation and scaling finished in {time.time() - start_time:.2f} seconds ---")
     return scaled_df, used_cofactors 
+
+# ==============================================================================
+# Community Analysis Utilities
+# ==============================================================================
+
+def calculate_and_save_community_linkage(
+    scaled_community_profiles: pd.DataFrame,
+    ordered_channels: List[str],
+    output_dir: str,
+    file_prefix: str, # e.g., f"community_linkage_matrix_{roi_string}_res_{resolution}"
+    config: Dict[str, Any]
+) -> Optional[np.ndarray]:
+    """
+    Performs hierarchical clustering on community profiles and saves the linkage matrix.
+
+    Args:
+        scaled_community_profiles: DataFrame of scaled average community expression.
+        ordered_channels: List of channels to use for clustering.
+        output_dir: Directory to save the output .npy file.
+        file_prefix: Base name for the output file (without extension).
+        config: Dictionary containing analysis configuration, expected to have
+                analysis.clustering.community_metric and .community_linkage_method.
+
+    Returns:
+        The calculated linkage matrix as a numpy array, or None if clustering failed.
+    """
+    linkage_matrix = None
+    
+    # --- Get Clustering Parameters from Config ---
+    clustering_config = config.get('analysis', {}).get('clustering', {})
+    metric = clustering_config.get('community_metric', 'correlation') # Default metric
+    method = clustering_config.get('community_linkage_method', 'ward') # Default linkage method
+    print(f"   Clustering communities using metric='{metric}', method='{method}'...")
+
+    # --- Perform Clustering ---
+    if len(scaled_community_profiles.index) < 2 or len(ordered_channels) < 2:
+        print(f"   Skipping community linkage calculation: Not enough communities ({len(scaled_community_profiles.index)}) or channels ({len(ordered_channels)}).")
+        return None
+
+    try:
+        # Ensure profiles use the determined ordered_channels and are clean
+        profiles_for_clustering = scaled_community_profiles[ordered_channels].copy()
+        
+        # Handle potential NaNs/Infs before clustering
+        if np.isinf(profiles_for_clustering.values).any():
+            print("     WARNING: Infinite values found in community profiles. Replacing with NaN and filling with 0.")
+            profiles_for_clustering.replace([np.inf, -np.inf], np.nan, inplace=True)
+        profiles_for_clustering.fillna(0, inplace=True) # Fill NaNs (original or from Inf replacement)
+
+        # Check for constant data which can cause errors in some distance metrics
+        if profiles_for_clustering.apply(lambda x: x.nunique(), axis=1).min() <= 1:
+             print("     WARNING: At least one community has constant expression across channels. Clustering might be unreliable.")
+        if profiles_for_clustering.apply(lambda x: x.nunique(), axis=0).min() <= 1:
+             print("     WARNING: At least one channel has constant expression across communities. Clustering might be unreliable.")
+
+
+        # Calculate distance matrix (ensure float64 for pdist)
+        community_dist = sch.distance.pdist(
+            profiles_for_clustering.astype(np.float64).values, 
+            metric=metric
+        )
+        
+        # Calculate linkage matrix
+        linkage_matrix = sch.linkage(community_dist, method=method)
+
+        # --- Save the Linkage Matrix ---
+        linkage_save_path = os.path.join(output_dir, f"{file_prefix}.npy")
+        np.save(linkage_save_path, linkage_matrix)
+        print(f"   Community linkage matrix saved to: {os.path.basename(linkage_save_path)}")
+
+    except ValueError as ve:
+        print(f"     ERROR during community linkage calculation (ValueError): {ve}.")
+        print(f"     Check profiles, metric ('{metric}'), and method ('{method}'). Skipping linkage saving.")
+        linkage_matrix = None # Ensure it's None if failed
+    except Exception as link_e:
+        print(f"     ERROR calculating or saving community linkage matrix: {link_e}")
+        traceback.print_exc()
+        linkage_matrix = None # Ensure it's None if failed
+        
+    return linkage_matrix 

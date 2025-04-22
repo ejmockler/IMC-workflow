@@ -40,8 +40,8 @@ data:
 # --- Analysis Parameters ---
 analysis:
   clustering:
-    n_neighbors: 65     # Number of neighbors for spatial graph (Leiden)
-    resolution_params: [0.001, 0.0001] # List of Leiden resolutions to test
+    n_neighbors: 30    # Number of neighbors for spatial graph (Leiden)
+    resolution_params: [30, 100] # List of Leiden resolutions to test
     seed: 42            # Random seed for reproducibility
     linkage: 'ward'     # Linkage method for hierarchical clustering
   umap:

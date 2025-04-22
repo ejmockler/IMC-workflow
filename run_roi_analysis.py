@@ -22,6 +22,7 @@ from src.roi_pipeline.imc_data_utils import (
     load_and_validate_roi_data,
     calculate_asinh_cofactors_for_roi,
     apply_per_channel_arcsinh_and_scale,
+    calculate_and_save_community_linkage
 )
 # Import our analysis functions
 from src.roi_pipeline.pixel_analysis_core import (
@@ -29,11 +30,6 @@ from src.roi_pipeline.pixel_analysis_core import (
     calculate_and_save_profiles,
     calculate_differential_expression,
     calculate_and_save_umap # Added import for UMAP function
-)
-# Import necessary plotting functions for channel ordering and raw/scaled comparison
-from src.roi_pipeline.pixel_visualization import (
-    plot_correlation_clustermap,
-    plot_raw_vs_scaled_spatial_comparison # Keep this one
 )
 
 # Attempt to import UMAP, set flag
@@ -96,10 +92,32 @@ def _calculate_and_save_ordered_channels(
     roi_string: str,
     config: Dict,
     fixed_channel_order: Optional[List[str]] = None
-) -> Optional[List[str]]:
-    """Calculates channel order based on pixel correlation using scipy and saves it."""
-    print("   Calculating pixel correlation for channel ordering...")
-    ordered_channels_list = None
+) -> Optional[List[str]]: # Returns the final order to use downstream
+    """
+    Calculates ROI-specific channel clustering and determines the final channel order.
+
+    Always calculates and saves the ROI-specific clustering (linkage matrix and order list).
+    Determines the final order to use: the fixed_channel_order if provided and valid,
+    otherwise defaults to the ROI-specific clustered order. Saves this final order list.
+
+    Args:
+        scaled_pixel_expression: DataFrame of scaled pixel data (channels as columns).
+        roi_channels: List of channels available in the original data.
+        roi_output_dir: Directory to save outputs.
+        roi_string: ROI identifier.
+        config: Configuration dictionary.
+        fixed_channel_order: Optional predefined list of channels to use as the final order.
+
+    Returns:
+        The list of channels representing the final order to be used downstream
+        (either the fixed order or the ROI-specific clustered order), or None on failure.
+    """
+    print("   Calculating ROI-specific pixel correlation for channel clustering...")
+    start_time = time.time()
+    roi_clustered_order = None
+    roi_linkage_matrix = None
+    final_order_to_use = None # This is what the function will return
+
     try:
         # Ensure X, Y are not in the correlation calculation
         expression_cols = [ch for ch in roi_channels if ch in scaled_pixel_expression.columns and ch not in ['X', 'Y']]
@@ -108,69 +126,103 @@ def _calculate_and_save_ordered_channels(
             return None
 
         pixel_corr_matrix = scaled_pixel_expression[expression_cols].corr(method='spearman')
-
-        # Handle potential NaNs in the correlation matrix before clustering
-        pixel_corr_matrix = pixel_corr_matrix.fillna(0) # Replace NaNs with 0 (uncorrelated)
+        pixel_corr_matrix = pixel_corr_matrix.fillna(0) # Handle potential NaNs
         if pixel_corr_matrix.isnull().values.any():
             print("   WARNING: NaNs remain in pixel correlation matrix after fillna(0). Clustering might be unstable.")
 
-        if fixed_channel_order:
-            # Validate fixed order against available channels
-            missing_channels = [ch for ch in fixed_channel_order if ch not in pixel_corr_matrix.columns]
-            available_channels_in_order = [ch for ch in fixed_channel_order if ch in pixel_corr_matrix.columns]
-            if missing_channels:
-                 print(f"   WARNING: Channels in fixed_channel_order not found in correlation matrix: {missing_channels}. Using available subset for saving.")
-            if not available_channels_in_order:
-                 print("   ERROR: No valid channels remaining after applying fixed_channel_order. Cannot determine order.")
-                 return None
-            ordered_channels_list = available_channels_in_order # Use the validated subset
-            print(f"   Using provided fixed channel order ({len(ordered_channels_list)} channels).")
+        # --- Always perform ROI-specific clustering ---
+        print("   Performing hierarchical clustering on ROI's pixel correlation matrix...")
+        if len(expression_cols) < 2:
+             print("   WARNING: Cannot perform clustering with less than 2 channels. Using original expression_cols order for ROI-specific clustering.")
+             roi_clustered_order = expression_cols
+             roi_linkage_matrix = None # Cannot compute linkage
         else:
-            print("   Performing hierarchical clustering on pixel correlation matrix...")
-            if len(expression_cols) < 2:
-                 print("   WARNING: Cannot perform clustering with less than 2 channels. Using original order.")
-                 ordered_channels_list = expression_cols
-            else:
-                 # Use scipy.cluster.hierarchy directly
-                 try:
-                     # Use pdist for distance calculation, handle potential errors
-                     dist_matrix = sch.distance.pdist(pixel_corr_matrix.values)
-                     # linkage_method = config.get('analysis', {}).get('clustering', {}).get('linkage', 'ward') # Get from config if specified
-                     linkage_method = 'ward' # Default to ward for now
-                     linkage_matrix = sch.linkage(dist_matrix, method=linkage_method)
-                     dendrogram = sch.dendrogram(linkage_matrix, no_plot=True)
-                     ordered_indices = dendrogram['leaves']
-                     ordered_channels_list = [pixel_corr_matrix.columns[i] for i in ordered_indices]
-                     print(f"   Clustering successful. Determined order for {len(ordered_channels_list)} channels.")
-                 except ValueError as ve:
-                      print(f"   ERROR during scipy clustering (ValueError): {ve}. Matrix might contain NaNs or Infs despite fillna. Using original channel order as fallback.")
-                      ordered_channels_list = expression_cols # Fallback to original order
-                 except Exception as cluster_e:
-                     print(f"   ERROR during scipy clustering: {cluster_e}. Using original channel order as fallback.")
-                     traceback.print_exc()
-                     ordered_channels_list = expression_cols # Fallback to original order
+             try:
+                 dist_matrix = sch.distance.pdist(pixel_corr_matrix.values)
+                 linkage_method = config.get('analysis', {}).get('clustering', {}).get('linkage', 'ward')
+                 roi_linkage_matrix = sch.linkage(dist_matrix, method=linkage_method)
+                 dendrogram = sch.dendrogram(roi_linkage_matrix, no_plot=True)
+                 ordered_indices = dendrogram['leaves']
+                 roi_clustered_order = [pixel_corr_matrix.columns[i] for i in ordered_indices]
+                 print(f"   ROI-specific clustering successful. Determined order for {len(roi_clustered_order)} channels.")
 
-        # Save the determined order to JSON
-        if ordered_channels_list:
-            order_save_path = os.path.join(roi_output_dir, f"ordered_channels_{roi_string}.json")
+                 # Save the ROI-specific Linkage Matrix
+                 linkage_save_path = os.path.join(roi_output_dir, f"pixel_channel_linkage_{roi_string}.npy")
+                 try:
+                     np.save(linkage_save_path, roi_linkage_matrix)
+                     print(f"   ROI-specific pixel channel linkage matrix saved to: {os.path.basename(linkage_save_path)}")
+                 except Exception as link_save_e:
+                     print(f"   ERROR saving ROI-specific pixel channel linkage matrix: {link_save_e}")
+                     # Continue, but linkage might be missing
+
+             except ValueError as ve:
+                  print(f"   ERROR during ROI-specific scipy clustering (ValueError): {ve}. Using original channel order as fallback.")
+                  roi_clustered_order = expression_cols # Fallback to original order
+                  roi_linkage_matrix = None
+             except Exception as cluster_e:
+                 print(f"   ERROR during ROI-specific scipy clustering: {cluster_e}. Using original channel order as fallback.")
+                 traceback.print_exc()
+                 roi_clustered_order = expression_cols # Fallback to original order
+                 roi_linkage_matrix = None
+
+        # Save the ROI-specific Clustered Order list
+        if roi_clustered_order:
+            roi_order_save_path = os.path.join(roi_output_dir, f"pixel_channel_clustered_order_{roi_string}.json")
             try:
-                with open(order_save_path, 'w') as f:
-                    json.dump(ordered_channels_list, f, indent=4)
-                print(f"   Ordered channel list saved to: {os.path.basename(order_save_path)}")
+                with open(roi_order_save_path, 'w') as f:
+                    json.dump(roi_clustered_order, f, indent=4)
+                print(f"   ROI-specific clustered channel list saved to: {os.path.basename(roi_order_save_path)}")
             except Exception as json_e:
-                print(f"   ERROR saving ordered channel list to {order_save_path}: {json_e}")
-                ordered_channels_list = None # Invalidate if save fails
+                print(f"   ERROR saving ROI-specific clustered channel list to {roi_order_save_path}: {json_e}")
+                # Proceed, but this file might be missing
         else:
-            print("   WARNING: Failed to determine or save channel order.")
-            # ordered_channels_list is already None or fallback
+             print("   ERROR: Failed to determine ROI-specific channel order. Cannot proceed reliably.")
+             return None # Cannot determine a fallback final order reliably
+
+        # --- Determine the Final Order to Use Downstream ---
+        if fixed_channel_order:
+            print(f"   Fixed channel order provided ({len(fixed_channel_order)} channels). Validating against ROI data...")
+            # Validate fixed order against available channels in the correlation matrix
+            missing_channels = [ch for ch in fixed_channel_order if ch not in pixel_corr_matrix.columns]
+            available_channels_in_fixed_order = [ch for ch in fixed_channel_order if ch in pixel_corr_matrix.columns]
+
+            if missing_channels:
+                 print(f"   WARNING: Channels in fixed_channel_order not found in ROI's correlation matrix: {missing_channels}.")
+            if not available_channels_in_fixed_order:
+                 print("   ERROR: No valid channels remaining after applying fixed_channel_order. Falling back to ROI-specific order.")
+                 final_order_to_use = roi_clustered_order # Fallback if fixed order is unusable
+            else:
+                 final_order_to_use = available_channels_in_fixed_order # Use the validated subset
+                 print(f"   Using validated fixed channel order ({len(final_order_to_use)} channels) as final order.")
+        else:
+            # No fixed order provided, use the ROI-specific clustered order as the final order
+            print("   No fixed channel order provided. Using ROI-specific clustered order as final order.")
+            final_order_to_use = roi_clustered_order
+
+        # Save the Final Order list (might be the same as clustered order, or the fixed order)
+        if final_order_to_use:
+            final_order_save_path = os.path.join(roi_output_dir, f"pixel_channel_final_order_{roi_string}.json")
+            try:
+                with open(final_order_save_path, 'w') as f:
+                    json.dump(final_order_to_use, f, indent=4)
+                print(f"   Final channel order list saved to: {os.path.basename(final_order_save_path)}")
+            except Exception as json_e:
+                print(f"   ERROR saving final channel order list to {final_order_save_path}: {json_e}")
+                # Don't necessarily fail the whole function, but downstream might have issues
+                # If saving failed, final_order_to_use still holds the list in memory for return
+        else:
+            # This case should be caught earlier, but as a safeguard:
+            print("   ERROR: Final channel order could not be determined. Aborting.")
+            return None
 
     except Exception as e:
         print(f"   ERROR during channel order calculation: {e}")
         traceback.print_exc()
-        ordered_channels_list = None
-    # No plt.close needed here anymore
+        return None # Return None on major failure
 
-    return ordered_channels_list
+    print(f"   --- Channel ordering finished in {time.time() - start_time:.2f} seconds ---")
+    # Return the list that should be used by subsequent steps
+    return final_order_to_use
 
 # Updated to accept resolution_param
 def _cluster_pixels(roi_raw_data: pd.DataFrame, roi_channels: List[str], scaled_pixel_expression: pd.DataFrame, resolution_param: float, config: Dict) -> Tuple[Optional[pd.DataFrame], Optional[Any], Optional[Any]]: # Use Any for igraph/leidenalg types
@@ -199,7 +251,7 @@ def _cluster_pixels(roi_raw_data: pd.DataFrame, roi_channels: List[str], scaled_
     return pixel_community_df, pixel_graph, community_partition
 
 # Updated to accept resolution_output_dir
-def _analyze_communities(pixel_results_df: pd.DataFrame, roi_channels: List[str], pixel_graph: Any, resolution_output_dir: str, roi_string: str, resolution_param: float) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.Series]]:
+def _analyze_communities(pixel_results_df: pd.DataFrame, roi_channels: List[str], pixel_graph: Any, resolution_output_dir: str, roi_string: str, resolution_param: float, ordered_channels: List[str]) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.Series]]:
     """Calculates community profiles and differential expression for a specific resolution."""
     print(f"\nAnalyzing community characteristics (Resolution: {resolution_param})...")
     start_time = time.time()
@@ -208,7 +260,8 @@ def _analyze_communities(pixel_results_df: pd.DataFrame, roi_channels: List[str]
          results_df=pixel_results_df,
          valid_channels=roi_channels,
          roi_output_dir=resolution_output_dir, # Save profiles in resolution subdir
-         roi_string=f"{roi_string}_res_{resolution_param}" # Add resolution to filename
+         roi_string=f"{roi_string}_res_{resolution_param}", # Add resolution to filename
+         ordered_channels=ordered_channels # Pass the desired final order
     )
     if scaled_community_profiles is None or scaled_community_profiles.empty:
         print(f"   Skipping differential expression for resolution {resolution_param}: Profile calculation failed or no communities found.")
@@ -285,6 +338,18 @@ def analyze_roi(file_idx: int, file_path: str, total_files: int, config: Dict, \
             print(f"ERROR: Preprocessing failed for ROI {roi_string}. Aborting.")
             return None
 
+        # --- Save Scaled Pixel Expression ---
+        # Note: This DF only contains scaled channel data, not X/Y
+        scaled_expr_save_path = os.path.join(roi_output_dir, f"scaled_pixel_expression_{roi_string}.csv")
+        try:
+            scaled_pixel_expression.to_csv(scaled_expr_save_path, index=True)
+            print(f"   Scaled pixel expression saved to: {os.path.basename(scaled_expr_save_path)}")
+        except Exception as save_e:
+            print(f"   ERROR saving scaled pixel expression: {save_e}")
+            # Decide if this is fatal - potentially yes, as it's needed later.
+            return None
+        # --- End Save ---
+
         # Determine if the current ROI is from the first timepoint
         is_first_timepoint_roi = False
         current_timepoint = None
@@ -314,7 +379,7 @@ def analyze_roi(file_idx: int, file_path: str, total_files: int, config: Dict, \
             print(f"   Generating channel order based on this ROI's data ({len(roi_channels)} channels).")
 
         # Calculate and save the channel order (potentially fixed)
-        ordered_channels = _calculate_and_save_ordered_channels(
+        ordered_channels_for_downstream = _calculate_and_save_ordered_channels(
             scaled_pixel_expression=scaled_pixel_expression,
             roi_channels=roi_channels,
             roi_output_dir=roi_output_dir,
@@ -323,14 +388,30 @@ def analyze_roi(file_idx: int, file_path: str, total_files: int, config: Dict, \
             fixed_channel_order=fixed_order_for_calc
         )
 
-        # If channel order calculation failed, we cannot proceed reliably with downstream tasks needing it.
-        if ordered_channels is None:
-             print(f"ERROR: Failed to determine or save channel order for ROI {roi_string}. Aborting analysis for this ROI.")
+        # If channel order determination failed, we cannot proceed reliably.
+        if ordered_channels_for_downstream is None:
+             print(f"ERROR: Failed to determine final channel order for ROI {roi_string}. Aborting analysis for this ROI.")
              return None # Indicate failure
 
-        # If this IS the first timepoint ROI, the 'ordered_channels' variable now holds the order calculated from its data.
-        # This list will be returned by analyze_roi for potential consensus calculation.
+        # --- Calculate and Save Pixel Correlation Matrix ---
+        # Use the final downstream order for saving the correlation matrix to ensure consistency
+        # with other outputs like community profiles.
+        print("   Calculating and saving pixel correlation matrix (using final channel order)...")
+        try:
+            # Use the final downstream order for the matrix columns/index
+            pixel_corr_matrix = scaled_pixel_expression[ordered_channels_for_downstream].corr(method='spearman')
+            pixel_corr_save_path = os.path.join(roi_output_dir, f"pixel_channel_correlation_{roi_string}.csv")
+            pixel_corr_matrix.to_csv(pixel_corr_save_path)
+            print(f"   Pixel correlation matrix saved to: {os.path.basename(pixel_corr_save_path)}")
+        except KeyError as ke:
+             print(f"   ERROR calculating pixel correlation: Channel mismatch between final order and scaled_pixel_expression columns: {ke}. Skipping save.")
+        except Exception as corr_e:
+             print(f"   ERROR calculating or saving pixel correlation matrix: {corr_e}")
+             # Decide if this is fatal - maybe not strictly fatal, but vis will fail.
+        # --- End Save ---
 
+        # If this IS the first timepoint ROI, the 'ordered_channels_for_downstream' variable now holds the order calculated from its data.
+        # This list will be returned by analyze_roi for potential consensus calculation.
 
         print(f"\n>>> Processing {len(resolution_params)} Leiden resolutions: {resolution_params} <<<")
         success_flag = False
@@ -368,13 +449,32 @@ def analyze_roi(file_idx: int, file_path: str, total_files: int, config: Dict, \
                 # print(f"   Intermediate pixel results saved to: {os.path.basename(scaled_results_path)}")
 
                 scaled_community_profiles, diff_expr_profiles, primary_channel_map = _analyze_communities(
-                    current_pixel_results_df, roi_channels, pixel_graph, resolution_output_dir, roi_string, resolution
+                    current_pixel_results_df, roi_channels, pixel_graph, resolution_output_dir, roi_string, resolution, ordered_channels_for_downstream
                 )
                 if scaled_community_profiles is None:
-                    print(f"Skipping UMAP calculation for resolution {resolution} due to community analysis failure.")
-                    # Still need to save the final pixel results even if profiles failed
+                    print(f"Skipping UMAP and further analysis for resolution {resolution} due to community analysis failure.")
+                    # Still need to save the final pixel results even if profiles failed? Yes.
+                    # The save happens later. Continue to next resolution.
+                    continue # Skip UMAP, correlation, linkage etc. if profiles failed
                 else:
-                    # --- Calculate and Save UMAP --- 
+                    # --- Calculate and Save Community Correlation Matrix ---
+                    print(f"   Calculating and saving community correlation matrix for resolution {resolution}...")
+                    try:
+                        # Use ordered_channels_for_downstream for consistency
+                        community_corr_matrix = scaled_community_profiles[ordered_channels_for_downstream].corr(method='spearman')
+                        community_corr_save_path = os.path.join(
+                            resolution_output_dir,
+                            f"community_channel_correlation_{roi_string}_res_{resolution}.csv"
+                        )
+                        community_corr_matrix.to_csv(community_corr_save_path)
+                        print(f"   Community correlation matrix saved to: {os.path.basename(community_corr_save_path)}")
+                    except KeyError as ke:
+                         print(f"     ERROR calculating community correlation: Channel mismatch between final order and community profile columns: {ke}. Skipping save.")
+                    except Exception as comm_corr_e:
+                         print(f"     ERROR calculating or saving community correlation matrix: {comm_corr_e}")
+                    # --- End Save ---
+
+                    # --- Calculate and Save UMAP ---
                     umap_coords = calculate_and_save_umap(
                         diff_expr_profiles=diff_expr_profiles,
                         scaled_community_profiles=scaled_community_profiles,
@@ -386,9 +486,20 @@ def analyze_roi(file_idx: int, file_path: str, total_files: int, config: Dict, \
                         umap_available=umap_available # Pass the flag
                     )
 
+                    # --- Calculate and Save Community Linkage Matrix using Utility Function ---
+                    linkage_file_prefix = f"community_linkage_matrix_{roi_string}_res_{resolution}"
+                    community_linkage = calculate_and_save_community_linkage(
+                        scaled_community_profiles=scaled_community_profiles,
+                        ordered_channels=ordered_channels_for_downstream, # Use final order here too
+                        output_dir=resolution_output_dir,
+                        file_prefix=linkage_file_prefix,
+                        config=config
+                    )
+
                 # Add primary channel mapping to the final results dataframe (if calculated)
                 if primary_channel_map is not None and not primary_channel_map.empty:
-                    current_pixel_results_df['primary_channel'] = current_pixel_results_df['community'].map(primary_channel_map).fillna('Mapping Error')
+                    # Convert mapped series to object type BEFORE fillna to handle potential new 'Mapping Error' string
+                    current_pixel_results_df['primary_channel'] = current_pixel_results_df['community'].map(primary_channel_map).astype(object).fillna('Mapping Error')
                 else:
                     current_pixel_results_df['primary_channel'] = 'Not Calculated'
 
@@ -396,7 +507,8 @@ def analyze_roi(file_idx: int, file_path: str, total_files: int, config: Dict, \
                 if scaled_community_profiles is not None and not scaled_community_profiles.empty:
                     for channel in roi_channels:
                          avg_col_name = f'{channel}_asinh_scaled_avg'
-                         current_pixel_results_df[avg_col_name] = current_pixel_results_df['community'].map(scaled_community_profiles[channel]).fillna(0)
+                         # Map the average scaled profile for the community onto each pixel, leaving NaNs if map fails
+                         current_pixel_results_df[avg_col_name] = current_pixel_results_df['community'].map(scaled_community_profiles[channel])
 
                 final_results_save_path = os.path.join(
                     resolution_output_dir,
@@ -430,7 +542,7 @@ def analyze_roi(file_idx: int, file_path: str, total_files: int, config: Dict, \
 
         print(f"\n--- Successfully finished processing all resolutions for ROI: {roi_string} ---")
         # Return the ROI string AND the final channel order used/calculated for its plots
-        return roi_string, ordered_channels
+        return roi_string, ordered_channels_for_downstream
 
     except Exception as e: # Catch errors outside the resolution loop
         print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
@@ -732,6 +844,21 @@ if __name__ == '__main__':
 
                     print(f"  >>> Consensus Reference Channel Order ({len(reference_channel_order)} channels) computed from average correlation:")
                     print("     ", reference_channel_order[:10], "..." if len(reference_channel_order) > 10 else "")
+
+                    # --- Save Linkage Matrix and Average Correlation Matrix ---
+                    linkage_save_path = os.path.join(output_dir, "reference_channel_linkage.npy")
+                    avg_corr_save_path = os.path.join(output_dir, "reference_average_correlation.csv")
+                    try:
+                        np.save(linkage_save_path, linkage_matrix)
+                        print(f"  Reference linkage matrix saved to: {os.path.basename(linkage_save_path)}")
+                    except Exception as link_e:
+                        print(f"  Warning: Could not save reference linkage matrix to {linkage_save_path}: {link_e}")
+                    try:
+                        average_corr_matrix_df.to_csv(avg_corr_save_path)
+                        print(f"  Reference average correlation matrix saved to: {os.path.basename(avg_corr_save_path)}")
+                    except Exception as corr_e:
+                        print(f"  Warning: Could not save reference average correlation matrix to {avg_corr_save_path}: {corr_e}")
+                    # --- End Save ---
 
                 except ImportError:
                     print("  ERROR: Need scipy (scipy.cluster.hierarchy) to perform clustering on the average matrix.")
