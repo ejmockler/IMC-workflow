@@ -2,7 +2,7 @@ import os
 import math
 import time
 import traceback
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,8 @@ from matplotlib.colors import LogNorm, ListedColormap
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import scipy.cluster.hierarchy as sch
+from scipy.spatial import distance as dist # Added for pdist
 
 # Need to handle potential missing dependency for GMM/Otsu in deprecated functions
 try:
@@ -143,7 +145,7 @@ def add_coexpression_colorbar(fig, bbox=None):
 # ==============================================================================
 
 # def plot_channel_pair(ax, sampled_df, channel1, channel2, cofactor=None, asinh_cofactors=None):
-#     \"\"\"
+#     """
 #     [DEPRECATED/EXPLORATORY] Plot a single channel pair on the given axis with arcsinh transformation.
 #     Likely used in initial notebook exploration, may not be used in batch workflow.
 #
@@ -157,7 +159,7 @@ def add_coexpression_colorbar(fig, bbox=None):
 #
 #     Returns:
 #     - Used cofactor value
-#     \"\"\"
+#     """
 #     # Extract channel names for display - only the protein name before the parenthesis
 #     ch1_label = channel1.split('(')[0]
 #     ch2_label = channel2.split('(')[0]
@@ -251,10 +253,10 @@ def add_coexpression_colorbar(fig, bbox=None):
 #
 # def create_coexpression_figure(channel_pairs, sampled_df, start_idx=0, count=36, title=None,
 #                              cofactor=None, asinh_cofactors=None):
-#     \"\"\"
+#     """
 #     [DEPRECATED/EXPLORATORY] Create a figure with co-expression maps for multiple channel pairs.
 #     Likely used in initial notebook exploration, may not be used in batch workflow.
-#     \"\"\"
+#     """
 #     end_idx = min(start_idx + count, len(channel_pairs))
 #     pairs_to_show = channel_pairs[start_idx:end_idx]
 #
@@ -322,9 +324,9 @@ def add_coexpression_colorbar(fig, bbox=None):
 #     return end_idx
 #
 # def generate_histograms(df, channels, asinh_cofactors, roi_string, save_dir, hist_cols, plot_dpi, default_cofactor):
-#     \"\"\"[DEPRECATED/EXPLORATORY] Generates and saves histograms with GMM and Otsu gating.
+#     """[DEPRECATED/EXPLORATORY] Generates and saves histograms with GMM and Otsu gating.
 #         Requires scikit-learn and scikit-image.
-#     \"\"\"
+#     """
 #     if not sklearn_available or not scipy_stats_available or not scipy_optimize_available:
 #         print("Skipping histogram generation: Missing required dependencies (sklearn, scipy.stats, scipy.optimize).")
 #         return {}
@@ -438,9 +440,9 @@ def add_coexpression_colorbar(fig, bbox=None):
 #     return gating_thresholds
 #
 # def generate_coexpression_maps(df, channels, asinh_cofactors, roi_string, save_dir, plot_dpi, default_cofactor):
-#     \"\"\"
+#     """
 #     [DEPRECATED/EXPLORATORY] Generates and saves co-expression maps arranged in an upper triangular matrix layout.
-#     \"\"\"
+#     """
 #     print("Generating co-expression maps (matrix layout v2)...")
 #     if len(channels) < 2:
 #         print("Skipping co-expression plots: Less than 2 channels available.")
@@ -547,7 +549,7 @@ def add_coexpression_colorbar(fig, bbox=None):
 #     except Exception as e:
 #          print(f"Error saving coexpression matrix to {output_path}: {e}")
 #     plt.close(fig)
-# \"\"\"
+# """
 
 # ==============================================================================
 # Co-expression Matrix Helpers
@@ -756,8 +758,15 @@ def plot_coexpression_matrix(scaled_pixel_expression: pd.DataFrame, # Contains '
         print("   Skipping coexpression matrix: No channels provided.")
         return
 
-    # Determine grid layout
-    fig, axes = plt.subplots(n_channels, n_channels, figsize=(n_channels * 2.5, n_channels * 2.5), squeeze=False)
+    # Determine grid layout and cap overall figure size
+    target_subplot_size_inches = 2.0 # Reduced from 2.5
+    max_overall_dimension_inches = 40.0  # Max total size for the figure (e.g., 40x40 inches)
+    
+    calculated_fig_dimension = n_channels * target_subplot_size_inches
+    final_fig_dimension = min(calculated_fig_dimension, max_overall_dimension_inches)
+
+    fig, axes = plt.subplots(n_channels, n_channels, figsize=(final_fig_dimension, final_fig_dimension), squeeze=False)
+    
     # Combine pixel coordinates with scaled expression
     pixel_data_scaled = scaled_pixel_expression.copy()
     if 'X' not in pixel_data_scaled.columns or 'Y' not in pixel_data_scaled.columns:
@@ -849,174 +858,288 @@ def plot_coexpression_matrix(scaled_pixel_expression: pd.DataFrame, # Contains '
 
 # Modified to return channel order
 def plot_correlation_clustermap(correlation_matrix: pd.DataFrame,
-                                channels: list,
+                                channels: list, # If linkage provided, these are the labels for the linkage
                                 title: str,
                                 output_path: str,
                                 plot_dpi: int = 150,
-                                fixed_channel_order: Optional[List[str]] = None) -> Optional[List[str]]: # Return type added, new arg
+                                fixed_channel_order: Optional[List[str]] = None,
+                                row_linkage_matrix: Optional[np.ndarray] = None, # New: Precomputed row linkage
+                                col_linkage_matrix: Optional[np.ndarray] = None, # New: Precomputed col linkage
+                                matrix_channel_order: Optional[List[str]] = None # New: Original order of `correlation_matrix` rows/cols if it differs from `channels` (linkage order)
+                               ) -> Optional[List[str]]:
     """
     Generates and saves a clustermap (or heatmap if order is fixed) of channel correlations.
+    If row/col_linkage_matrix is provided, it uses them. Otherwise, calculates linkage.
 
     Args:
         correlation_matrix: DataFrame containing the correlation values.
-        channels: List of channels corresponding to the matrix rows/columns.
+                            Its rows/columns should align with `matrix_channel_order` if provided,
+                            otherwise assumed to align with `channels`.
+        channels: List of channels. If linkage is provided, these are the labels for the
+                  dendrogram that the linkage matrix refers to (i.e., `dendrogram['leaves']` order).
+                  If linkage is NOT provided, these are the channels in `correlation_matrix` to be clustered.
         title: Title for the plot.
         output_path: Path to save the plot (.svg or .png recommended).
         plot_dpi: DPI for saving the plot.
-        fixed_channel_order: If provided, use this exact order for rows/columns
-                             and plot a heatmap instead of a clustermap.
+        fixed_channel_order: If provided (and no col_linkage_matrix), use this exact order for columns
+                             and plot a heatmap instead of a clustermap for columns.
+                             Row clustering still happens unless row_linkage_matrix is also given.
+        row_linkage_matrix: Optional precomputed linkage matrix for rows.
+        col_linkage_matrix: Optional precomputed linkage matrix for columns.
+        matrix_channel_order: Optional list of channel names representing the original order of
+                              rows/columns in the input `correlation_matrix`. This is crucial if
+                              `correlation_matrix` is not already ordered according to `channels` (linkage order).
 
     Returns:
         A list of channel names in the order they appear on the final plot axes,
         or None if plotting fails.
     """
     print(f"   Attempting to generate correlation map: {os.path.basename(output_path)}")
-    if correlation_matrix.empty or len(channels) < 2:
+    if correlation_matrix.empty or len(channels) < 1: # Allow single channel if linkage provided (though unlikely useful)
         print("   Skipping correlation map: Not enough data or channels.")
         return None
 
-    # Determine appropriate figure size based on number of channels
-    n_channels = len(channels)
-    figsize_base = max(6, n_channels * 0.4)  # Adjust multiplier as needed
+    # Fill NaNs from .corr() upfront. This helps both branches.
+    correlation_matrix_cleaned = correlation_matrix.fillna(0)
+
+    # Determine appropriate figure size based on number of channels (use len(channels) as it dictates plot labels)
+    n_plot_labels = len(channels)
+    figsize_base = max(7, n_plot_labels * 0.5)  # Increased base and multiplier
     figsize = (figsize_base, figsize_base)
 
-    # Check if channels in fixed order are valid
-    if fixed_channel_order:
-        # --- Plot Clustermap with Fixed Columns, Clustered Rows ---
-        print(f"   Generating clustermap with fixed columns ({len(fixed_channel_order)} channels) and clustered rows...")
-        # Ensure the input matrix has columns in the fixed order
-        matrix_for_plot = correlation_matrix.loc[:, fixed_channel_order]
+    # Prepare the matrix that will actually be displayed in the heatmap cells
+    # This matrix needs to align with the final dendrogram order (defined by `channels` if linkage is given)
+    # and have its diagonal set to NaN for display.
+    
+    # If matrix_channel_order is provided and differs from `channels` (linkage order),
+    # reindex correlation_matrix_cleaned to match `channels` before display.
+    if matrix_channel_order and set(matrix_channel_order) != set(channels):
+        # This case is complex if matrix_channel_order has different items than channels.
+        # Assume channels (linkage_order) is the target order for display rows/columns.
+        # Ensure all channels in `channels` (linkage order) are present in `matrix_channel_order` for reindexing.
+        if not all(c in matrix_channel_order for c in channels):
+            print(f"   ERROR: Some channels for linkage order ({len(channels)}) not found in matrix_channel_order ({len(matrix_channel_order)}). Cannot align heatmap.")
+            # print(f"   Linkage order (channels): {channels}")
+            # print(f"   Matrix input order: {matrix_channel_order}")
+            return None
+        
+        # Reindex the (cleaned) correlation matrix to match the order of `channels` (linkage order)
+        # This ensures the heatmap cells correspond to the dendrogram leaves.
+        correlation_matrix_for_display_ordered = correlation_matrix_cleaned.reindex(index=channels, columns=channels)
+    elif matrix_channel_order and list(matrix_channel_order) != list(channels) and len(matrix_channel_order) == len(channels):
+        # Same channels, just different order. Reindex to `channels` (linkage order).
+        correlation_matrix_for_display_ordered = correlation_matrix_cleaned.reindex(index=channels, columns=channels)
+    else:
+        # If matrix_channel_order is not given, or matches `channels`, assume correlation_matrix_cleaned is already aligned with `channels`
+        # or that `channels` refers to the columns of correlation_matrix_cleaned if no linkage is given.
+        correlation_matrix_for_display_ordered = correlation_matrix_cleaned.copy() # Make a copy
+
+    # Now set the diagonal to NaN on the ordered matrix for display
+    np.fill_diagonal(correlation_matrix_for_display_ordered.values, np.nan)
+
+
+    # --- Branch for fixed column order (and potentially precomputed row linkage) --- 
+    if fixed_channel_order and not col_linkage_matrix:
+        print(f"   Generating clustermap with fixed columns ({len(fixed_channel_order)}) and potentially clustered rows...")
+        # The matrix_for_plot should be a slice of the *original* correlation data, ordered by fixed_channel_order for columns.
+        # Its rows should align with `channels` if row_linkage is given, or all available if not.
+        
+        # For display, we need correlation_matrix_for_display_ordered but columns subsetted and ordered by fixed_channel_order.
+        # Rows are ordered by `channels` (which is the linkage order or original row order)
+        try:
+            # Ensure fixed_channel_order channels exist in the display matrix columns
+            valid_fixed_cols = [col for col in fixed_channel_order if col in correlation_matrix_for_display_ordered.columns]
+            if not valid_fixed_cols:
+                print(f"   ERROR: No valid channels from fixed_channel_order found in the correlation matrix columns.")
+                return None
+            matrix_for_plot_display = correlation_matrix_for_display_ordered.loc[:, valid_fixed_cols]
+        except KeyError as e:
+            print(f"   ERROR: Channel in fixed_channel_order not found in correlation matrix for display: {e}")
+            return None
+
+        # Determine row clustering parameters
+        row_cluster_flag = True
+        actual_row_linkage = row_linkage_matrix
+        row_method = 'ward' # Default if row_linkage_matrix not given
+        row_metric = 'euclidean' # Default if row_linkage_matrix not given
+
+        if actual_row_linkage is not None:
+            print("   Using precomputed row linkage.")
+            row_method = None # Not used if linkage is provided
+            row_metric = None # Not used if linkage is provided
+        else:
+            print("   Calculating row linkage on-the-fly.")
+            # Linkage will be calculated on the rows of `matrix_for_plot_display` (values, not correlations)
+            # This implies we need to pass the *values* to be clustered, not the display matrix with NaNs.
+            # Let's use correlation_matrix_cleaned, reindexed to `channels` for rows and `valid_fixed_cols` for columns.
+            matrix_for_row_linkage_calc = correlation_matrix_cleaned.reindex(index=channels)[valid_fixed_cols]
+            if matrix_for_row_linkage_calc.shape[0] < 2:
+                 print("   Skipping row clustering (less than 2 rows after selection for fixed columns).")
+                 row_cluster_flag = False
 
         clustermap = sns.clustermap(
-            matrix_for_plot,    # Use the column-ordered matrix
-            method='ward',      # Linkage for rows
-            metric='euclidean', # Distance for rows
-            row_cluster=True,   # Cluster rows
-            col_cluster=False,  # Do NOT cluster columns
-            annot=True,         # Add correlation values
-            fmt='.2f',         # Format for annotations
-            annot_kws={"size": max(4, 8 - n_channels // 10)}, # Adjust font size based on number of channels
+            matrix_for_plot_display, # Display this matrix (NaN diagonal, selected cols)
+            method=row_method if row_cluster_flag else None, 
+            metric=row_metric if row_cluster_flag else None,
+            row_linkage=actual_row_linkage if row_cluster_flag else None,
+            row_cluster=row_cluster_flag,
+            col_cluster=False,  # Do NOT cluster columns (fixed order)
+            data2=matrix_for_row_linkage_calc if actual_row_linkage is None and row_cluster_flag else None, # Data for on-the-fly row linkage
+            annot=True,
+            fmt='.2f',
+            annot_kws={"size": max(4, 8 - n_plot_labels // 10)},
             cmap='coolwarm',
             vmin=-1, vmax=1,
             linewidths=.5,
             figsize=figsize,
-            xticklabels=True,   # Use labels from fixed_channel_order
-            yticklabels=True,
-            dendrogram_ratio=(.15, 0.0), # Row dendrogram only
+            xticklabels=valid_fixed_cols, # Use labels from fixed_channel_order
+            yticklabels=channels if row_cluster_flag else False, # Use `channels` for row labels if clustered
+            dendrogram_ratio=(.15 if row_cluster_flag else 0.0, 0.0), # Row dendrogram only if clustered
             cbar_pos=None
         )
+        # ... rest of fixed_channel_order plotting logic (labels, title, cbar, return order) ...
+        # This part needs careful review for label extraction based on what was clustered.
+        # For simplicity, if row linkage was given, `channels` is the order. 
+        # If calculated, it comes from clustermap.dendrogram_row.reordered_ind mapped to `channels`.
 
-        # Improve layout and appearance
         clustermap.ax_heatmap.set_xlabel("Channels (Fixed Order)", fontsize=9)
-        clustermap.ax_heatmap.set_ylabel("Channels (Clustered)", fontsize=9)
-        # Set column labels explicitly to the fixed order
-        plt.setp(clustermap.ax_heatmap.get_xticklabels(), rotation=90, fontsize=max(4, 8 - n_channels // 10))
-        clustermap.ax_heatmap.set_xticks(np.arange(len(fixed_channel_order)) + 0.5)
-        clustermap.ax_heatmap.set_xticklabels(fixed_channel_order)
-        # Set row labels based on clustering
-        plt.setp(clustermap.ax_heatmap.get_yticklabels(), rotation=0, fontsize=max(4, 8 - n_channels // 10))
-
-        # Add title
+        clustermap.ax_heatmap.set_ylabel("Channels (Clustered by Row)", fontsize=9)
+        plt.setp(clustermap.ax_heatmap.get_xticklabels(), rotation=90, fontsize=max(4, 8 - n_plot_labels // 10))
+        # clustermap.ax_heatmap.set_xticks(np.arange(len(valid_fixed_cols)) + 0.5) # Already handled by xticklabels=valid_fixed_cols
+        # clustermap.ax_heatmap.set_xticklabels(valid_fixed_cols) # Redundant
+        plt.setp(clustermap.ax_heatmap.get_yticklabels(), rotation=0, fontsize=max(4, 8 - n_plot_labels // 10))
         clustermap.fig.suptitle(title, y=1.02, fontsize=10)
-
-        # Add colorbar
         cbar_ax = clustermap.fig.add_axes([0.85, 0.8, 0.03, 0.15])
         plt.colorbar(clustermap.ax_heatmap.get_children()[0], cax=cbar_ax, label="Spearman Correlation")
 
-        # Extract the order of channels after ROW clustering
-        try:
-             row_indices = clustermap.dendrogram_row.reordered_ind
-             # Map row indices back to channel names (using the original index before potential row-subsetting)
-             original_row_channels = matrix_for_plot.index.tolist()
-             ordered_channels_list = [original_row_channels[i] for i in row_indices]
-        except Exception as e:
-             print(f"   WARNING: Could not extract row channel order from clustermap: {e}")
-             # Fallback: Use the order of rows as they appear in the input matrix
-             # This might not be ideal if the matrix was subsetted for rows too.
-             ordered_channels_list = matrix_for_plot.index.tolist()
-             
-        # Save the figure
+        ordered_channels_list_plot = channels # Default to input `channels` which should be linkage order for rows
+        if row_cluster_flag and actual_row_linkage is None: # If rows were clustered on-the-fly
+            try:
+                 row_indices = clustermap.dendrogram_row.reordered_ind
+                 ordered_channels_list_plot = [channels[i] for i in row_indices]
+            except Exception as e_ord:
+                 print(f"   WARNING: Could not extract row channel order from fixed-col clustermap: {e_ord}")
+        
         plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
-        plt.close() # Close the figure to free memory
+        plt.close() 
         print(f"   --- Correlation map saved to: {os.path.basename(output_path)}")
-        return ordered_channels_list
+        return ordered_channels_list_plot
 
-    else: # This block is now restored to original full clustering
-        # Determine appropriate figure size based on number of channels
-        n_channels = len(channels)
-        figsize_base = max(6, n_channels * 0.4)  # Adjust multiplier as needed
-        figsize = (figsize_base, figsize_base)
+    # --- Branch for full clustering (potentially with precomputed linkage for both axes) ---
+    else:
+        print(f"   Generating full clustermap ({n_plot_labels} channels)...")
+        
+        actual_row_linkage = row_linkage_matrix
+        actual_col_linkage = col_linkage_matrix
+        linkage_method = 'ward' # Default if linkage not provided
+        linkage_metric = 'euclidean' # Default if linkage not provided
+
+        if actual_row_linkage is not None and actual_col_linkage is not None:
+            print("   Using precomputed row and column linkage matrices.")
+            linkage_method = None # Not used if linkage is provided
+            linkage_metric = None # Not used if linkage is ખprovided
+            # `channels` argument to clustermap should be the labels for the dendrogram
+            # `correlation_matrix_for_display_ordered` is already aligned with `channels`.
+        else:
+            print("   Calculating linkage on-the-fly.")
+            # For on-the-fly calculation, linkage is computed on correlation_matrix_cleaned (no NaN diagonal)
+            # Ensure it uses the `channels` subset if `correlation_matrix_cleaned` is larger.
+            if set(channels) != set(correlation_matrix_cleaned.columns):
+                 matrix_for_on_the_fly_linkage = correlation_matrix_cleaned.loc[channels, channels]
+            else:
+                 matrix_for_on_the_fly_linkage = correlation_matrix_cleaned
+            
+            # The diagonal for linkage calculation should not be 1.0 (self-correlation)
+            # It was already set to 0 in the previous version for on-the-fly, let's ensure that concept carries over.
+            # However, seaborn's clustermap default for `metric` on a correlation matrix is often `1 - corr` or similar.
+            # For `euclidean` distance on correlations, a 0 diagonal is better.
+            # Let's ensure the matrix passed for linkage calculation has a 0 diagonal.
+            linkage_calc_input_df = matrix_for_on_the_fly_linkage.copy()
+            np.fill_diagonal(linkage_calc_input_df.values, 0)
+            
+            # `data2` param in seaborn.clustermap can be used to specify the data for linkage if different from display data.
+            # We will pass `linkage_calc_input_df` via `data2` if we let clustermap compute linkage.
+            # This is getting convoluted. The previous fix of calculating linkage manually was cleaner.
+            # Let's revert to manual linkage calculation if not provided.
+            try:
+                # Correlated data for linkage calculation
+                _matrix_for_linkage = correlation_matrix_cleaned.loc[channels, channels].copy()
+                np.fill_diagonal(_matrix_for_linkage.values, 0) # Diagonal = 0 for distance
+                
+                pairwise_dists = dist.pdist(_matrix_for_linkage.values, metric='euclidean')
+                if not (np.all(np.isfinite(pairwise_dists)) and pairwise_dists.shape[0] > 0):
+                    print(f"   ERROR: Could not compute valid finite pairwise distances for on-the-fly linkage. Aborting plot for {title}.")
+                    return None
+                actual_row_linkage = sch.linkage(pairwise_dists, method='ward')
+                actual_col_linkage = actual_row_linkage # Symmetric
+                linkage_method = None
+                linkage_metric = None
+                print("   Successfully calculated linkage on-the-fly using euclidean distance on zero-diagonal correlation matrix.")
+            except ValueError as ve:
+                print(f"   ERROR: Failed during on-the-fly linkage calculation for {title}: {ve}.")
+                traceback.print_exc()
+                return None
+            except Exception as e_link:
+                print(f"   ERROR: Unexpected error during on-the-fly linkage calculation for {title}: {e_link}.")
+                traceback.print_exc()
+                return None
 
         plt.figure(figsize=figsize) # Create a figure context for heatmap or clustermap
-
-        ordered_channels_list = None
+        ordered_channels_list_plot = None
 
         try:
-            # --- Plot Clustermap with Hierarchical Clustering ---
-            print(f"   Generating clustermap with clustering ({n_channels} channels)...")
             clustermap = sns.clustermap(
-                correlation_matrix, # Use original matrix before potential reordering
-                method='ward',      # Linkage method for clustering
-                metric='euclidean', # Distance metric (on correlations)
-                # No row/col_cluster flags needed here, defaults are True
-                annot=True,         # Add correlation values
-                fmt='.2f',         # Format for annotations
-                annot_kws={"size": max(4, 8 - n_channels // 10)}, # Adjust font size based on number of channels
-                cmap='coolwarm',    # Diverging colormap appropriate for correlations
-                vmin=-1, vmax=1,    # Correlation ranges from -1 to 1
+                correlation_matrix_for_display_ordered, # Display this matrix (ordered by `channels`, NaN diagonal)
+                method=linkage_method,      # Only if linkage not provided
+                metric=linkage_metric,      # Only if linkage not provided
+                row_linkage=actual_row_linkage,
+                col_linkage=actual_col_linkage,
+                annot=True,
+                fmt='.2f',
+                annot_kws={"size": max(4, 8 - n_plot_labels // 10)},
+                cmap='coolwarm',
+                vmin=-1, vmax=1,
                 linewidths=.5,
-                figsize=figsize,    # Use calculated figsize
-                xticklabels=True,
-                yticklabels=True,
-                dendrogram_ratio=(.15, .15), # Original ratio for both dendrograms
-                cbar_pos=None # Initially hide default cbar, will add manually if needed
+                figsize=figsize,
+                xticklabels=channels, # Labels are from `channels` (linkage order)
+                yticklabels=channels, # Labels are from `channels` (linkage order)
+                dendrogram_ratio=(.15, .15),
+                cbar_pos=None
             )
 
-            # Improve layout and appearance
             clustermap.ax_heatmap.set_xlabel("Channels", fontsize=9)
             clustermap.ax_heatmap.set_ylabel("Channels", fontsize=9)
-            plt.setp(clustermap.ax_heatmap.get_xticklabels(), rotation=90, fontsize=max(4, 8 - n_channels // 10))
-            plt.setp(clustermap.ax_heatmap.get_yticklabels(), rotation=0, fontsize=max(4, 8 - n_channels // 10))
-
-            # Add title to the figure (clustermap object is a Figure-level grid)
-            clustermap.fig.suptitle(title, y=1.02, fontsize=10) # Adjust y position
-
-            # Add a colorbar manually in a better position
-            cbar_ax = clustermap.fig.add_axes([0.85, 0.8, 0.03, 0.15]) # Adjust position [left, bottom, width, height]
+            plt.setp(clustermap.ax_heatmap.get_xticklabels(), rotation=90, fontsize=max(4, 8 - n_plot_labels // 10))
+            plt.setp(clustermap.ax_heatmap.get_yticklabels(), rotation=0, fontsize=max(4, 8 - n_plot_labels // 10))
+            clustermap.fig.suptitle(title, y=1.02, fontsize=10)
+            cbar_ax = clustermap.fig.add_axes([0.85, 0.8, 0.03, 0.15])
             plt.colorbar(clustermap.ax_heatmap.get_children()[0], cax=cbar_ax, label="Spearman Correlation")
 
-            # Extract the order of channels after clustering (both rows and columns)
+            # If linkage was provided, `channels` is already the final plot order.
+            # If linkage was calculated by clustermap, extract order.
+            # However, we now always provide linkage or calculate it manually before clustermap.
+            # So, the order is effectively `channels` as reordered by the `actual_row_linkage`.
             try:
-                 # Get the reordered indices from the dendrogram
-                 row_indices = clustermap.dendrogram_row.reordered_ind
-                 col_indices = clustermap.dendrogram_col.reordered_ind # Original extraction for both
-
-                 # Map indices back to channel names (use row order as primary)
-                 original_channels = correlation_matrix.index.tolist() # Get channels before clustermap reordered them
-                 ordered_channels_list = [original_channels[i] for i in row_indices]
-
-                 # Optional: Check if row/col orders differ (original check)
-                 col_ordered_channels = [original_channels[i] for i in col_indices]
-                 if ordered_channels_list != col_ordered_channels:
-                      print("   WARNING: Row and Column clustering order differs significantly. Using row order.")
-
+                 row_indices = clustermap.dendrogram_row.reordered_ind # These are indices into `channels`
+                 ordered_channels_list_plot = [channels[i] for i in row_indices]
+                 # col_indices = clustermap.dendrogram_col.reordered_ind
+                 # col_ordered_channels = [channels[i] for i in col_indices]
+                 # if ordered_channels_list_plot != col_ordered_channels:
+                 #      print("   WARNING: Row and Column clustering order differs. Using row order.")
             except Exception as e:
-                 print(f"   WARNING: Could not extract channel order from clustermap: {e}")
-                 ordered_channels_list = channels # Fallback to original order (before clustering)
+                 print(f"   WARNING: Could not extract channel order from clustermap dendrogram object: {e}. Using input channel order.")
+                 ordered_channels_list_plot = channels
 
-
-            # Save the figure
             plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
-            plt.close() # Close the figure to free memory
+            plt.close()
             print(f"   --- Correlation map saved to: {os.path.basename(output_path)}")
-            return ordered_channels_list
+            return ordered_channels_list_plot
 
         except Exception as e:
             print(f"   ERROR generating correlation map: {e}")
             traceback.print_exc()
             plt.close() # Ensure plot is closed on error
             return None # Return None on failure
-
 
 # --- UMAP Community Plot ---
 
@@ -1110,13 +1233,13 @@ def plot_umap_scatter(umap_coords: pd.DataFrame, # Should have UMAP1, UMAP2, ind
         traceback.print_exc()
         plt.close('all')
 
-# New plot function replacing the raw spatial grid - REVISED for Side-by-Side Comparison & GridSpec Layout
 def plot_raw_vs_scaled_spatial_comparison(roi_raw_data: pd.DataFrame,
                                           scaled_pixel_expression: pd.DataFrame,
                                           roi_channels: List[str],
                                           config: Dict,
                                           output_path: str,
-                                          roi_string: str):
+                                          roi_string: str,
+                                          plot_dpi: Optional[int] = None): # Add plot_dpi here
     """Generates a side-by-side comparison of raw and scaled spatial expression using GridSpec.
 
     Each row represents a channel, showing Raw on the left and Arcsinh Scaled on the right.
@@ -1135,7 +1258,9 @@ def plot_raw_vs_scaled_spatial_comparison(roi_raw_data: pd.DataFrame,
 
     n_channels = len(roi_channels)
     n_cols = 2 # Raw and Scaled
-    plot_dpi = config['processing']['plot_dpi']
+    # Use provided plot_dpi if available, otherwise get from config or default
+    final_plot_dpi = plot_dpi if plot_dpi is not None else config.get('processing', {}).get('plot_dpi', 150)
+
     cfg_viz = config['processing']['visualization']
     scatter_size = cfg_viz.get('scatter_size', 1)
     scatter_marker = cfg_viz.get('scatter_marker', '.')
@@ -1209,7 +1334,7 @@ def plot_raw_vs_scaled_spatial_comparison(roi_raw_data: pd.DataFrame,
             plot_values_raw = roi_raw_data[channel].copy()
             # Use the vmin/vmax derived from the SCALED data for color mapping
             ax_raw.scatter(pixel_coords['X'], pixel_coords['Y'], c=plot_values_raw,
-                           cmap=cmap_shared, s=scatter_size, marker=scatter_marker,
+                               cmap=cmap_shared, s=scatter_size, marker=scatter_marker,
                            vmin=vmin, vmax=vmax, rasterized=True)
         else:
             ax_raw.text(0.5, 0.5, 'Missing Raw', ha='center', va='center', transform=ax_raw.transAxes, fontsize=7)
@@ -1274,7 +1399,7 @@ def plot_raw_vs_scaled_spatial_comparison(roi_raw_data: pd.DataFrame,
 
     # --- Save Figure ---
     try:
-        fig.savefig(output_path, dpi=plot_dpi, bbox_inches='tight', facecolor='white')
+        fig.savefig(output_path, dpi=final_plot_dpi, bbox_inches='tight', facecolor='white')
         print(f"   {function_name} saved to: {output_path}")
     except Exception as e:
          print(f"   Error saving {function_name} to {output_path}: {e}")
@@ -1401,3 +1526,881 @@ def plot_community_spatial_grid(
     plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
     plt.close(fig)
     print(f"   --- Community spatial grid saved to: {os.path.basename(output_path)}")
+
+def plot_community_size_distribution(
+    community_sizes: pd.Series,  # Series with community IDs as index and sizes as values
+    output_path: str,           # Where to save the plot
+    title: str,                 # Plot title
+    plot_dpi: int = 150        # DPI for saving
+):
+    """
+    Generates a plot showing the distribution of community sizes.
+    
+    Args:
+        community_sizes: Pandas Series with community IDs as index and their sizes (number of pixels) as values
+        output_path: Full path to save the output plot file
+        title: Title for the plot
+        plot_dpi: DPI for saving the plot
+    """
+    print(f"   Generating community size distribution plot...")
+    
+    if community_sizes.empty:
+        print("   ERROR: No community size data provided.")
+        return
+        
+    try:
+        plt.close('all')
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        
+        # 1. Area plot of community sizes (sorted)
+        sorted_sizes = community_sizes.sort_values(ascending=False)
+        
+        # Create area plot instead of bars
+        ax1.fill_between(range(len(sorted_sizes)), sorted_sizes.values,
+                        color='skyblue', alpha=0.7)
+        
+        ax1.set_title('Community Sizes (Sorted by Size)', fontsize=12)
+        ax1.set_xlabel('Community Rank (0 = largest)', fontsize=10)
+        ax1.set_ylabel('Number of Pixels', fontsize=10)
+        ax1.tick_params(axis='both', labelsize=8)
+        
+        # Adjust x-axis labels to show integer range (rank)
+        num_communities_total = len(sorted_sizes)
+        if num_communities_total > 0:
+            if num_communities_total > 10:
+                num_ticks_to_show = 10
+                tick_positions = np.linspace(0, num_communities_total - 1, num_ticks_to_show, dtype=int)
+                ax1.set_xticks(tick_positions)
+                ax1.set_xticklabels([str(pos) for pos in tick_positions])
+            else:
+                tick_positions = np.arange(num_communities_total)
+                ax1.set_xticks(tick_positions)
+                ax1.set_xticklabels([str(pos) for pos in tick_positions])
+            plt.setp(ax1.get_xticklabels(), rotation=0, ha='center')
+        else:
+            ax1.set_xticks([])
+            ax1.set_xticklabels([])
+        
+        # 2. Histogram of size distribution
+        ax2.hist(community_sizes.values, bins=min(20, len(community_sizes)),
+                color='lightgreen', edgecolor='black', alpha=0.7)
+        ax2.set_title('Size Distribution', fontsize=12)
+        ax2.set_xlabel('Number of Pixels', fontsize=10)
+        ax2.set_ylabel('Number of Communities', fontsize=10)
+        ax2.tick_params(axis='both', labelsize=8)
+        
+        # Add summary statistics as text
+        stats_text = (
+            f'Total Communities: {len(community_sizes):,}\n'
+            f'Total Pixels: {community_sizes.sum():,}\n'
+            f'Mean Size: {community_sizes.mean():.1f}\n'
+            f'Median Size: {community_sizes.median():.1f}\n'
+            f'Min Size: {community_sizes.min():,}\n'
+            f'Max Size: {community_sizes.max():,}'
+        )
+        ax2.text(0.95, 0.95, stats_text,
+                transform=ax2.transAxes,
+                verticalalignment='top',
+                horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8),
+                fontsize=9)
+        
+        # Add overall title
+        fig.suptitle(title, fontsize=14, y=1.02)
+        
+        # Adjust layout and save
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
+        plt.close(fig)
+        print(f"   --- Community size distribution plot saved to: {os.path.basename(output_path)}")
+        
+    except Exception as e:
+        print(f"   ERROR: Failed to generate community size distribution plot: {e}")
+        traceback.print_exc()
+        if 'fig' in locals() and plt.fignum_exists(fig.number):
+            plt.close(fig)
+
+# --- New function for Dendrogram plotting ---
+
+def plot_linkage_dendrogram(
+    linkage_matrix: np.ndarray,
+    labels: List[str], # Community IDs or Channel names
+    title: str,
+    output_path: str,
+    plot_dpi: int = 150,
+    orientation: str = 'top', # 'top', 'bottom', 'left', 'right'
+    color_threshold: Optional[float] = None,
+    truncate_mode: Optional[str] = None, # e.g., 'lastp', 'level'
+    p: Optional[int] = 30, # Parameter for truncate_mode, changed default from None to 30
+    leaf_font_size: Optional[int] = None,
+    leaf_rotation: Optional[float] = 90,
+    max_labels_to_show: int = 50 # If more labels, consider not showing or truncating
+):
+    """Generates and saves a dendrogram from a linkage matrix.
+
+    Args:
+        linkage_matrix: The hierarchical clustering linkage matrix (from scipy.cluster.hierarchy.linkage).
+        labels: List of labels for the leaves of the dendrogram.
+        title: Title for the plot.
+        output_path: Path to save the plot.
+        plot_dpi: DPI for saving the plot.
+        orientation: Orientation of the dendrogram.
+        color_threshold: Threshold for coloring clusters.
+        truncate_mode: Mode for truncating the dendrogram (see scipy docs).
+        p: Parameter for truncate_mode.
+        leaf_font_size: Font size for leaf labels.
+        leaf_rotation: Rotation for leaf labels.
+        max_labels_to_show: If the number of labels exceeds this, leaf labels might be hidden or truncated for clarity.
+    """
+    print(f"   Generating dendrogram: {os.path.basename(output_path)}")
+    if linkage_matrix is None or linkage_matrix.ndim != 2 or linkage_matrix.shape[0] == 0:
+        print("   Skipping dendrogram: Invalid or empty linkage matrix provided.")
+        return
+    if not labels:
+        print("   Skipping dendrogram: No labels provided.")
+        return
+
+    num_labels = len(labels)
+    effective_leaf_font_size = leaf_font_size
+    show_labels = True
+
+    if num_labels > max_labels_to_show:
+        print(f"   Warning: Number of labels ({num_labels}) exceeds max_labels_to_show ({max_labels_to_show}).")
+        if truncate_mode is None: # If user hasn't specified truncation, suggest or hide labels
+            print(f"     Consider using truncate_mode='lastp' with p=~{max_labels_to_show} or hiding labels.")
+            # For very large numbers, hiding labels by default might be better
+            if num_labels > max_labels_to_show * 2: # Arbitrary factor
+                 print("     Hiding leaf labels for clarity due to large number.")
+                 show_labels = False
+        if effective_leaf_font_size is None:
+            effective_leaf_font_size = 6 # Smaller font for many labels
+    elif effective_leaf_font_size is None:
+        effective_leaf_font_size = 8 # Default if not too many
+
+    # Dynamically adjust figure size based on number of labels and orientation
+    if orientation in ['top', 'bottom']:
+        fig_width = max(8, num_labels * 0.2) # Adjust width based on number of labels
+        fig_height = 6
+    else: # left, right
+        fig_width = 10
+        fig_height = max(8, num_labels * 0.15)
+    
+    fig_width = min(fig_width, 40) # Max width
+    fig_height = min(fig_height, 40) # Max height
+
+    plt.close('all')
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+    try:
+        ddata = sch.dendrogram(
+            linkage_matrix,
+            orientation=orientation,
+            labels=labels if show_labels else None,
+            leaf_rotation=leaf_rotation if show_labels else 0,
+            leaf_font_size=effective_leaf_font_size if show_labels else 1,
+            truncate_mode=truncate_mode,
+            p=p,
+            color_threshold=color_threshold,
+            ax=ax
+        )
+
+        ax.set_title(title, fontsize=14)
+        if orientation in ['top', 'bottom']:
+            ax.set_ylabel("Distance/Dissimilarity", fontsize=10)
+        else:
+            ax.set_xlabel("Distance/Dissimilarity", fontsize=10)
+        
+        # Add a line for color_threshold if provided
+        if color_threshold is not None:
+            if orientation in ['top', 'bottom']:
+                ax.axhline(y=color_threshold, color='r', linestyle='--', linewidth=0.8)
+            else:
+                ax.axvline(x=color_threshold, color='r', linestyle='--', linewidth=0.8)
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
+        print(f"   --- Dendrogram saved to: {os.path.basename(output_path)}")
+
+    except Exception as e:
+        print(f"   ERROR generating dendrogram: {e}")
+        traceback.print_exc()
+    finally:
+        plt.close(fig)
+
+def analyze_dendrogram_by_controls(
+    linkage_matrix: np.ndarray,
+    channel_labels_for_linkage: List[str],
+    background_channels: List[str],
+    protein_channels: List[str], # Added for completeness, though not directly used in distance logic yet
+    roi_string: str,
+    output_dir: str, # Directory to save report and plot
+    plot_dpi: int = 150
+):
+    """
+    Analyzes a channel dendrogram based on when background (control) channels merge
+    and reports cluster compositions at that reference distance.
+
+    Args:
+        linkage_matrix: The precomputed hierarchical clustering linkage matrix (from sch.linkage).
+        channel_labels_for_linkage: List of channel names corresponding to the linkage matrix leaves.
+                                   This order IS CRUCIAL and must match the order used to generate linkage_matrix.
+        background_channels: List of channel names designated as background/control.
+        protein_channels: List of channel names designated as protein markers.
+        roi_string: Identifier for the ROI, used in output filenames.
+        output_dir: Directory where the analysis report and dendrogram plot will be saved.
+        plot_dpi: DPI for the saved dendrogram plot.
+    """
+    print(f"\n  Analyzing channel hierarchy for {roi_string} based on background channels...")
+    os.makedirs(output_dir, exist_ok=True)
+    report_lines = [f"--- Channel Hierarchy Analysis for ROI: {roi_string} ---"]
+
+    if linkage_matrix is None or linkage_matrix.shape[0] == 0:
+        print("    ERROR: Linkage matrix is empty or None. Cannot perform analysis.")
+        report_lines.append("ERROR: Linkage matrix was empty or None.")
+        # Save and return early
+        report_path = os.path.join(output_dir, f"channel_hierarchy_analysis_error_{roi_string}.txt")
+        with open(report_path, 'w') as f:
+            f.write("\n".join(report_lines))
+        return
+
+    if not channel_labels_for_linkage:
+        print("    ERROR: channel_labels_for_linkage is empty. Cannot map channels.")
+        report_lines.append("ERROR: channel_labels_for_linkage was empty.")
+        report_path = os.path.join(output_dir, f"channel_hierarchy_analysis_error_{roi_string}.txt")
+        with open(report_path, 'w') as f:
+            f.write("\n".join(report_lines))
+        return
+        
+    num_original_observations = linkage_matrix.shape[0] + 1
+    if num_original_observations != len(channel_labels_for_linkage):
+        print(f"    ERROR: Mismatch between linkage matrix observations ({num_original_observations}) and labels provided ({len(channel_labels_for_linkage)}).")
+        report_lines.append(f"ERROR: Linkage matrix implies {num_original_observations} items, but {len(channel_labels_for_linkage)} labels were given.")
+        # Save and return early
+        report_path = os.path.join(output_dir, f"channel_hierarchy_analysis_error_{roi_string}.txt")
+        with open(report_path, 'w') as f:
+            f.write("\n".join(report_lines))
+        return
+
+    # Identify indices of background channels in the `channel_labels_for_linkage` list
+    bg_channel_indices = [i for i, label in enumerate(channel_labels_for_linkage) if label in background_channels]
+    report_lines.append(f"Found {len(background_channels)} background channels specified in config: {background_channels}")
+    report_lines.append(f"Found {len(bg_channel_indices)} matching background channels in the linkage labels: {[channel_labels_for_linkage[i] for i in bg_channel_indices]}")
+
+    if not bg_channel_indices:
+        print("    WARNING: No specified background channels found in the linkage labels. Cannot determine reference distance.")
+        report_lines.append("WARNING: No background channels from config found in the provided linkage labels.")
+        control_reference_distance = None
+    elif len(bg_channel_indices) == 1:
+        print("    WARNING: Only one background channel found in linkage labels. Using its first merge distance if applicable, or max distance.")
+        report_lines.append("WARNING: Only one background channel found. Reference distance logic may be limited.")
+        # Find the first merge involving this single background channel's index
+        # The linkage matrix format: [idx1, idx2, dist, num_points]
+        # idx < num_original_observations are original items.
+        # For a single control, its first merge distance is when it clusters with *anything*.
+        min_dist_for_single_bg = float('inf')
+        found_merge = False
+        for i in range(linkage_matrix.shape[0]):
+            if linkage_matrix[i, 0] == bg_channel_indices[0] or linkage_matrix[i, 1] == bg_channel_indices[0]:
+                min_dist_for_single_bg = linkage_matrix[i, 2]
+                found_merge = True
+                break
+        if found_merge:
+            control_reference_distance = min_dist_for_single_bg
+            report_lines.append(f"Single background channel first merges at distance: {control_reference_distance:.4f}")
+        else:
+            # This case should not happen if the item is in the linkage.
+            control_reference_distance = linkage_matrix[:, 2].max() # Fallback to max distance
+            report_lines.append(f"Single background channel never explicitly merged? Using max distance as fallback: {control_reference_distance:.4f}")
+    else:
+        # Determine the smallest distance at which all background channels are in the same cluster
+        # Iterate through unique sorted distances from the linkage matrix
+        unique_distances = sorted(np.unique(linkage_matrix[:, 2]))
+        control_reference_distance = None
+        for dist_thresh in unique_distances:
+            # Get flat clusters at this distance
+            # `fcluster` uses 1-based indexing for clusters, labels are 0-indexed original items
+            flat_clusters = sch.fcluster(linkage_matrix, t=dist_thresh, criterion='distance')
+            # Get the cluster IDs for our background channel indices
+            bg_cluster_ids = [flat_clusters[i] for i in bg_channel_indices]
+            if len(set(bg_cluster_ids)) == 1:
+                control_reference_distance = dist_thresh
+                report_lines.append(f"All specified background channels merge into a single cluster at distance: {control_reference_distance:.4f}")
+                break
+        if control_reference_distance is None:
+            # This implies they never all merge, which is unlikely if they are part of the same dataset.
+            # Default to the maximum distance in the linkage matrix if no common cluster is found sooner.
+            control_reference_distance = linkage_matrix[:, 2].max()
+            report_lines.append(f"WARNING: Background channels did not all merge into one cluster. Using max linkage distance as reference: {control_reference_distance:.4f}")
+
+    report_lines.append("\n--- Cluster Composition at Control Reference Distance ---")
+    if control_reference_distance is not None:
+        report_lines.append(f"Reference Distance (all background channels merged): {control_reference_distance:.4f}")
+        flat_clusters_at_ref_dist = sch.fcluster(linkage_matrix, t=control_reference_distance, criterion='distance')
+        
+        # Group channels by their cluster ID at this reference distance
+        cluster_composition = {}
+        for i, label in enumerate(channel_labels_for_linkage):
+            cluster_id = flat_clusters_at_ref_dist[i]
+            channel_type = "Protein" if label in protein_channels else ("Background" if label in background_channels else "Other")
+            if cluster_id not in cluster_composition:
+                cluster_composition[cluster_id] = []
+            cluster_composition[cluster_id].append(f"{label} ({channel_type})")
+        
+        for cid in sorted(cluster_composition.keys()):
+            report_lines.append(f"  Cluster {cid}:")
+            for member in sorted(cluster_composition[cid]): # Sort members for consistent reporting
+                report_lines.append(f"    - {member}")
+    else:
+        report_lines.append("Could not determine a control reference distance.")
+
+    # --- New: Full Dendrogram Hierarchy ---
+    report_lines.append("\n--- Full Channel Dendrogram Hierarchy ---")
+    
+    # Helper function to recursively get children of a cluster
+    # Memoization cache for the helper function
+    memo = {}
+
+    def get_cluster_children_recursive(cluster_idx_in_linkage: int, linkage_matrix: np.ndarray, 
+                                       num_original_observations: int, channel_labels_for_linkage: List[str],
+                                       visited_clusters: set) -> List[str]:
+        # cluster_idx_in_linkage is the 0-based index for the linkage matrix (row number)
+        # The ID of the cluster formed at this step is num_original_observations + cluster_idx_in_linkage
+        
+        cluster_node_id = num_original_observations + cluster_idx_in_linkage
+
+        if cluster_node_id in memo:
+            return memo[cluster_node_id]
+
+        if cluster_node_id in visited_clusters: # Avoid infinite recursion for malformed linkage (though unlikely with scipy)
+            return [f"Recursive reference to cluster {cluster_node_id}"]
+        visited_clusters.add(cluster_node_id)
+
+        child1_id = int(linkage_matrix[cluster_idx_in_linkage, 0])
+        child2_id = int(linkage_matrix[cluster_idx_in_linkage, 1])
+        
+        children_list = []
+        
+        # Process child 1
+        if child1_id < num_original_observations: # It's a leaf (original channel)
+            children_list.append(channel_labels_for_linkage[child1_id])
+        else: # It's a non-leaf node (another cluster)
+            # The ID needs to be converted back to linkage_matrix row index
+            child1_linkage_idx = child1_id - num_original_observations
+            children_list.extend(get_cluster_children_recursive(child1_linkage_idx, linkage_matrix, 
+                                                                num_original_observations, channel_labels_for_linkage,
+                                                                visited_clusters.copy())) # Pass a copy of visited set
+
+        # Process child 2
+        if child2_id < num_original_observations: # It's a leaf (original channel)
+            children_list.append(channel_labels_for_linkage[child2_id])
+        else: # It's a non-leaf node (another cluster)
+            child2_linkage_idx = child2_id - num_original_observations
+            children_list.extend(get_cluster_children_recursive(child2_linkage_idx, linkage_matrix,
+                                                                num_original_observations, channel_labels_for_linkage,
+                                                                visited_clusters.copy())) # Pass a copy of visited set
+        
+        # Sort for consistent output order of children leaves
+        sorted_children = sorted(list(set(children_list))) # Use set to remove duplicates if a deep recursion path leads to same leaf multiple times
+        memo[cluster_node_id] = sorted_children
+        return sorted_children
+
+    # Iterate through each merge step in the linkage matrix
+    # Each row i in linkage_matrix represents a cluster formed.
+    # The ID of this cluster is (num_original_observations + i).
+    if linkage_matrix is not None and linkage_matrix.shape[0] > 0 :
+        for i in range(linkage_matrix.shape[0]):
+            cluster_node_id = num_original_observations + i
+            cluster_distance = linkage_matrix[i, 2]
+            num_leaves_in_cluster = int(linkage_matrix[i, 3])
+
+            # Get the direct children IDs from the linkage matrix
+            child1_direct_id = int(linkage_matrix[i, 0])
+            child2_direct_id = int(linkage_matrix[i, 1])
+
+            child1_label = channel_labels_for_linkage[child1_direct_id] if child1_direct_id < num_original_observations else f"Node {child1_direct_id}"
+            child2_label = channel_labels_for_linkage[child2_direct_id] if child2_direct_id < num_original_observations else f"Node {child2_direct_id}"
+
+            report_lines.append(f"  Node {cluster_node_id} (formed at dist: {cluster_distance:.4f}, {num_leaves_in_cluster} leaves):")
+            report_lines.append(f"    Directly merges: {child1_label} + {child2_label}")
+            
+            # Get all leaf members of this cluster using the recursive helper
+            # We pass 'i' as the cluster_idx_in_linkage
+            memo.clear() # Clear memo for each top-level node analysis to ensure correctness if needed, though for leaves it should be fine.
+            all_leaf_members = get_cluster_children_recursive(i, linkage_matrix, num_original_observations, channel_labels_for_linkage, set())
+            report_lines.append(f"    All leaf members: {', '.join(all_leaf_members)}")
+    else:
+        report_lines.append("  Linkage matrix empty, cannot report full hierarchy.")
+    # --- End New Section ---
+
+    # --- Save Textual Report --- 
+    report_path = os.path.join(output_dir, f"channel_hierarchy_analysis_{roi_string}.txt")
+    try:
+        with open(report_path, 'w') as f:
+            f.write("\n".join(report_lines))
+        print(f"  Channel hierarchy analysis report saved to: {os.path.basename(report_path)}")
+    except Exception as e_rep:
+        print(f"  ERROR saving channel hierarchy report: {e_rep}")
+
+    # --- Generate Annotated Dendrogram Plot --- 
+    dendro_plot_path = os.path.join(output_dir, f"annotated_channel_dendrogram_{roi_string}.svg")
+    try:
+        # Determine leaf colors
+        leaf_colors = {}
+        for label in channel_labels_for_linkage:
+            if label in background_channels:
+                leaf_colors[label] = 'blue' # Background channels in blue
+            elif label in protein_channels:
+                leaf_colors[label] = 'red'   # Protein channels in red
+            else:
+                leaf_colors[label] = 'black' # Others in black
+
+        # Figure size
+        num_labels = len(channel_labels_for_linkage)
+        fig_height = max(8, num_labels * 0.2) # Adjust height based on number of labels
+        fig_width = 12 
+        fig_height = min(fig_height, 40) # Max height
+
+        plt.figure(figsize=(fig_width, fig_height))
+        # Pass the `labels` argument to `dendrogram` directly
+        ddata = sch.dendrogram(
+            linkage_matrix,
+            labels=channel_labels_for_linkage, 
+            orientation='right',
+            leaf_rotation=0,
+            leaf_font_size=8 # Adjust as needed
+        )
+        
+        # Apply colors to leaf labels
+        ax = plt.gca()
+        yticklabels = ax.get_ymajorticklabels()
+        for ticklabel in yticklabels:
+            label_text = ticklabel.get_text()
+            if label_text in leaf_colors:
+                ticklabel.set_color(leaf_colors[label_text])
+
+        if control_reference_distance is not None:
+            # Add a line for the control reference distance
+            # For a right-oriented dendrogram, this is a vertical line on the x-axis (distance axis)
+            plt.axvline(x=control_reference_distance, color='gray', linestyle='--', linewidth=1, 
+                        label=f'Ctrl Ref Dist: {control_reference_distance:.2f}')
+            plt.legend(fontsize=8)
+
+        plt.title(f'Channel Hierarchical Clustering - {roi_string}\n(Background vs. Protein Markers)', fontsize=12)
+        plt.xlabel("Distance (Spearman Correlation Based)", fontsize=10)
+        plt.ylabel("Channels", fontsize=10)
+        plt.tight_layout()
+        plt.savefig(dendro_plot_path, dpi=plot_dpi, bbox_inches='tight')
+        print(f"  Annotated dendrogram saved to: {os.path.basename(dendro_plot_path)}")
+    except Exception as e_plot:
+        print(f"  ERROR generating annotated dendrogram plot: {e_plot}")
+        traceback.print_exc()
+    finally:
+        plt.close('all') # Ensure all figures are closed
+
+# --- New function for Spatial Community Assignment Map ---
+def plot_spatial_community_assignment_map(
+    pixel_results_df: pd.DataFrame, # Must contain 'X', 'Y', 'community'
+    output_path: str,
+    title: str,
+    plot_dpi: int = 150,
+    scatter_size: float = 1.0,
+    scatter_marker: str = '.',
+    max_communities_for_legend: int = 20
+):
+    """Generates a spatial map of pixels colored by their assigned community ID.
+
+    Args:
+        pixel_results_df: DataFrame with pixel coordinates ('X', 'Y') and 'community' assignments.
+        output_path: Path to save the plot.
+        title: Title for the plot.
+        plot_dpi: DPI for saving the plot.
+        scatter_size: Size of the scatter points.
+        scatter_marker: Marker style for the scatter points.
+        max_communities_for_legend: Maximum number of communities to show in the legend.
+                                      If more communities, legend is omitted for clarity.
+    """
+    print(f"   Generating spatial community assignment map: {os.path.basename(output_path)}")
+
+    if pixel_results_df.empty or not all(col in pixel_results_df.columns for col in ['X', 'Y', 'community']):
+        print("   Skipping spatial community map: Input data missing or lacks required columns (X, Y, community).")
+        return
+
+    plt.close('all')
+    fig, ax = plt.subplots(figsize=(10, 10)) # Adjust figsize as needed
+
+    communities = pixel_results_df['community']
+    unique_communities = sorted(communities.unique())
+    n_communities = len(unique_communities)
+
+    if n_communities == 0:
+        print("   Skipping spatial community map: No communities found in data.")
+        plt.close(fig)
+        return
+
+    # Select a colormap
+    if n_communities <= 20:
+        # cmap = plt.cm.get_cmap('tab20', n_communities)
+        # colors = [cmap(i) for i in range(n_communities)]
+        colors = sns.color_palette("tab20", n_colors=n_communities) # sns.color_palette is often better for distinctiveness
+    elif n_communities <= 50: # Example: for a moderate number
+        colors = sns.color_palette("husl", n_colors=n_communities) # HSLuv is good for many distinct colors
+    else: # For very many communities
+        # Glasbey can generate highly distinct colors, but might need to be installed or implemented.
+        # Fallback to nipy_spectral or a similar continuous-like map if too many for discrete sets.
+        try:
+            # Attempt to use a palette that handles many categories well
+            colors = sns.color_palette("nipy_spectral", n_colors=n_communities)
+        except ValueError: # If n_colors is too large for even nipy_spectral in some contexts
+            # Fallback if a specific number is an issue for a palette generator
+            # Note: This might not give great distinctiveness for very high N.
+            cmap_base = plt.cm.get_cmap('nipy_spectral') 
+            colors = [cmap_base(i / (n_communities -1 if n_communities > 1 else 1)) for i in range(n_communities)]
+            
+    # Create a mapping from community ID to color
+    community_color_map = {comm_id: colors[i] for i, comm_id in enumerate(unique_communities)}
+    point_colors = communities.map(community_color_map).fillna('gray') # FillNA for safety
+
+    ax.scatter(
+        pixel_results_df['X'], 
+        pixel_results_df['Y'], 
+        c=point_colors,
+        s=scatter_size, 
+        marker=scatter_marker,
+        rasterized=True # Good for large number of points
+    )
+
+    ax.set_title(title, fontsize=14)
+    ax.set_xlabel('X Coordinate', fontsize=12)
+    ax.set_ylabel('Y Coordinate', fontsize=12)
+    ax.set_aspect('equal', adjustable='box')
+    ax.invert_yaxis() # Consistent with other spatial plots
+
+    # Add legend if manageable
+    if 1 < n_communities <= max_communities_for_legend:
+        legend_elements = [Patch(facecolor=community_color_map[comm_id], 
+                                 label=f'Community {comm_id}') 
+                           for comm_id in unique_communities]
+        ax.legend(handles=legend_elements, title="Communities", 
+                  bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0., fontsize=8)
+        plt.tight_layout(rect=[0, 0, 0.85, 1]) # Adjust for legend
+    else:
+        if n_communities > max_communities_for_legend:
+            ax.text(1.02, 0.98, f'{n_communities} communities shown.\nLegend omitted for clarity.', 
+                    transform=ax.transAxes, fontsize=8, ha='left', va='top')
+        plt.tight_layout()
+
+    try:
+        plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
+        print(f"   --- Spatial community map saved to: {os.path.basename(output_path)}")
+    except Exception as e:
+        print(f"   ERROR saving spatial community map: {e}")
+    finally:
+        plt.close(fig)
+
+# --- New function for Meta-Cluster Adjacency Heatmaps ---
+def plot_meta_cluster_adjacencies(
+    pixel_results_df: pd.DataFrame, # Must contain 'X', 'Y', 'community'
+    community_linkage_matrix: np.ndarray,
+    original_community_ids: List[Any], # e.g., avg_profiles.index.tolist()
+    distance_threshold: float,
+    output_dir: str, # Directory to save plots (one per meta-cluster)
+    roi_string: str,
+    resolution_param: str, # For filenames and titles
+    plot_dpi: int = 100, # Lower DPI for potentially many small heatmaps
+    min_communities_in_metacluster: int = 2
+):
+    """Generates heatmaps of spatial adjacencies between communities within meta-clusters.
+
+    Meta-clusters are defined by cutting the community_linkage_matrix at distance_threshold.
+    """
+    function_name = "Meta-Cluster Spatial Adjacency"
+    print(f"   Generating {function_name} plots...")
+
+    if pixel_results_df.empty or not all(col in pixel_results_df.columns for col in ['X', 'Y', 'community']):
+        print(f"   Skipping {function_name}: Pixel data missing or lacks X, Y, or community columns.")
+        return
+    if community_linkage_matrix is None or community_linkage_matrix.ndim != 2:
+        print(f"   Skipping {function_name}: Invalid community linkage matrix.")
+        return
+    if not original_community_ids:
+        print(f"   Skipping {function_name}: No original community IDs provided.")
+        return
+    
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 1. Assign original communities to meta-clusters
+    # The linkage matrix operates on indices 0 to N-1 where N is #original_community_ids.
+    # `fcluster` returns an array where value at index `i` is the meta-cluster ID for original_community_ids[i]
+    try:
+        # Ensure linkage matrix has correct number of initial observations implied by original_community_ids
+        n_obs_linkage = community_linkage_matrix.shape[0] + 1
+        if n_obs_linkage != len(original_community_ids):
+            print(f"   ERROR in {function_name}: Linkage matrix implies {n_obs_linkage} observations, but {len(original_community_ids)} original community IDs were provided.")
+            # Check if original_community_ids might be from a different source or if linkage is for different set of items
+            # Example: if original_community_ids are from avg_profiles.index, ensure avg_profiles was from the same set of communities used for linkage
+            print(f"     Linkage matrix shape: {community_linkage_matrix.shape}")
+            print(f"     Number of original_community_ids: {len(original_community_ids)}")
+            # print(f"     First few original_community_ids: {original_community_ids[:5]}")
+            return
+        meta_cluster_assignments = sch.fcluster(community_linkage_matrix, t=distance_threshold, criterion='distance')
+    except Exception as e:
+        print(f"   ERROR in {function_name} during fcluster: {e}")
+        traceback.print_exc()
+        return
+        
+    # Map original community IDs to their meta-cluster ID
+    comm_to_metacluster_map = {orig_id: meta_cluster_assignments[i] for i, orig_id in enumerate(original_community_ids)}
+
+    # 2. Create a spatial lookup for pixels: (X,Y) -> community_id
+    pixel_map = {}
+    for _, row in pixel_results_df.iterrows():
+        pixel_map[(int(row['X']), int(row['Y']))] = row['community']
+
+    # 3. Process each meta-cluster
+    unique_meta_clusters = sorted(np.unique(meta_cluster_assignments))
+    plot_generated_for_any_metacluster = False
+
+    for mc_id in unique_meta_clusters:
+        member_original_communities = [orig_id for orig_id, assigned_mc_id in comm_to_metacluster_map.items() if assigned_mc_id == mc_id]
+        
+        if len(member_original_communities) < min_communities_in_metacluster:
+            continue
+
+        # print(f"    Processing Meta-cluster {mc_id} (members: {member_original_communities})...") # Verbose, enable if needed
+
+        meta_cluster_pixels_df = pixel_results_df[pixel_results_df['community'].isin(member_original_communities)]
+        if meta_cluster_pixels_df.empty:
+            continue
+
+        sorted_member_communities = sorted(list(set(member_original_communities)))
+        adj_matrix = pd.DataFrame(0, index=sorted_member_communities, columns=sorted_member_communities, dtype=int)
+        neighbor_offsets = [(0, 1), (0, -1), (1, 0), (-1, 0)] 
+
+        for _, pixel_row in meta_cluster_pixels_df.iterrows():
+            px, py = int(pixel_row['X']), int(pixel_row['Y'])
+            p_community = pixel_row['community']
+            for dx, dy in neighbor_offsets:
+                nx, ny = px + dx, py + dy
+                if (nx, ny) in pixel_map:
+                    n_community = pixel_map[(nx, ny)]
+                    if n_community in member_original_communities and n_community != p_community:
+                        c1, c2 = min(p_community, n_community), max(p_community, n_community)
+                        adj_matrix.loc[c1, c2] += 1 
+        
+        for r_idx, r_label in enumerate(adj_matrix.index):
+            for c_idx, c_label in enumerate(adj_matrix.columns):
+                if r_idx < c_idx:
+                    adj_matrix.loc[c_label, r_label] = adj_matrix.loc[r_label, c_label]
+                elif r_idx == c_idx:
+                     adj_matrix.loc[r_label, c_label] = 0 
+
+        if adj_matrix.sum().sum() == 0:
+            # print(f"      No inter-community adjacencies found within meta-cluster {mc_id}.") # Verbose
+            continue
+
+        plt.close('all')
+        n_member_comms = len(sorted_member_communities)
+        fig_size = max(5, n_member_comms * 0.8) 
+        fig, ax = plt.subplots(figsize=(fig_size, fig_size))
+        
+        sns.heatmap(adj_matrix, annot=True, fmt='d', cmap='viridis', ax=ax, cbar=True,
+                    linewidths=.5, linecolor='gray', square=True, annot_kws={"size": 8 if n_member_comms <= 10 else 6})
+        
+        ax.set_title(f"Meta-Cluster {mc_id} - Spatial Adjacencies\nROI: {roi_string} (Res: {resolution_param})", fontsize=10)
+        ax.set_xlabel("Community ID", fontsize=9)
+        ax.set_ylabel("Community ID", fontsize=9)
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor", fontsize=max(6, 8 - n_member_comms // 2))
+        plt.setp(ax.get_yticklabels(), rotation=0, fontsize=max(6, 8 - n_member_comms // 2))
+
+        output_filename = f"metacluster_{mc_id}_adjacencies_{roi_string}_res_{resolution_param.replace('.','_')}.png"
+        current_output_path = os.path.join(output_dir, output_filename)
+        try:
+            plt.tight_layout()
+            plt.savefig(current_output_path, dpi=plot_dpi, bbox_inches='tight')
+            # print(f"      --- Saved adjacency map: {os.path.basename(current_output_path)}") # Verbose
+            plot_generated_for_any_metacluster = True
+        except Exception as e_save:
+            print(f"      ERROR saving adjacency map for meta-cluster {mc_id}: {e_save}")
+        finally:
+            plt.close(fig)
+    if plot_generated_for_any_metacluster:
+        print(f"   --- Meta-cluster adjacency plots saved to directory: {output_dir}")
+
+# New function for Spatial Community Assignment Map with Channel Intensity and Borders
+def plot_spatial_community_channel_maps( # New name
+    pixel_results_df: pd.DataFrame, 
+    scaled_pixel_df: pd.DataFrame,
+    roi_channels: List[str],
+    output_dir: str, 
+    base_filename: str,
+    title_prefix: str,
+    plot_dpi: int = 150,
+    scatter_size: float = 1.0,
+    community_border_color: str = 'cyan', 
+    community_border_linewidth: float = 0.5 
+):
+    """
+    Generates spatial maps for each specified ROI channel, showing channel intensity
+    as a base layer with community boundaries overlaid.
+    """
+    print(f"   Generating spatial community channel maps: {base_filename} into {output_dir}")
+
+    if pixel_results_df.empty or not all(col in pixel_results_df.columns for col in ['X', 'Y', 'community']):
+        print("   Skipping spatial maps: pixel_results_df missing or lacks required columns (X, Y, community).")
+        return
+    if scaled_pixel_df.empty or not all(col in scaled_pixel_df.columns for col in ['X', 'Y']):
+        print("   Skipping spatial maps: scaled_pixel_df missing or lacks required columns (X, Y).")
+        return
+    if not roi_channels:
+        print("   Skipping spatial maps: No ROI channels specified.")
+        return
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    plot_data_base = scaled_pixel_df.copy()
+    
+    if 'community' not in plot_data_base.columns:
+        if scaled_pixel_df.index.equals(pixel_results_df.index) and 'community' in pixel_results_df.columns:
+            print("    Merging community data based on matching DataFrame indices.")
+            plot_data_base['community'] = pixel_results_df['community']
+        elif all(c in pixel_results_df.columns for c in ['X', 'Y', 'community']):
+            print("    Warning: Merging community data based on 'X', 'Y' columns. Ensure these are reliable and precise keys.")
+            try:
+                temp_pixel_results_subset = pixel_results_df[['X', 'Y', 'community']].drop_duplicates(subset=['X', 'Y'])
+                plot_data_base = pd.merge(plot_data_base, temp_pixel_results_subset, on=['X', 'Y'], how='left')
+            except Exception as e_merge:
+                print(f"   ERROR during X,Y merge for community data: {e_merge}. Cannot proceed with community overlays.")
+                plot_data_base['community'] = np.nan 
+        else:
+            print("   ERROR: Cannot merge community data. Index mismatch and pixel_results_df does not contain X, Y, community for alternative merge.")
+            return
+
+    if 'community' not in plot_data_base.columns or plot_data_base['community'].isnull().all():
+        print("   ERROR: Community data could not be associated with scaled pixel data or is all NaN. Skipping.")
+        return
+
+    x_min, x_max = plot_data_base['X'].min(), plot_data_base['X'].max()
+    y_min, y_max = plot_data_base['Y'].min(), plot_data_base['Y'].max()
+
+    for channel_name in roi_channels:
+        if channel_name not in plot_data_base.columns:
+            print(f"    Channel {channel_name} not found in scaled_pixel_df. Skipping plot for this channel.")
+            continue
+
+        plt.close('all')
+        fig, ax = plt.subplots(figsize=(10, 10))
+
+        channel_data = plot_data_base[channel_name].copy()
+        valid_channel_data = channel_data.dropna()
+        if valid_channel_data.empty:
+            print(f"    Channel {channel_name} has no valid data points after NaN removal. Plotting as black.")
+            normalized_channel_data = np.zeros(len(channel_data))
+            channel_data.fillna(0, inplace=True)
+        else:
+            vmin_ch = np.percentile(valid_channel_data, 1)
+            vmax_ch = np.percentile(valid_channel_data, 99)
+            if vmin_ch == vmax_ch: 
+                vmin_ch = valid_channel_data.min()
+                vmax_ch = valid_channel_data.max()
+            
+            if vmin_ch == vmax_ch: 
+                normalized_channel_data = channel_data / vmax_ch if vmax_ch > 0 else np.zeros_like(channel_data)
+            else:
+                normalized_channel_data = (channel_data - vmin_ch) / (vmax_ch - vmin_ch)
+            
+            normalized_channel_data = np.clip(normalized_channel_data, 0, 1)
+        
+        ax.scatter(
+            plot_data_base['X'],
+            plot_data_base['Y'],
+            c=normalized_channel_data.fillna(0), 
+            cmap='gray', 
+            s=scatter_size,
+            marker='.', 
+            rasterized=True,
+            alpha=1.0 
+        )
+
+        boundary_plot_df = plot_data_base.dropna(subset=['community', 'X', 'Y'])
+        if boundary_plot_df.empty:
+            print(f"    No pixels with community assignments found for channel {channel_name}. Skipping boundary overlay.")
+        else:
+            border_pixels_x = []
+            border_pixels_y = []
+            
+            pixel_community_map = {}
+            for _, row in boundary_plot_df.iterrows():
+                try:
+                    x_coord = int(round(float(row['X'])))
+                    y_coord = int(round(float(row['Y'])))
+                    pixel_community_map[(x_coord, y_coord)] = row['community']
+                except ValueError:
+                    print(f"    Warning: Could not convert X,Y to float for pixel {row.name if hasattr(row, 'name') else 'unknown'}. Skipping for boundary map.")
+                    continue
+            
+            if pixel_community_map: 
+                for _, row in boundary_plot_df.iterrows():
+                    try:
+                        x_coord_orig = float(row['X']) 
+                        y_coord_orig = float(row['Y'])
+                        x_coord_rounded = int(round(x_coord_orig))
+                        y_coord_rounded = int(round(y_coord_orig))
+                    except ValueError:
+                        continue 
+
+                    current_community = row['community']
+                    is_border = False
+                    
+                    for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                        neighbor_x_rounded, neighbor_y_rounded = x_coord_rounded + dx, y_coord_rounded + dy
+                        neighbor_community = pixel_community_map.get((neighbor_x_rounded, neighbor_y_rounded), None)
+                        
+                        if neighbor_community is None: 
+                            is_border = True
+                            break
+                        if neighbor_community != current_community: 
+                            is_border = True
+                            break
+                    if is_border:
+                        border_pixels_x.append(x_coord_orig) 
+                        border_pixels_y.append(y_coord_orig)
+                
+                if border_pixels_x:
+                     ax.scatter(
+                        border_pixels_x,
+                        border_pixels_y,
+                        edgecolors=community_border_color,
+                        facecolors='none', 
+                        s=scatter_size * 2.0, 
+                        linewidths=community_border_linewidth,
+                        marker='o', 
+                        alpha=0.7, 
+                        rasterized=True
+                    )
+                else:
+                    print(f"    No border pixels identified for channel {channel_name}.")
+            else:
+                print(f"    Pixel community map for boundary detection is empty for channel {channel_name}.")
+
+        ax.set_title(f"{title_prefix} - Channel: {channel_name.split('(')[0]}", fontsize=14)
+        ax.set_xlabel('X Coordinate', fontsize=12)
+        ax.set_ylabel('Y Coordinate', fontsize=12)
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.invert_yaxis() 
+        ax.grid(False)
+
+        channel_safe_name = "".join(c if c.isalnum() else "_" for c in channel_name)
+        output_filename_full = os.path.join(output_dir, f"{base_filename}_channel_{channel_safe_name}.png")
+
+        try:
+            plt.tight_layout()
+            plt.savefig(output_filename_full, dpi=plot_dpi, bbox_inches='tight')
+            print(f"   --- Spatial map for channel {channel_name} saved to: {os.path.basename(output_filename_full)}")
+        except Exception as e_save:
+            print(f"   ERROR saving spatial map for channel {channel_name}: {e_save}")
+            traceback.print_exc()
+        finally:
+            plt.close(fig)

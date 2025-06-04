@@ -149,11 +149,11 @@ Outputs are saved within the specified `output_dir`. A subdirectory is created f
 
 *   **CSVs:**
     *   `pixel_scaled_results_<roi_string>_res_<resolution>.csv`: Intermediate scaled results with community assignment for this resolution.
-    *   `community_avg_scaled_profiles_<roi_string>_res_<resolution>.csv`: Average community profiles.
+    *   `community_profiles_<roi_string>_res_<resolution>.csv`: Average community profiles.
     *   `community_diff_profiles_<roi_string>_res_<resolution>.csv`: Differential expression profiles.
     *   `community_primary_channels_<roi_string>_res_<resolution>.csv`: Top primary channel per community.
     *   `umap_coords_diff_profiles_<roi_string>_res_<resolution>.csv`: UMAP coordinates (if run).
-    *   `pixel_results_annotated_<roi_string>_res_<resolution>.csv`: Per-pixel results enriched with asinh‑scaled values, community assignments, and primary channel annotations for this resolution.
+    *   `pixel_data_with_community_annotations_<roi_string>_res_<resolution>.csv`: Per-pixel data including X,Y coordinates, asinh-scaled expression values, community assignments, and community-derived annotations (like average community expression and primary channel for the community) for this resolution.
 *   **Plots (SVGs):**
     *   `community_channel_correlation_heatmap_spearman_<roi_string>_res_<resolution>.svg`: Community-level correlation clustermap.
     *   `umap_community_scatter_protein_markers_diff_profiles_<roi_string>_res_<resolution>.svg`: UMAP scatter plot of communities.

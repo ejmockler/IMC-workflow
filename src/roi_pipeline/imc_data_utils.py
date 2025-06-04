@@ -244,7 +244,7 @@ def calculate_asinh_cofactors_for_roi(
 
 def load_and_validate_roi_data(
     file_path: str,
-    master_protein_channels: List[str],
+    all_channels: List[str],
     base_output_dir: str,
     metadata_cols: List[str]
 ) -> Tuple[Optional[str], Optional[str], Optional[pd.DataFrame], Optional[List[str]]]:
@@ -277,13 +277,13 @@ def load_and_validate_roi_data(
     print(f"Loaded data with shape: {current_df_raw.shape}")
 
     # Identify channels present in this specific file that are in the master list
-    available_master_channels = [
-        col for col in master_protein_channels if col in current_df_raw.columns
+    available_channels = [
+        col for col in all_channels if col in current_df_raw.columns
     ]
 
     # Further filter to exclude metadata columns (ensure X, Y are not accidentally excluded if not in metadata_cols)
     current_valid_channels = [
-         ch for ch in available_master_channels if ch not in metadata_cols
+         ch for ch in available_channels if ch not in metadata_cols
     ]
 
 

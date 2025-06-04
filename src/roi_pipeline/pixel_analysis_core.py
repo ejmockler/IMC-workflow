@@ -37,11 +37,18 @@ def run_spatial_leiden(
     resolution_param: float = 0.1,
     seed: int = 42,
     verbose: bool = True,
-    use_gpu_config: bool = False,  # New parameter to control GPU usage
+    use_gpu_from_config: Optional[bool] = None,
+    gpu_memory_limit: Optional[int] = None,
+    config: Optional[Dict] = None,  # Add config parameter for feature weights
+    # --- START: Added for background-derived thresholding ---
+    background_channel_data: Optional[np.ndarray] = None,
+    background_channel_names: Optional[List[str]] = None
+    # --- END: Added for background-derived thresholding ---
 ) -> Tuple[Optional[pd.DataFrame], Optional[Any], Optional[Any], Optional[float]]:
     """
     Performs pixel-based Leiden community detection on IMC data using pre-scaled expression data.
-    Uses Faiss (GPU or CPU) for Approximate Nearest Neighbors (ANN) if available.
+    Uses Faiss (GPU or CPU) for k-Nearest Neighbors (k-NN) on COMBINED spatial and expression features.
+    This ensures pixels are grouped based on both spatial proximity AND expression similarity.
     Leiden clustering is performed using cuGraph (GPU) if available, otherwise leidenalg (CPU).
     **Faiss is required for the k-NN step.**
 
@@ -52,11 +59,19 @@ def run_spatial_leiden(
                                             (n_pixels, n_channels). Assumed to be arcsinh transformed
                                             (with appropriate cofactors) and MinMaxScaler scaled.
                                             **Should be float32 for memory optimization.**
-        n_neighbors: Number of spatial neighbors for the k-NN graph.
+        n_neighbors: Number of neighbors for the k-NN graph.
         resolution_param: Resolution parameter for the Leiden algorithm.
         seed: Random seed for Leiden.
         verbose: If True, print progress messages.
-        use_gpu_config: If True, attempt to use GPU (Faiss-GPU, cuGraph-GPU) if available, otherwise use CPU (Faiss-CPU, leidenalg-CPU).
+        use_gpu_from_config: If True, attempt to use GPU (Faiss-GPU, cuGraph-GPU) if available and underlying checks pass,
+                             If False, force CPU. If None, auto-detect based on availability.
+        gpu_memory_limit: Memory limit for GPU operations (in bytes).
+        config: Optional dictionary for feature weights ('spatial_weight' and 'expression_weight' under 'analysis.clustering')
+                and k-NN edge thresholding settings.
+        background_channel_data: Optional NumPy array (n_pixels, n_bg_channels) of scaled background channel expression data.
+                                 Required if config specifies 'similarity_threshold_type: background_derived'.
+        background_channel_names: Optional list of background channel names corresponding to background_channel_data.
+                                  Used for logging if 'background_derived' thresholding is active.
 
     Returns:
         A tuple containing:
@@ -74,45 +89,56 @@ def run_spatial_leiden(
     if verbose:
         print(f"--- Running Spatial Leiden (k={n_neighbors}, res={resolution_param}) on {n_pixels} pixels ---")
 
-    # --- Determine Execution Path (GPU Faiss > CPU Faiss for kNN; GPU cuGraph > CPU leidenalg for Leiden) ---
+    # --- Determine Execution Path --- 
     if not faiss_available:
         print("   ERROR: Faiss library is not installed or importable, which is required for k-NN. Aborting.")
         return None, None, None, None
         
-    gpu_available = check_gpu_availability(verbose=False)
-    should_try_gpu = use_gpu_config and gpu_available
-    
-    # Check RAPIDS libraries needed for GPU Leiden
-    # cuML is no longer checked here as it's not used for KNN fallback
+    # Determine if GPU should be attempted based on config and actual availability
+    _effectively_try_gpu = False
+    if use_gpu_from_config is True:
+        _effectively_try_gpu = check_gpu_availability(verbose=False) # Respect config if True, but only if GPU is truly there
+        if verbose:
+            print(f"   Config requested GPU. GPU availability check: {_effectively_try_gpu}.")
+    elif use_gpu_from_config is False:
+        _effectively_try_gpu = False # Config explicitly requests CPU
+        if verbose:
+            print("   Config explicitly requested CPU. Forcing CPU paths.")
+    else: # use_gpu_from_config is None (auto-detect)
+        _effectively_try_gpu = check_gpu_availability(verbose=True) # Temporarily set to True for diagnostics
+        if verbose:
+            print(f"   Config did not specify GPU preference. Auto-detect GPU availability: {_effectively_try_gpu}.")
+
+    # Check RAPIDS libraries needed for GPU Leiden if we are considering GPU
     cupy, cudf, cugraph = None, None, None
     rapids_libs_available_for_leiden = False
-    if should_try_gpu:
-        # cuML = get_rapids_lib('cuml') # No longer needed for KNN
+    if _effectively_try_gpu: # Only try to import RAPIDS if GPU is a possibility
         cupy = get_rapids_lib('cupy')
         cudf = get_rapids_lib('cudf')
         cugraph = get_rapids_lib('cugraph')
-        if cupy and cudf and cugraph: # Check only libs needed for Leiden
+        if cupy and cudf and cugraph:
             rapids_libs_available_for_leiden = True
             
-    # Path flags for kNN
-    use_faiss_gpu = should_try_gpu # Faiss availability checked earlier
-    use_faiss_cpu = not use_faiss_gpu # If not trying GPU, use CPU Faiss
+    # Path flags for kNN (Faiss)
+    use_faiss_gpu = _effectively_try_gpu # If effectively trying GPU, attempt Faiss GPU
+    use_faiss_cpu = not _effectively_try_gpu # If not effectively trying GPU, use Faiss CPU (or if Faiss GPU fails)
 
     if verbose:
         print("   k-NN Method Selection:")
         if use_faiss_gpu: print("      Attempting GPU k-NN using Faiss-GPU.")
-        elif use_faiss_cpu: print("      Using CPU k-NN using Faiss-CPU.")
-        # No else needed, as faiss_available was checked upfront
+        else: print("      Using CPU k-NN using Faiss-CPU (GPU not requested, not available, or Faiss-GPU failed).")
 
         print("   Leiden Method Selection:")
-        if should_try_gpu and rapids_libs_available_for_leiden: print("      Attempting GPU Leiden using cuGraph.")
-        else: print("      Using CPU Leiden using leidenalg (GPU/RAPIDS not requested or available).")
+        if _effectively_try_gpu and rapids_libs_available_for_leiden:
+            print("      Attempting GPU Leiden using cuGraph.")
+        else:
+            print("      Using CPU Leiden using leidenalg (GPU not requested, RAPIDS libs not available, or GPU Leiden failed).")
     # --- End Path Decision ---
     
-    # 1. Validate Pre-scaled Expression Data
-    if verbose: print("\n1. Validating pre-scaled expression data...")
+    # 1. Validate Pre-scaled Expression Data (for protein channels)
+    if verbose: print("\n1. Validating pre-scaled protein expression data...")
     if scaled_expression_data_for_weights is None:
-         raise ValueError("scaled_expression_data_for_weights must be provided.")
+         raise ValueError("scaled_expression_data_for_weights must be provided for protein channels.")
     if scaled_expression_data_for_weights.shape[0] != n_pixels:
          raise ValueError(
              f"Shape mismatch: Pre-scaled data has {scaled_expression_data_for_weights.shape[0]} rows, "
@@ -142,81 +168,167 @@ def run_spatial_leiden(
     except Exception as e:
         print(f"   Warning: Could not cast coordinates to float32: {e}. Using original dtype.")
         coords = local_analysis_df[['X', 'Y']].values
+    
+    # Combine spatial coordinates with scaled expression data for hybrid k-NN
+    # This ensures neighbors are similar in BOTH spatial location AND expression profile
+    try:
+        # Get feature weights from config
+        spatial_weight = 1.0
+        expression_weight = 1.0
+        if config is not None:
+            clustering_config = config.get('analysis', {}).get('clustering', {})
+            spatial_weight = clustering_config.get('spatial_weight', 1.0)
+            expression_weight = clustering_config.get('expression_weight', 1.0)
         
-    src = None
-    dst = None
-    weights = None
-    knn_method_used = "None"
+        # Scale coordinates to be on similar magnitude as expression data (0-1 range)
+        # Assuming expression data is already scaled to [0,1] via MinMaxScaler
+        coord_min = coords.min(axis=0)
+        coord_max = coords.max(axis=0)
+        coord_range = coord_max - coord_min
+        # Avoid division by zero
+        coord_range = np.where(coord_range == 0, 1, coord_range)
+        coords_scaled = (coords - coord_min) / coord_range
+        
+        # Apply feature weights
+        coords_weighted = coords_scaled * spatial_weight
+        expression_weighted = scaled_data * expression_weight
+        
+        # Concatenate weighted spatial coordinates with weighted expression data
+        combined_features = np.concatenate([coords_weighted, expression_weighted], axis=1).astype(np.float32)
+        
+        if verbose:
+            print(f"   Combined feature space for PROTEIN channels: {coords_scaled.shape[1]} spatial (weight={spatial_weight:.1f}) + {scaled_data.shape[1]} expression (weight={expression_weight:.1f}) = {combined_features.shape[1]} total features")
+            print(f"   This ensures neighbors are similar in both spatial location AND expression profile")
+        
+    except Exception as e:
+        print(f"   ERROR combining spatial and protein expression features: {e}. Aborting run_spatial_leiden.")
+        traceback.print_exc()
+        return None, None, None, None
+        
+    # --- Variables for final graph edges ---
+    final_graph_src = None
+    final_graph_dst = None
+    final_graph_weights = None
+    knn_method_used_main = "None"
+    
+    # --- Get k-NN Thresholding Configuration ---
+    clustering_cfg = config.get('analysis', {}).get('clustering', {})
+    apply_knn_thresholding = clustering_cfg.get('apply_similarity_thresholding', False)
+    knn_threshold_type = clustering_cfg.get('similarity_threshold_type', 'percentile')
+    # Values for direct use or for background-derived calculation
+    abs_thresh_val = clustering_cfg.get('absolute_distance_threshold', 0.5)
+    perc_thresh_val = clustering_cfg.get('distance_percentile_threshold', 25)
+    bg_derived_perc = clustering_cfg.get('background_derived_threshold_percentile', 75)
 
-    # --- k-NN Calculation: Faiss GPU or Faiss CPU --- 
-    if use_faiss_gpu:
-        knn_method_used = "Faiss-GPU"
-        if verbose: print("   Executing k-NN with Faiss-GPU...")
-        try:
-            res = faiss.StandardGpuResources() # Initialize GPU resources
-            cpu_index = faiss.IndexFlatL2(coords.shape[1]) # Build CPU index first
-            gpu_index = faiss.index_cpu_to_gpu(res, 0, cpu_index) # Move index to GPU 0
-            
-            gpu_index.add(coords) # Add data (NumPy array is fine)
-            distances, indices = gpu_index.search(coords, n_neighbors + 1)
-            
-            # Process results (remove self, type casting)
-            distances = distances[:, 1:].astype(np.float32)
-            indices = indices[:, 1:].astype(np.int32)
-            
-            epsilon = 1e-6
-            weights = (1.0 / (distances + epsilon)).astype(np.float32)
-            src = np.repeat(np.arange(n_pixels, dtype=np.int32), n_neighbors)
-            dst = indices.ravel()
-            weights = weights.ravel()
-            
-            del res, cpu_index, gpu_index, distances, indices # Cleanup
-        except Exception as faiss_gpu_e:
-            print(f"   ERROR during Faiss-GPU k-NN: {faiss_gpu_e}. Falling back to CPU Faiss.")
-            traceback.print_exc()
-            use_faiss_gpu = False # Ensure CPU path is taken next
-            use_faiss_cpu = True  # Explicitly set CPU path
-            src, dst, weights = None, None, None # Reset for fallback attempt
-            # No need to cleanup variables here, NameError handled if they weren't assigned
+    derived_abs_threshold_from_bg = None # Will hold the threshold from background calculation
 
-    if use_faiss_cpu and src is None: # Run if GPU wasn't attempted OR if GPU failed
-        knn_method_used = "Faiss-CPU"
-        if verbose: print("   Executing k-NN with Faiss-CPU...")
-        try:
-            index = faiss.IndexFlatL2(coords.shape[1])
-            index.add(coords)
-            distances, indices = index.search(coords, n_neighbors + 1)
-            distances = distances[:, 1:].astype(np.float32)
-            indices = indices[:, 1:].astype(np.int32)
-            epsilon = 1e-6
-            weights = (1.0 / (distances + epsilon)).astype(np.float32)
-            src = np.repeat(np.arange(n_pixels, dtype=np.int32), n_neighbors)
-            dst = indices.ravel()
-            weights = weights.ravel()
-            del index, distances, indices
-        except Exception as faiss_cpu_e:
-            print(f"   ERROR during Faiss-CPU k-NN: {faiss_cpu_e}. Faiss is required, cannot proceed.")
-            traceback.print_exc()
-            # Since Faiss (CPU) failed, and it's required, we must abort.
+    # --- Handle Background-Derived Thresholding ---
+    if apply_knn_thresholding and knn_threshold_type == 'background_derived':
+        if verbose: print(f"\n2a. Deriving k-NN threshold from BACKGROUND channels...")
+        if background_channel_data is not None and background_channel_names and len(background_channel_names) > 0:
+            # Ensure background_channel_data is float32
+            try:
+                bg_data_scaled = background_channel_data.astype(np.float32)
+            except Exception as e_bg_cast:
+                print(f"      Warning: Could not cast background_channel_data to float32: {e_bg_cast}. Using original dtype.")
+                bg_data_scaled = background_channel_data
+            
+            # Weight background expression data (using the same expression_weight for now)
+            bg_expression_weighted = bg_data_scaled * expression_weight
+            combined_bg_features = np.concatenate([coords_weighted, bg_expression_weighted], axis=1).astype(np.float32)
+
+            if verbose:
+                print(f"      Combined feature space for BACKGROUND: {coords_scaled.shape[1]} spatial (weight={spatial_weight:.1f}) + {bg_data_scaled.shape[1]} background expr (weight={expression_weight:.1f}) = {combined_bg_features.shape[1]} total features")
+
+            # Call k-NN helper for background data. Thresholding is NOT applied here, we just need distances.
+            _, _, _, bg_all_distances, knn_method_bg = _calculate_knn_edges_and_weights(
+                features_for_knn=combined_bg_features,
+                num_pixels=n_pixels,
+                k_neighbors=n_neighbors,
+                feature_type_name="background", # Indicate this is for background
+                local_verbose=verbose,
+                attempt_faiss_gpu=use_faiss_gpu, # Use main Faiss GPU setting
+                faiss_gpu_mem_limit=gpu_memory_limit,
+                apply_thresh=False # Explicitly false for this call
+            )
+
+            if bg_all_distances is not None and len(bg_all_distances) > 0:
+                derived_abs_threshold_from_bg = np.percentile(bg_all_distances, bg_derived_perc)
+                if verbose: print(f"      Derived absolute distance threshold from background ({bg_derived_perc}th percentile): {derived_abs_threshold_from_bg:.4f}")
+            else:
+                print(f"      WARNING: Could not derive threshold from background (no distances returned). Main graph thresholding will be skipped.")
+                # Effectively disable background-derived thresholding for this run
+                apply_knn_thresholding = False # Fallback: don't apply any threshold if derivation failed
+        else:
+            print("      WARNING: Background-derived thresholding enabled, but no background channel data/names provided. Skipping this threshold type.")
+            apply_knn_thresholding = False # Fallback
+
+    # --- Main k-NN Calculation (on protein features) with Optional Thresholding ---
+    knn_start_time = time.time()
+    
+    # Determine actual absolute threshold to pass if 'background_derived' or 'absolute'
+    current_abs_dist_thresh_for_main_graph = None
+    if apply_knn_thresholding:
+        if knn_threshold_type == 'background_derived' and derived_abs_threshold_from_bg is not None:
+            current_abs_dist_thresh_for_main_graph = derived_abs_threshold_from_bg
+        elif knn_threshold_type == 'absolute':
+            current_abs_dist_thresh_for_main_graph = abs_thresh_val
+    
+    # Call k-NN for the main (protein) features
+    final_graph_src, final_graph_dst, final_graph_weights, _, knn_method_used_main = _calculate_knn_edges_and_weights(
+        features_for_knn=combined_features, # These are the protein + spatial features
+        num_pixels=n_pixels,
+        k_neighbors=n_neighbors,
+        feature_type_name="protein", # Indicate this is for main graph
+        local_verbose=verbose,
+        attempt_faiss_gpu=use_faiss_gpu,
+        faiss_gpu_mem_limit=gpu_memory_limit,
+        apply_thresh=apply_knn_thresholding,
+        thresh_type=knn_threshold_type, # Pass the original type
+        abs_dist_thresh=current_abs_dist_thresh_for_main_graph, # Pass derived or direct absolute
+        perc_dist_thresh=perc_thresh_val # Pass percentile for 'percentile' type
+    )
+
+    if final_graph_src is None or final_graph_dst is None or final_graph_weights is None:
+        print("   ERROR: Failed to compute neighbor lists and weights using k-NN helper. Cannot proceed.")
+        return None, None, None, None # Critical failure from helper
+    
+    # Fallback: If thresholding was applied and resulted in NO edges, rebuild with no threshold.
+    if apply_knn_thresholding and len(final_graph_src) == 0:
+        print("   WARNING: Applied k-NN thresholding resulted in zero edges. Reverting to standard k-NN graph (no thresholding) for this context.")
+        # Re-call _calculate_knn_edges_and_weights with apply_thresh=False
+        final_graph_src, final_graph_dst, final_graph_weights, _, knn_method_used_main = _calculate_knn_edges_and_weights(
+            features_for_knn=combined_features,
+            num_pixels=n_pixels,
+            k_neighbors=n_neighbors,
+            feature_type_name="protein (fallback)",
+            local_verbose=verbose,
+            attempt_faiss_gpu=use_faiss_gpu,
+            faiss_gpu_mem_limit=gpu_memory_limit,
+            apply_thresh=False # Crucial: disable thresholding for fallback
+        )
+        if final_graph_src is None or final_graph_dst is None or final_graph_weights is None: # Check again
+            print("   ERROR: Fallback k-NN also failed. Cannot proceed.")
             return None, None, None, None
 
-    # Check if neighbor finding was successful (only Faiss attempts now)
-    if src is None or dst is None or weights is None:
-        print("   ERROR: Failed to compute neighbor lists and weights using Faiss (GPU or CPU). Cannot proceed.")
-        # This case should ideally be caught by the Faiss-CPU exception handling above,
-        # but added as a safeguard.
-        return None, None, None, None
-    else:
-        if verbose: print(f"   k-NN search ({knn_method_used}) took {time.time() - knn_start_time:.2f} seconds.")
+
+    if verbose: print(f"   k-NN graph edge calculation ({knn_method_used_main}) took {time.time() - knn_start_time:.2f} seconds.")
+    
 
     # 3. Build igraph Object
     if verbose: print("\n3. Building Graph Object...")
     graph_start_time = time.time()
     try:
-        g_pixels = ig.Graph(n=n_pixels, edges=list(zip(src, dst)), edge_attrs={'weight': weights}, directed=False)
-        g_pixels.simplify(combine_edges='sum') # Combine parallel edges if any
-        if verbose: print(f"   Graph construction took {time.time() - graph_start_time:.2f} seconds.")
-        del src, dst, weights # Free memory after graph creation
+        # Check if there are any edges to create the graph from
+        if final_graph_src is not None and len(final_graph_src) > 0:
+            g_pixels = ig.Graph(n=n_pixels, edges=list(zip(final_graph_src, final_graph_dst)), edge_attrs={'weight': final_graph_weights}, directed=False)
+            g_pixels.simplify(combine_edges='sum') # Combine parallel edges if any
+            if verbose: print(f"   Graph construction took {time.time() - graph_start_time:.2f} seconds. Edges: {g_pixels.ecount()}")
+        else: # No edges, create an empty graph with n_pixels nodes
+            g_pixels = ig.Graph(n=n_pixels, directed=False)
+            if verbose: print(f"   Graph constructed with 0 edges (due to thresholding or no neighbors found) in {time.time() - graph_start_time:.2f} seconds.")
+
+        del final_graph_src, final_graph_dst, final_graph_weights # Free memory after graph creation
     except Exception as graph_e:
         print(f"   ERROR building igraph object: {graph_e}")
         traceback.print_exc()
@@ -230,7 +342,7 @@ def run_spatial_leiden(
     n_communities = 0
     # Determine if we should still try GPU Leiden (even if kNN was CPU)
     # Check for specific libs needed for cugraph Leiden
-    use_gpu_leiden = should_try_gpu and rapids_libs_available_for_leiden
+    use_gpu_leiden = False # _effectively_try_gpu and rapids_libs_available_for_leiden
     leiden_method_used = "None"
 
     if use_gpu_leiden:
@@ -239,8 +351,8 @@ def run_spatial_leiden(
         try:
             # Convert igraph to cuGraph DataFrame representation
             edges_df = cudf.DataFrame({
-                'src': cupy.array(g_pixels.get_edge_list())[:, 0].astype('int32'),
-                'dst': cupy.array(g_pixels.get_edge_list())[:, 1].astype('int32'),
+                'src': cupy.array(g_pixels.get_edgelist())[:, 0].astype('int32'),
+                'dst': cupy.array(g_pixels.get_edgelist())[:, 1].astype('int32'),
                 'weight': cupy.array(g_pixels.es['weight']).astype('float32')
             })
             
@@ -315,7 +427,8 @@ def calculate_and_save_profiles(
     valid_channels: List[str],
     roi_output_dir: str,
     roi_string: str,
-    ordered_channels: Optional[List[str]] = None # Add optional ordered list
+    ordered_channels: Optional[List[str]] = None, # Add optional ordered list
+    verbose: bool = True # Added verbose flag for consistency
 ) -> Optional[pd.DataFrame]:
     """Calculates and saves the mean scaled expression profile for each community.
 
@@ -325,6 +438,7 @@ def calculate_and_save_profiles(
         roi_output_dir: Directory to save the output CSV.
         roi_string: String identifier for the ROI/resolution (used in filename).
         ordered_channels: Optional list of channels to define the column order in the saved CSV.
+        verbose: If True, print progress messages.
 
     Returns:
         DataFrame of scaled community profiles (communities x channels) or None if fails.
@@ -345,7 +459,7 @@ def calculate_and_save_profiles(
     try:
         # Group by community and calculate mean for the scaled channel columns
         # Use only channels present in the dataframe for the calculation
-        scaled_community_profiles = results_df.groupby('community')[channels_in_df].mean()
+        scaled_community_profiles = results_df.groupby('community', observed=False)[channels_in_df].mean()
 
         if scaled_community_profiles.empty:
              print("   Warning: No communities found or profile calculation resulted in empty DataFrame.")
@@ -378,10 +492,16 @@ def calculate_and_save_profiles(
         # --- End Reordering ---
 
         # Save the profiles
-        profiles_path = os.path.join(roi_output_dir, f"community_profiles_{roi_string}.csv")
-        scaled_community_profiles.to_csv(profiles_path)
-        print(f"   Community profiles saved to: {os.path.basename(profiles_path)}")
-        print(f"   --- Profile calculation finished in {time.time() - start_time:.2f} seconds ---")
+        output_filename = os.path.join(roi_output_dir, f"community_profiles_{roi_string}.csv") # Ensure this is the corrected filename
+        try:
+            scaled_community_profiles.to_csv(output_filename)
+            if verbose: print(f"   Community profiles saved to: {os.path.basename(output_filename)}")
+        except Exception as e:
+            print(f"   ERROR saving community profiles to {output_filename}: {e}")
+            traceback.print_exc()
+            return None # Return None if saving fails
+
+        if verbose: print(f"   --- Profile calculation finished in {time.time() - start_time:.2f} seconds ---")
         return scaled_community_profiles
 
     except Exception as e:
@@ -716,3 +836,144 @@ def calculate_and_save_umap(
 
     print(f"--- UMAP Analysis finished in {time.time() - start_time_umap:.2f} seconds ---")
     return umap_coords 
+
+# ==============================================================================
+# Helper Function for k-NN and Thresholding
+# ==============================================================================
+
+def _calculate_knn_edges_and_weights(
+    features_for_knn: np.ndarray,
+    num_pixels: int,
+    k_neighbors: int,
+    feature_type_name: str, # e.g., "protein" or "background" for logging
+    local_verbose: bool,
+    # Faiss params (moved before optional thresholding params)
+    attempt_faiss_gpu: bool,
+    faiss_gpu_mem_limit: Optional[int] = None,
+    # Thresholding params
+    apply_thresh: bool = False, # Default to False
+    thresh_type: Optional[str] = None,
+    abs_dist_thresh: Optional[float] = None, # Can be directly passed or derived
+    perc_dist_thresh: Optional[float] = None
+) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], str]:
+    """
+    Calculates k-NN using Faiss and applies optional distance-based edge thresholding.
+
+    Returns:
+        Tuple: (src, dst, edge_weights, all_knn_distances_flat, knn_method_used_str)
+               all_knn_distances_flat contains all (k*N) distances, useful for percentile calculation.
+               Returns (None, None, None, None, method_str) on critical failure.
+    """
+    src_res, dst_res, weights_res, all_distances_flat_res = None, None, None, None
+    knn_method = "None"
+
+    if local_verbose: print(f"   Calculating k-NN for {feature_type_name} features ({features_for_knn.shape[1]} dims)...")
+    
+    current_attempt_faiss_gpu = attempt_faiss_gpu # Can be overridden by failure
+
+    # --- Faiss k-NN Calculation ---
+    if current_attempt_faiss_gpu:
+        knn_method = f"Faiss-GPU ({feature_type_name})"
+        if local_verbose: print(f"      Attempting k-NN with Faiss-GPU for {feature_type_name} features...")
+        try:
+            res_gpu = faiss.StandardGpuResources()
+            if faiss_gpu_mem_limit is not None:
+                res_gpu.setTempMemory(faiss_gpu_mem_limit)
+            cpu_index_f = faiss.IndexFlatL2(features_for_knn.shape[1])
+            gpu_index_f = faiss.index_cpu_to_gpu(res_gpu, 0, cpu_index_f)
+            gpu_index_f.add(features_for_knn)
+            distances_knn, indices_knn = gpu_index_f.search(features_for_knn, k_neighbors + 1)
+            
+            # Store all distances if this is the background call for percentile calculation
+            all_distances_flat_res = distances_knn[:, 1:].astype(np.float32).ravel()
+
+            src_res = np.repeat(np.arange(num_pixels, dtype=np.int32), k_neighbors)
+            dst_res = indices_knn[:, 1:].astype(np.int32).ravel()
+            # Raw distances, not yet weights, for potential thresholding
+            raw_distances_for_edges = distances_knn[:, 1:].astype(np.float32).ravel() 
+            del res_gpu, cpu_index_f, gpu_index_f, distances_knn, indices_knn
+        except Exception as e_faiss_gpu:
+            print(f"      ERROR during Faiss-GPU k-NN for {feature_type_name}: {e_faiss_gpu}. Falling back to CPU Faiss.")
+            current_attempt_faiss_gpu = False # Force CPU on next try for this call
+            src_res, dst_res, raw_distances_for_edges, all_distances_flat_res = None, None, None, None
+
+
+    if not current_attempt_faiss_gpu: # If GPU not attempted or failed
+        knn_method = f"Faiss-CPU ({feature_type_name})"
+        if local_verbose: print(f"      Executing k-NN with Faiss-CPU for {feature_type_name} features...")
+        try:
+            index_f = faiss.IndexFlatL2(features_for_knn.shape[1])
+            index_f.add(features_for_knn)
+            distances_knn, indices_knn = index_f.search(features_for_knn, k_neighbors + 1)
+
+            all_distances_flat_res = distances_knn[:, 1:].astype(np.float32).ravel()
+            
+            src_res = np.repeat(np.arange(num_pixels, dtype=np.int32), k_neighbors)
+            dst_res = indices_knn[:, 1:].astype(np.int32).ravel()
+            raw_distances_for_edges = distances_knn[:, 1:].astype(np.float32).ravel()
+            del index_f, distances_knn, indices_knn
+        except Exception as e_faiss_cpu:
+            print(f"      ERROR during Faiss-CPU k-NN for {feature_type_name}: {e_faiss_cpu}. Cannot proceed with k-NN for these features.")
+            return None, None, None, None, knn_method # Critical failure
+
+    if src_res is None or dst_res is None or raw_distances_for_edges is None:
+         print(f"      ERROR: Failed to compute k-NN for {feature_type_name} (src/dst/distances missing).")
+         return None, None, None, all_distances_flat_res, knn_method
+
+
+    # --- Apply Thresholding (if enabled and applicable for this feature_type_name) ---
+    # Thresholding is typically applied to the "protein" feature graph, using a threshold
+    # that might have been derived from "background" features or other methods.
+    
+    final_src = []
+    final_dst = []
+    final_weights_for_graph = []
+
+    if apply_thresh and feature_type_name != "background": # Don't threshold the background call itself
+        
+        actual_threshold_value = None
+        if thresh_type == 'absolute':
+            actual_threshold_value = abs_dist_thresh
+            if local_verbose: print(f"      Applying ABSOLUTE distance threshold: {actual_threshold_value:.4f}")
+        elif thresh_type == 'percentile':
+            if all_distances_flat_res is not None and len(all_distances_flat_res) > 0:
+                actual_threshold_value = np.percentile(all_distances_flat_res, perc_dist_thresh)
+                if local_verbose: print(f"      Applying PERCENTILE ({perc_dist_thresh}th) distance threshold: {actual_threshold_value:.4f}")
+            else:
+                print(f"      WARNING: Cannot calculate percentile threshold for {feature_type_name}, no distances found. Skipping thresholding.")
+                apply_thresh = False # effectively disable
+        elif thresh_type == 'background_derived': # This implies abs_dist_thresh was pre-calculated and passed
+            actual_threshold_value = abs_dist_thresh
+            if local_verbose: print(f"      Applying BACKGROUND-DERIVED absolute distance threshold: {actual_threshold_value:.4f}")
+        
+        if actual_threshold_value is not None:
+            kept_edges_count = 0
+            for i in range(len(raw_distances_for_edges)):
+                if raw_distances_for_edges[i] < actual_threshold_value:
+                    final_src.append(src_res[i])
+                    final_dst.append(dst_res[i])
+                    # Calculate weight only for edges that pass the threshold
+                    final_weights_for_graph.append(1.0 / (raw_distances_for_edges[i] + 1e-6))
+                    kept_edges_count += 1
+            
+            if local_verbose: print(f"      Thresholding kept {kept_edges_count} of {len(raw_distances_for_edges)} potential k-NN edges.")
+            if kept_edges_count == 0:
+                print(f"      WARNING: Thresholding for {feature_type_name} removed ALL edges. Graph will be empty if this is the final step.")
+                # Return empty lists, caller might decide to fallback
+                return np.array(final_src, dtype=np.int32), np.array(final_dst, dtype=np.int32), \
+                       np.array(final_weights_for_graph, dtype=np.float32), all_distances_flat_res, knn_method
+
+            src_res = np.array(final_src, dtype=np.int32)
+            dst_res = np.array(final_dst, dtype=np.int32)
+            weights_res = np.array(final_weights_for_graph, dtype=np.float32)
+        else: # No valid threshold value determined (e.g. percentile on empty data)
+             if local_verbose and apply_thresh : print(f"      WARNING: No valid threshold value for {thresh_type}, thresholding skipped for {feature_type_name}.")
+             # No thresholding applied, calculate weights for all k-NN edges
+             weights_res = (1.0 / (raw_distances_for_edges + 1e-6)).astype(np.float32)
+
+    else: # No thresholding applied (either apply_thresh=False or it's the background call)
+        if local_verbose and apply_thresh and feature_type_name == "background":
+             print(f"      Skipping threshold application for initial '{feature_type_name}' k-NN (used for deriving threshold).")
+        weights_res = (1.0 / (raw_distances_for_edges + 1e-6)).astype(np.float32)
+
+    return src_res, dst_res, weights_res, all_distances_flat_res, knn_method 

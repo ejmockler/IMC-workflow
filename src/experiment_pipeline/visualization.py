@@ -156,165 +156,6 @@ def plot_ordination(
         if 'fig' in locals() and plt.fignum_exists(fig.number):
              plt.close(fig)
 
-def plot_profile_clustermap(profile_data: pd.DataFrame,
-                           title: str,
-                           output_path: str,
-                           plot_dpi: int = 150,
-                           fixed_channel_order: Optional[List[str]] = None) -> Optional[List[str]]:
-    """
-    Generates and saves a clustermap (or heatmap if order is fixed) of profile data.
-
-    Args:
-        profile_data: DataFrame containing the profile data.
-        title: Title for the plot.
-        output_path: Path to save the plot (.svg or .png recommended).
-        plot_dpi: DPI for saving the plot.
-        fixed_channel_order: If provided, use this exact order for rows/columns
-                             and plot a heatmap instead of a clustermap.
-
-    Returns:
-        A list of channel names in the order they appear on the final plot axes,
-        or None if plotting fails.
-    """
-    print(f"   Attempting to generate profile clustermap: {os.path.basename(output_path)}")
-    if profile_data.empty or len(profile_data.columns) < 2:
-        print("   Skipping profile clustermap: Not enough data or channels.")
-        return None
-
-    # Determine appropriate figure size based on number of channels
-    n_channels = len(profile_data.columns)
-    figsize_base = max(6, n_channels * 0.4)  # Adjust multiplier as needed
-    figsize = (figsize_base, figsize_base)
-
-    # Check if channels in fixed order are valid
-    if fixed_channel_order:
-        # --- Plot Clustermap with Fixed Columns, Clustered Rows ---
-        print(f"   Generating clustermap with fixed columns ({len(fixed_channel_order)} channels) and clustered rows...")
-        # Ensure the input matrix has columns in the fixed order
-        matrix_for_plot = profile_data.loc[:, fixed_channel_order]
-
-        clustermap = sns.clustermap(
-            matrix_for_plot,    # Use the column-ordered matrix
-            method='ward',      # Linkage for rows
-            metric='euclidean', # Distance for rows
-            row_cluster=True,   # Cluster rows
-            col_cluster=False,  # Do NOT cluster columns
-            annot=True,         # Add correlation values
-            fmt='.2f',         # Format for annotations
-            annot_kws={"size": max(4, 8 - n_channels // 10)}, # Adjust font size based on number of channels
-            cmap='viridis',
-            linewidths=.5,
-            figsize=figsize,
-            xticklabels=True,   # Use labels from fixed_channel_order
-            yticklabels=True,
-            dendrogram_ratio=(.15, 0.0), # Row dendrogram only
-            cbar_pos=None
-        )
-
-        # Improve layout and appearance
-        clustermap.ax_heatmap.set_xlabel("Channels (Fixed Order)", fontsize=9)
-        clustermap.ax_heatmap.set_ylabel("Channels (Clustered)", fontsize=9)
-        # Set column labels explicitly to the fixed order
-        plt.setp(clustermap.ax_heatmap.get_xticklabels(), rotation=90, fontsize=max(4, 8 - n_channels // 10))
-        clustermap.ax_heatmap.set_xticks(np.arange(len(fixed_channel_order)) + 0.5)
-        clustermap.ax_heatmap.set_xticklabels(fixed_channel_order)
-        # Set row labels based on clustering
-        plt.setp(clustermap.ax_heatmap.get_yticklabels(), rotation=0, fontsize=max(4, 8 - n_channels // 10))
-
-        # Add title
-        clustermap.fig.suptitle(title, y=1.02, fontsize=10)
-
-        # Add colorbar
-        cbar_ax = clustermap.fig.add_axes([0.85, 0.8, 0.03, 0.15])
-        plt.colorbar(clustermap.ax_heatmap.get_children()[0], cax=cbar_ax, label="Profile Value")
-
-        # Extract the order of channels after ROW clustering
-        try:
-             row_indices = clustermap.dendrogram_row.reordered_ind
-             # Map row indices back to channel names (using the original index before potential row-subsetting)
-             original_row_channels = matrix_for_plot.index.tolist()
-             ordered_channels_list = [original_row_channels[i] for i in row_indices]
-        except Exception as e:
-             print(f"   WARNING: Could not extract row channel order from clustermap: {e}")
-             # Fallback: Use the order of rows as they appear in the input matrix
-             # This might not be ideal if the matrix was subsetted for rows too.
-             ordered_channels_list = matrix_for_plot.index.tolist()
-
-    else: # This block is now restored to original full clustering
-        # Determine appropriate figure size based on number of channels
-        n_channels = len(profile_data.columns)
-        figsize_base = max(6, n_channels * 0.4)  # Adjust multiplier as needed
-        figsize = (figsize_base, figsize_base)
-
-        plt.figure(figsize=figsize) # Create a figure context for heatmap or clustermap
-
-        ordered_channels_list = None
-
-        try:
-            # --- Plot Clustermap with Hierarchical Clustering ---
-            print(f"   Generating clustermap with clustering ({n_channels} channels)...")
-            clustermap = sns.clustermap(
-                profile_data, # Use original matrix before potential reordering
-                method='ward',      # Linkage method for clustering
-                metric='euclidean', # Distance metric (on correlations)
-                # No row/col_cluster flags needed here, defaults are True
-                annot=True,         # Add correlation values
-                fmt='.2f',         # Format for annotations
-                annot_kws={"size": max(4, 8 - n_channels // 10)}, # Adjust font size based on number of channels
-                cmap='viridis',    # Sequential colormap appropriate for profile data
-                linewidths=.5,
-                figsize=figsize,    # Use calculated figsize
-                xticklabels=True,
-                yticklabels=True,
-                dendrogram_ratio=(.15, .15), # Original ratio for both dendrograms
-                cbar_pos=None # Initially hide default cbar, will add manually if needed
-            )
-
-            # Improve layout and appearance
-            clustermap.ax_heatmap.set_xlabel("Channels", fontsize=9)
-            clustermap.ax_heatmap.set_ylabel("Channels", fontsize=9)
-            plt.setp(clustermap.ax_heatmap.get_xticklabels(), rotation=90, fontsize=max(4, 8 - n_channels // 10))
-            plt.setp(clustermap.ax_heatmap.get_yticklabels(), rotation=0, fontsize=max(4, 8 - n_channels // 10))
-
-            # Add title to the figure (clustermap object is a Figure-level grid)
-            clustermap.fig.suptitle(title, y=1.02, fontsize=10) # Adjust y position
-
-            # Add a colorbar manually in a better position
-            cbar_ax = clustermap.fig.add_axes([0.85, 0.8, 0.03, 0.15]) # Adjust position [left, bottom, width, height]
-            plt.colorbar(clustermap.ax_heatmap.get_children()[0], cax=cbar_ax, label="Profile Value")
-
-            # Extract the order of channels after clustering (both rows and columns)
-            try:
-                 # Get the reordered indices from the dendrogram
-                 row_indices = clustermap.dendrogram_row.reordered_ind
-                 col_indices = clustermap.dendrogram_col.reordered_ind # Original extraction for both
-
-                 # Map indices back to channel names (use row order as primary)
-                 original_channels = profile_data.index.tolist() # Get channels before clustermap reordered them
-                 ordered_channels_list = [original_channels[i] for i in row_indices]
-
-                 # Optional: Check if row/col orders differ (original check)
-                 col_ordered_channels = [original_channels[i] for i in col_indices]
-                 if ordered_channels_list != col_ordered_channels:
-                      print("   WARNING: Row and Column clustering order differs significantly. Using row order.")
-
-            except Exception as e:
-                 print(f"   WARNING: Could not extract channel order from clustermap: {e}")
-                 ordered_channels_list = profile_data.index.tolist() # Fallback to original order (before clustering)
-
-
-            # Save the figure
-            plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
-            plt.close() # Close the figure to free memory
-            print(f"   --- Profile clustermap saved to: {os.path.basename(output_path)}")
-            return ordered_channels_list
-
-        except Exception as e:
-            print(f"   ERROR generating profile clustermap: {e}")
-            traceback.print_exc()
-            plt.close() # Ensure plot is closed on error
-            return None # Return None on failure
-
 def plot_dendrogram(
     linkage_matrix_Z: np.ndarray,
     output_path: str,
@@ -467,6 +308,200 @@ def plot_heatmap_metacluster_profiles(
 
     except Exception as e:
         print(f"ERROR: Failed during meta-cluster heatmap generation: {e}")
+        import traceback
+        traceback.print_exc()
+        if 'fig' in locals() and plt.fignum_exists(fig.number):
+            plt.close(fig)
+
+# --- New Functions for Abundance Visualization ---
+
+def plot_abundance_trends_lineplot(
+    abundance_summary_df: pd.DataFrame,
+    time_col: str,
+    condition_col: str,
+    grouping_col: str, # 'community' or 'meta_cluster'
+    output_path: str,
+    plot_dpi: int = 150,
+    replicate_col: Optional[str] = None, # Needed if calculating mean/sem
+    title: Optional[str] = None
+):
+    """Generates a line plot showing abundance trends over time, split by condition.
+
+    Calculates mean proportion across replicates if replicate_col is provided.
+    Otherwise plots individual data points.
+    """
+    print(f"\n--- Generating Abundance Trend Line Plot ({grouping_col}) ---")
+    required_cols = ['proportion', time_col, condition_col, grouping_col]
+    if replicate_col:
+        required_cols.append(replicate_col)
+
+    if abundance_summary_df is None or abundance_summary_df.empty:
+        print("ERROR: Abundance summary DataFrame is empty or None.")
+        return
+    if not all(col in abundance_summary_df.columns for col in required_cols):
+        missing = [col for col in required_cols if col not in abundance_summary_df.columns]
+        print(f"ERROR: Abundance summary DataFrame missing required columns: {missing}")
+        return
+
+    try:
+        fig, ax = plt.subplots(figsize=(12, 7))
+        plt.style.use('seaborn-v0_8-whitegrid')
+
+        if replicate_col:
+            # Calculate mean +/- SEM across replicates
+            # Note: Seaborn lineplot calculates mean/bootstrap CI by default if data includes replicates
+            print(f"   Plotting mean proportion (+/- 95% CI) across replicates ('{replicate_col}')")
+            sns.lineplot(
+                data=abundance_summary_df,
+                x=time_col,
+                y='proportion',
+                hue=condition_col,
+                style=grouping_col, # Use style to differentiate groups
+                markers=True,
+                estimator='mean', # Explicitly calculate mean
+                errorbar=('ci', 95), # Show 95% confidence interval
+                ax=ax
+            )
+            plot_type_desc = "Mean Proportion"
+        else:
+            # Plot individual points if no replicate info
+            print("   Plotting individual proportions (no replicate column provided)")
+            sns.lineplot(
+                data=abundance_summary_df,
+                x=time_col,
+                y='proportion',
+                hue=condition_col,
+                style=grouping_col,
+                markers=True,
+                legend='full', # Show legend for style too
+                ax=ax
+            )
+            plot_type_desc = "Proportion"
+
+        if not title:
+            title = f'{plot_type_desc} of {grouping_col.replace("_", " ").title()}s over {time_col.replace("_", " ").title()} by {condition_col.replace("_", " ").title()}'
+        ax.set_title(title, fontsize=14, fontweight='bold')
+        ax.set_xlabel(time_col.replace("_", " ").title(), fontsize=12)
+        ax.set_ylabel(f'{grouping_col.replace("_", " ").title()} {plot_type_desc}', fontsize=12)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+
+        plt.tight_layout(rect=[0, 0, 0.85, 1])
+        print(f"   Saving plot to: {output_path}")
+        plt.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
+        plt.close(fig)
+
+    except Exception as e:
+        print(f"ERROR: Failed during abundance line plot generation: {e}")
+        import traceback
+        traceback.print_exc()
+        if 'fig' in locals() and plt.fignum_exists(fig.number):
+            plt.close(fig)
+
+def plot_abundance_distribution_boxplot(
+    abundance_summary_df: pd.DataFrame,
+    time_col: str,
+    condition_col: str,
+    grouping_col: str, # 'community' or 'meta_cluster'
+    output_path: str,
+    plot_dpi: int = 150,
+    # replicate_col: Optional[str] = None, # Not strictly needed for boxplot
+    title: Optional[str] = None,
+    show_points: bool = True
+):
+    """Generates box plots showing abundance distribution over time, split by condition.
+
+    Facets by grouping_col (community/meta-cluster) if number of groups is reasonable.
+    """
+    print(f"\n--- Generating Abundance Distribution Box Plot ({grouping_col}) ---")
+    required_cols = ['proportion', time_col, condition_col, grouping_col]
+
+    if abundance_summary_df is None or abundance_summary_df.empty:
+        print("ERROR: Abundance summary DataFrame is empty or None.")
+        return
+    if not all(col in abundance_summary_df.columns for col in required_cols):
+        missing = [col for col in required_cols if col not in abundance_summary_df.columns]
+        print(f"ERROR: Abundance summary DataFrame missing required columns: {missing}")
+        return
+
+    try:
+        n_groups = abundance_summary_df[grouping_col].nunique()
+        print(f"   Found {n_groups} unique {grouping_col}s.")
+
+        # Decide on faceting based on number of groups
+        if n_groups > 20: # Arbitrary threshold - too many facets become unreadable
+             print("   Warning: Too many groups (>20) to facet effectively. Plotting combined distribution.")
+             # Consider subsetting or alternative plot type if faceting is needed
+             # For now, plot all together without faceting by group
+             fig, ax = plt.subplots(figsize=(12, 7))
+             sns.boxplot(
+                 data=abundance_summary_df,
+                 x=time_col,
+                 y='proportion',
+                 hue=condition_col,
+                 showfliers=False, # Hide outliers for clarity
+                 ax=ax
+             )
+             if show_points:
+                 sns.stripplot(
+                     data=abundance_summary_df,
+                     x=time_col,
+                     y='proportion',
+                     hue=condition_col,
+                     dodge=True,
+                     size=3,
+                     color='.3',
+                     alpha=0.5,
+                     legend=False,
+                     ax=ax
+                 )
+
+             if not title:
+                 title = f'Abundance Distribution over {time_col.replace("_"," ").title()} by {condition_col.replace("_"," ").title()} (All {grouping_col.replace("_"," ").title()}s)'
+             ax.set_title(title, fontsize=14, fontweight='bold')
+             ax.set_xlabel(time_col.replace("_", " ").title(), fontsize=12)
+             ax.set_ylabel(f'{grouping_col.replace("_", " ").title()} Proportion', fontsize=12)
+             ax.legend(title=condition_col.replace("_"," ").title(), bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+             plt.tight_layout(rect=[0, 0, 0.85, 1])
+
+        else:
+             # Use FacetGrid for smaller number of groups
+             print(f"   Creating faceted boxplot grid by '{grouping_col}'.")
+             # Determine grid layout (aim for roughly square)
+             n_cols = int(np.ceil(np.sqrt(n_groups)))
+             # Adjust figsize based on number of columns/rows
+             facet_height = 4
+             facet_width = 5
+             grid_height = np.ceil(n_groups / n_cols) * facet_height
+             grid_width = n_cols * facet_width
+
+             g = sns.FacetGrid(abundance_summary_df, col=grouping_col, col_wrap=n_cols,
+                               height=facet_height, aspect=facet_width/facet_height, sharey=False, sharex=True)
+             g.map_dataframe(sns.boxplot, x=time_col, y='proportion', hue=condition_col,
+                             order=sorted(abundance_summary_df[time_col].unique()), # Ensure consistent time order
+                             hue_order=sorted(abundance_summary_df[condition_col].unique()),
+                             showfliers=False)
+             if show_points:
+                 # Map stripplot - use dodge based on hue manually
+                 g.map_dataframe(sns.stripplot, x=time_col, y='proportion', hue=condition_col,
+                                 order=sorted(abundance_summary_df[time_col].unique()),
+                                 hue_order=sorted(abundance_summary_df[condition_col].unique()),
+                                 dodge=True, size=3, color='.3', alpha=0.5)
+
+             g.set_axis_labels(time_col.replace("_"," ").title(), "Proportion")
+             g.set_titles(col_template="{col_name}") # Use grouping_col value as title
+             g.add_legend(title=condition_col.replace("_"," ").title())
+             if not title:
+                 title = f'Abundance Distribution over {time_col.replace("_"," ").title()} by {condition_col.replace("_"," ").title()}'
+             g.fig.suptitle(title, y=1.02, fontsize=14, fontweight='bold')
+             g.tight_layout(rect=[0, 0, 1, 1]) # Adjust layout for suptitle
+             fig = g.fig # Get the figure object for saving
+
+        print(f"   Saving plot to: {output_path}")
+        fig.savefig(output_path, dpi=plot_dpi, bbox_inches='tight')
+        plt.close(fig)
+
+    except Exception as e:
+        print(f"ERROR: Failed during abundance box plot generation: {e}")
         import traceback
         traceback.print_exc()
         if 'fig' in locals() and plt.fignum_exists(fig.number):

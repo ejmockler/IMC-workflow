@@ -11,10 +11,10 @@ import json
 import multiprocessing
 import sys # For exit
 from joblib import Parallel, delayed
-import seaborn as sns # Added for clustermap calculation
-from typing import List, Tuple, Optional, Dict, Any # Keep for type hints
-import gc # Import garbage collector module
-import scipy.cluster.hierarchy as sch # For clustering average correlation matrix
+from typing import List, Tuple, Optional, Dict, Any
+import gc
+import scipy.cluster.hierarchy as sch
+import networkx as nx
 
 # Import our new utility functions
 from src.roi_pipeline.gpu_utils import check_gpu_availability
@@ -29,7 +29,7 @@ from src.roi_pipeline.pixel_analysis_core import (
     run_spatial_leiden,
     calculate_and_save_profiles,
     calculate_differential_expression,
-    calculate_and_save_umap # Added import for UMAP function
+    calculate_and_save_umap
 )
 
 # Attempt to import UMAP, set flag
@@ -40,6 +40,41 @@ except ImportError:
     print("Warning: umap-learn package not found. Cannot perform UMAP analysis. Install with: pip install umap-learn")
     umap_available = False
 
+# Attempt to import GPU memory utilities
+try:
+    import torch
+    import torch.cuda
+    gpu_utils_available = True
+except ImportError:
+    gpu_utils_available = False
+
+def get_gpu_memory_limit(config: Dict) -> Optional[int]:
+    """Get GPU memory limit in bytes based on available hardware and config settings."""
+    if not gpu_utils_available:
+        return None
+        
+    try:
+        # Check for CUDA
+        if torch.cuda.is_available():
+            total_memory = torch.cuda.get_device_properties(0).total_memory
+            # Use 90% of available memory by default, or config value if specified
+            memory_fraction = config.get('processing', {}).get('gpu_memory_fraction', 0.9)
+            return int(total_memory * memory_fraction)
+            
+        # Check for MPS (Apple Silicon)
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            # For MPS, we can't directly query memory, so use a reasonable default
+            # or config value if specified
+            default_mps_memory = 8 * 1024 * 1024 * 1024  # 8GB default
+            return config.get('processing', {}).get('mps_memory_limit', default_mps_memory)
+            
+        # Other GPU backends could be added here
+        else:
+            return None
+            
+    except Exception as e:
+        print(f"Warning: Could not determine GPU memory limit: {e}")
+        return None
 
 # --- Configuration Loading ---
 def load_config(config_path: str = "config.yaml") -> Optional[Dict]:
@@ -48,7 +83,6 @@ def load_config(config_path: str = "config.yaml") -> Optional[Dict]:
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
         print(f"Configuration loaded successfully from: {config_path}")
-        # Basic validation (can be expanded)
         if not isinstance(config, dict):
             print(f"ERROR: Configuration file {config_path} is not a valid dictionary.")
             return None
@@ -67,7 +101,7 @@ def load_config(config_path: str = "config.yaml") -> Optional[Dict]:
         return None
 
 
-# === Helper Functions for analyze_roi ===
+# === Helper Functions (some might be moved or adapted for new structure) ===
 
 def _preprocess_roi(roi_raw_data: pd.DataFrame, roi_channels: List[str], roi_cofactors: Dict[str, float], config: Dict) -> Tuple[Optional[pd.DataFrame], Optional[Dict[str, float]]]:
     """Applies arcsinh transformation and scaling to ROI data."""
@@ -86,56 +120,55 @@ def _preprocess_roi(roi_raw_data: pd.DataFrame, roi_channels: List[str], roi_cof
     return scaled_pixel_expression, used_cofactors
 
 def _calculate_and_save_ordered_channels(
-    scaled_pixel_expression: pd.DataFrame,
-    roi_channels: List[str],
+    scaled_pixel_expression: pd.DataFrame, # This is expression data only (no X,Y)
+    roi_channels_for_correlation: List[str], # Channels to actually use for correlation (subset of scaled_pixel_expression.columns)
     roi_output_dir: str,
     roi_string: str,
     config: Dict,
-    fixed_channel_order: Optional[List[str]] = None
-) -> Optional[List[str]]: # Returns the final order to use downstream
+    fixed_channel_order: Optional[List[str]] = None # This is the key for Option B
+) -> Tuple[Optional[List[str]], Optional[str], Optional[str]]: # Returns final_order, path_to_linkage, path_to_clustered_order_json
     """
     Calculates ROI-specific channel clustering and determines the final channel order.
-
+    Uses provided roi_channels_for_correlation for the actual correlation calculation.
     Always calculates and saves the ROI-specific clustering (linkage matrix and order list).
     Determines the final order to use: the fixed_channel_order if provided and valid,
     otherwise defaults to the ROI-specific clustered order. Saves this final order list.
 
     Args:
-        scaled_pixel_expression: DataFrame of scaled pixel data (channels as columns).
-        roi_channels: List of channels available in the original data.
+        scaled_pixel_expression: DataFrame of scaled pixel data (channels as columns, NO X,Y).
+        roi_channels_for_correlation: List of channels within scaled_pixel_expression to use for correlation.
         roi_output_dir: Directory to save outputs.
         roi_string: ROI identifier.
         config: Configuration dictionary.
         fixed_channel_order: Optional predefined list of channels to use as the final order.
 
     Returns:
-        The list of channels representing the final order to be used downstream
-        (either the fixed order or the ROI-specific clustered order), or None on failure.
+        A tuple: (final_order_to_use, linkage_save_path, roi_order_save_path) or (None, None, None) on failure.
     """
     print("   Calculating ROI-specific pixel correlation for channel clustering...")
     start_time = time.time()
     roi_clustered_order = None
     roi_linkage_matrix = None
-    final_order_to_use = None # This is what the function will return
+    final_order_to_use = None
+    linkage_save_path = None
+    roi_order_save_path = None # For pixel_channel_clustered_order_...json
 
     try:
-        # Ensure X, Y are not in the correlation calculation
-        expression_cols = [ch for ch in roi_channels if ch in scaled_pixel_expression.columns and ch not in ['X', 'Y']]
+        expression_cols = [ch for ch in roi_channels_for_correlation if ch in scaled_pixel_expression.columns and ch not in ['X', 'Y']]
         if not expression_cols:
             print("   ERROR: No valid expression columns found for correlation.")
-            return None
+            return None, None, None
 
         pixel_corr_matrix = scaled_pixel_expression[expression_cols].corr(method='spearman')
-        pixel_corr_matrix = pixel_corr_matrix.fillna(0) # Handle potential NaNs
+        pixel_corr_matrix = pixel_corr_matrix.fillna(0)
         if pixel_corr_matrix.isnull().values.any():
             print("   WARNING: NaNs remain in pixel correlation matrix after fillna(0). Clustering might be unstable.")
 
-        # --- Always perform ROI-specific clustering ---
         print("   Performing hierarchical clustering on ROI's pixel correlation matrix...")
         if len(expression_cols) < 2:
              print("   WARNING: Cannot perform clustering with less than 2 channels. Using original expression_cols order for ROI-specific clustering.")
-             roi_clustered_order = expression_cols
-             roi_linkage_matrix = None # Cannot compute linkage
+             roi_clustered_order = list(expression_cols) # Ensure it's a list copy
+             roi_linkage_matrix = None
         else:
              try:
                  dist_matrix = sch.distance.pdist(pixel_corr_matrix.values)
@@ -146,142 +179,339 @@ def _calculate_and_save_ordered_channels(
                  roi_clustered_order = [pixel_corr_matrix.columns[i] for i in ordered_indices]
                  print(f"   ROI-specific clustering successful. Determined order for {len(roi_clustered_order)} channels.")
 
-                 # Save the ROI-specific Linkage Matrix
-                 linkage_save_path = os.path.join(roi_output_dir, f"pixel_channel_linkage_{roi_string}.npy")
+                 current_linkage_save_path = os.path.join(roi_output_dir, f"pixel_channel_linkage_{roi_string}.npy")
                  try:
-                     np.save(linkage_save_path, roi_linkage_matrix)
-                     print(f"   ROI-specific pixel channel linkage matrix saved to: {os.path.basename(linkage_save_path)}")
+                     np.save(current_linkage_save_path, roi_linkage_matrix)
+                     print(f"   ROI-specific pixel channel linkage matrix saved to: {os.path.basename(current_linkage_save_path)}")
+                     linkage_save_path = current_linkage_save_path # Save path on success
                  except Exception as link_save_e:
                      print(f"   ERROR saving ROI-specific pixel channel linkage matrix: {link_save_e}")
-                     # Continue, but linkage might be missing
 
              except ValueError as ve:
                   print(f"   ERROR during ROI-specific scipy clustering (ValueError): {ve}. Using original channel order as fallback.")
-                  roi_clustered_order = expression_cols # Fallback to original order
+                  roi_clustered_order = list(expression_cols)
                   roi_linkage_matrix = None
              except Exception as cluster_e:
                  print(f"   ERROR during ROI-specific scipy clustering: {cluster_e}. Using original channel order as fallback.")
                  traceback.print_exc()
-                 roi_clustered_order = expression_cols # Fallback to original order
+                 roi_clustered_order = list(expression_cols)
                  roi_linkage_matrix = None
 
-        # Save the ROI-specific Clustered Order list
         if roi_clustered_order:
-            roi_order_save_path = os.path.join(roi_output_dir, f"pixel_channel_clustered_order_{roi_string}.json")
+            current_roi_order_save_path = os.path.join(roi_output_dir, f"pixel_channel_clustered_order_{roi_string}.json")
             try:
-                with open(roi_order_save_path, 'w') as f:
+                with open(current_roi_order_save_path, 'w') as f:
                     json.dump(roi_clustered_order, f, indent=4)
-                print(f"   ROI-specific clustered channel list saved to: {os.path.basename(roi_order_save_path)}")
+                print(f"   ROI-specific clustered channel list saved to: {os.path.basename(current_roi_order_save_path)}")
+                roi_order_save_path = current_roi_order_save_path # Save path on success
             except Exception as json_e:
-                print(f"   ERROR saving ROI-specific clustered channel list to {roi_order_save_path}: {json_e}")
-                # Proceed, but this file might be missing
+                print(f"   ERROR saving ROI-specific clustered channel list to {current_roi_order_save_path}: {json_e}")
         else:
              print("   ERROR: Failed to determine ROI-specific channel order. Cannot proceed reliably.")
-             return None # Cannot determine a fallback final order reliably
+             return None, linkage_save_path, None # Return None for order, but path if linkage was saved
 
-        # --- Determine the Final Order to Use Downstream ---
+        # This is where `fixed_channel_order` (e.g. consensus) is applied if provided
         if fixed_channel_order:
             print(f"   Fixed channel order provided ({len(fixed_channel_order)} channels). Validating against ROI data...")
-            # Validate fixed order against available channels in the correlation matrix
-            missing_channels = [ch for ch in fixed_channel_order if ch not in pixel_corr_matrix.columns]
-            available_channels_in_fixed_order = [ch for ch in fixed_channel_order if ch in pixel_corr_matrix.columns]
+            # Validate fixed order against available channels in the correlation matrix (which represents available data)
+            # Use expression_cols which are the channels actually in the scaled_pixel_expression for this ROI
+            missing_channels_in_roi = [ch for ch in fixed_channel_order if ch not in expression_cols]
+            available_channels_in_fixed_order = [ch for ch in fixed_channel_order if ch in expression_cols]
 
-            if missing_channels:
-                 print(f"   WARNING: Channels in fixed_channel_order not found in ROI's correlation matrix: {missing_channels}.")
+            if missing_channels_in_roi:
+                 print(f"   WARNING: Channels in fixed_channel_order not found in this ROI's scaled data: {missing_channels_in_roi}.")
             if not available_channels_in_fixed_order:
-                 print("   ERROR: No valid channels remaining after applying fixed_channel_order. Falling back to ROI-specific order.")
-                 final_order_to_use = roi_clustered_order # Fallback if fixed order is unusable
+                 print("   ERROR: No valid channels remaining after applying fixed_channel_order to this ROI's data. Falling back to ROI-specific clustered order.")
+                 final_order_to_use = roi_clustered_order # Fallback if fixed order is unusable for this ROI
             else:
                  final_order_to_use = available_channels_in_fixed_order # Use the validated subset
-                 print(f"   Using validated fixed channel order ({len(final_order_to_use)} channels) as final order.")
+                 print(f"   Using validated fixed channel order ({len(final_order_to_use)} channels) as final order for this ROI.")
         else:
             # No fixed order provided, use the ROI-specific clustered order as the final order
-            print("   No fixed channel order provided. Using ROI-specific clustered order as final order.")
+            print("   No fixed channel order provided. Using ROI-specific clustered order as final order for this ROI.")
             final_order_to_use = roi_clustered_order
 
-        # Save the Final Order list (might be the same as clustered order, or the fixed order)
         if final_order_to_use:
-            final_order_save_path = os.path.join(roi_output_dir, f"pixel_channel_final_order_{roi_string}.json")
+            # This file represents the order to be ACTUALLY USED downstream for this ROI
+            final_order_json_path = os.path.join(roi_output_dir, f"pixel_channel_final_order_{roi_string}.json")
             try:
-                with open(final_order_save_path, 'w') as f:
+                with open(final_order_json_path, 'w') as f:
                     json.dump(final_order_to_use, f, indent=4)
-                print(f"   Final channel order list saved to: {os.path.basename(final_order_save_path)}")
+                print(f"   Final channel order list for downstream use saved to: {os.path.basename(final_order_json_path)}")
             except Exception as json_e:
-                print(f"   ERROR saving final channel order list to {final_order_save_path}: {json_e}")
-                # Don't necessarily fail the whole function, but downstream might have issues
-                # If saving failed, final_order_to_use still holds the list in memory for return
+                print(f"   ERROR saving final channel order list to {final_order_json_path}: {json_e}")
+                # If this save fails, final_order_to_use is still in memory, but file is missing.
         else:
-            # This case should be caught earlier, but as a safeguard:
-            print("   ERROR: Final channel order could not be determined. Aborting.")
-            return None
+            print("   ERROR: Final channel order for downstream use could not be determined. Aborting order calculation.")
+            return None, linkage_save_path, roi_order_save_path
 
     except Exception as e:
         print(f"   ERROR during channel order calculation: {e}")
         traceback.print_exc()
-        return None # Return None on major failure
+        return None, linkage_save_path, roi_order_save_path
 
     print(f"   --- Channel ordering finished in {time.time() - start_time:.2f} seconds ---")
-    # Return the list that should be used by subsequent steps
-    return final_order_to_use
+    return final_order_to_use, linkage_save_path, roi_order_save_path
+
+
+# --- New Phase 1 Function ---
+def preprocess_single_roi(
+    file_idx: int, file_path: str, total_files: int, config: Dict,
+    roi_metadata: Optional[Dict] = None,
+    first_timepoint_value: Optional[Any] = None
+) -> Optional[Dict[str, Any]]:
+    """Performs ROI-level preprocessing and initial channel ordering (ROI-specific)."""
+    print(f"\n================ Preprocessing ROI {file_idx+1}/{total_files}: {os.path.basename(file_path)} ================")
+    cfg_paths = config['paths']
+    cfg_data = config['data']
+
+    # 1. Load and Validate Data
+    print("Loading and validating data...")
+    start_time_load = time.time()
+    roi_string, roi_output_dir, roi_raw_data, roi_channels_from_load = load_and_validate_roi_data(
+        file_path=file_path,
+        all_channels=cfg_data['protein_channels'] + cfg_data['background_channels'],
+        base_output_dir=cfg_paths['output_dir'],
+        metadata_cols=cfg_data['metadata_cols']
+    )
+    if roi_raw_data is None or roi_channels_from_load is None or roi_output_dir is None:
+        print(f"Skipping file {os.path.basename(file_path)} due to errors during loading or validation.")
+        return None
+    print(f"--- Loading finished in {time.time() - start_time_load:.2f} seconds ---")
+
+    # 2. Calculate Optimal Cofactors
+    print("\nCalculating optimal cofactors...")
+    start_time_cofactor = time.time()
+    roi_cofactors = calculate_asinh_cofactors_for_roi(
+        roi_df=roi_raw_data,
+        channels_to_process=roi_channels_from_load,
+        default_cofactor=cfg_data['default_arcsinh_cofactor'],
+        output_dir=roi_output_dir,
+        roi_string=roi_string
+    )
+    print(f"--- Cofactor calculation finished in {time.time() - start_time_cofactor:.2f} seconds ---")
+
+    # 3. Preprocess ROI (Arcsinh Transform and Scale)
+    scaled_pixel_expression_no_xy, used_cofactors = _preprocess_roi(
+        roi_raw_data, roi_channels_from_load, roi_cofactors, config
+    )
+    if scaled_pixel_expression_no_xy is None:
+        print(f"ERROR: Preprocessing failed for ROI {roi_string}. Aborting preprocessing.")
+        return None
+    scaled_channel_columns = scaled_pixel_expression_no_xy.columns.tolist()
+
+    # 4. Save Scaled Pixel Expression (with X, Y)
+    scaled_pixel_expression_with_xy_path = None
+    if 'X' in roi_raw_data.columns and 'Y' in roi_raw_data.columns:
+        scaled_pixel_expression_with_xy = roi_raw_data[['X', 'Y']].join(scaled_pixel_expression_no_xy, how="inner")
+        if len(scaled_pixel_expression_with_xy) != len(scaled_pixel_expression_no_xy):
+            print(f"   WARNING: Row count changed after joining X,Y for {roi_string}.")
+    else:
+        print(f"   CRITICAL WARNING: 'X' or 'Y' missing in roi_raw_data for {roi_string}.")
+        scaled_pixel_expression_with_xy = scaled_pixel_expression_no_xy.copy()
+    scaled_expr_save_path = os.path.join(roi_output_dir, f"scaled_pixel_expression_{roi_string}.csv")
+    try:
+        scaled_pixel_expression_with_xy.to_csv(scaled_expr_save_path, index=True)
+        print(f"   Scaled pixel expression (with X,Y) saved to: {os.path.basename(scaled_expr_save_path)}")
+        scaled_pixel_expression_with_xy_path = scaled_expr_save_path
+    except Exception as save_e:
+        print(f"   ERROR saving scaled pixel expression with X,Y: {save_e}")
+        return None
+
+    # 5. Determine ROI-specific Channel Order (fixed_channel_order is None here for initial run)
+    # This will generate pixel_channel_final_order_{roi_string}.json based on ROI's own data.
+    # It also saves pixel_channel_linkage_...npy and pixel_channel_clustered_order_...json
+    roi_specific_final_order, roi_linkage_path, roi_clustered_order_path = _calculate_and_save_ordered_channels(
+        scaled_pixel_expression=scaled_pixel_expression_no_xy,
+        roi_channels_for_correlation=scaled_channel_columns,
+        roi_output_dir=roi_output_dir,
+        roi_string=roi_string,
+        config=config,
+        fixed_channel_order=None # OPTION B: Initially, no fixed order is imposed.
+    )
+    if roi_specific_final_order is None:
+        print(f"ERROR: Failed to determine initial ROI-specific channel order for ROI {roi_string}. Aborting preprocessing.")
+        return None
+
+    # 6. Calculate and Save Pixel Correlation Matrix (using the ROI-specific final order)
+    # This matrix is based on the ROI's own clustering initially.
+    pixel_corr_save_path = None
+    print("   Calculating and saving ROI-specific pixel correlation matrix (using its own clustered order)...")
+    try:
+        valid_ordered_channels = [ch for ch in roi_specific_final_order if ch in scaled_pixel_expression_no_xy.columns]
+        if not valid_ordered_channels:
+            print(f"   ERROR: No valid channels from ROI-specific order in scaled data. Skipping pixel correlation save.")
+        else:
+            pixel_corr_matrix = scaled_pixel_expression_no_xy[valid_ordered_channels].corr(method='spearman')
+            current_pixel_corr_save_path = os.path.join(roi_output_dir, f"pixel_channel_correlation_{roi_string}.csv")
+            pixel_corr_matrix.to_csv(current_pixel_corr_save_path)
+            print(f"   ROI-specific pixel correlation matrix saved to: {os.path.basename(current_pixel_corr_save_path)}")
+            pixel_corr_save_path = current_pixel_corr_save_path # Save path for return
+    except Exception as corr_e:
+        print(f"   ERROR calculating or saving ROI-specific pixel correlation matrix: {corr_e}")
+
+    # Determine if this ROI is a first timepoint ROI
+    is_first_timepoint_roi = False
+    if roi_metadata and first_timepoint_value is not None and config['experiment_analysis']['timepoint_col'] in roi_metadata:
+        timepoint_col = config['experiment_analysis']['timepoint_col']
+        current_timepoint_val = roi_metadata.get(timepoint_col)
+
+        # Robust comparison for timepoints
+        try:
+            # Attempt numeric comparison first
+            is_first_timepoint_roi = float(current_timepoint_val) == float(first_timepoint_value)
+        except (ValueError, TypeError):
+            # Fallback to string comparison if numeric conversion fails
+            is_first_timepoint_roi = str(current_timepoint_val).strip() == str(first_timepoint_value).strip()
+
+        if is_first_timepoint_roi:
+            print(f"   ROI {roi_string} identified as first timepoint (Value: {current_timepoint_val}, Ref: {first_timepoint_value}).")
+        # else: print(f"   ROI {roi_string} is not first timepoint ({current_timepoint_val} vs {first_timepoint_value}).")
+    # else: print(f"   ROI {roi_string}: timepoint status not determined (no metadata/first_timepoint_value).")
+
+
+    print(f"--- Preprocessing and ROI-level setup for {roi_string} finished successfully ---")
+    return {
+        'roi_string': roi_string,
+        'roi_output_dir': roi_output_dir,
+        'roi_channels_from_load': roi_channels_from_load,
+        'scaled_pixel_expression_with_xy_path': scaled_pixel_expression_with_xy_path,
+        'scaled_channel_columns': scaled_channel_columns,
+        'ordered_channels_for_downstream': list(roi_specific_final_order), # Initially ROI-specific, may be updated in Phase 1.5
+        'pixel_correlation_matrix_path': pixel_corr_save_path, # Path to ROI's own correlation matrix
+        'pixel_channel_linkage_path': roi_linkage_path, # Path to ROI's own linkage
+        'pixel_channel_clustered_order_path': roi_clustered_order_path, # Path to ROI's own clustered order JSON
+        'is_first_timepoint_roi': is_first_timepoint_roi,
+        'config': config, # Pass full config
+        'used_cofactors': used_cofactors,
+        'roi_raw_data_path': file_path, 
+        'scaled_pixel_expression_no_xy_df_for_reorder': scaled_pixel_expression_no_xy.copy() # Keep a copy for potential re-ordering
+    }
+
+
+# --- Function to re-calculate and save final order using a consensus (Phase 1.5) ---
+def recalculate_final_order_with_consensus(
+    roi_info: Dict[str, Any],
+    consensus_channel_order: List[str],
+    config: Dict # already in roi_info, but explicit for clarity
+) -> Optional[List[str]]:
+    """Recalculates the pixel_channel_final_order.json for an ROI using a consensus order."""
+    roi_string = roi_info['roi_string']
+    roi_output_dir = roi_info['roi_output_dir']
+    scaled_pixel_expression_no_xy_df = roi_info['scaled_pixel_expression_no_xy_df_for_reorder']
+    roi_channels_for_correlation = roi_info['scaled_channel_columns'] # These are the channels present in the df
+
+    print(f"   Phase 1.5: Re-evaluating final channel order for {roi_string} using consensus ({len(consensus_channel_order)} channels).")
+
+    # Call _calculate_and_save_ordered_channels, this time with the consensus as fixed_channel_order
+    # It will save a new pixel_channel_final_order_{roi_string}.json
+    # The ROI-specific linkage and clustered_order files remain as they were (based on ROI's own data)
+    updated_final_order, _, _ = _calculate_and_save_ordered_channels(
+        scaled_pixel_expression=scaled_pixel_expression_no_xy_df,
+        roi_channels_for_correlation=roi_channels_for_correlation,
+        roi_output_dir=roi_output_dir,
+        roi_string=roi_string,
+        config=config,
+        fixed_channel_order=consensus_channel_order
+    )
+
+    if updated_final_order:
+        print(f"   Phase 1.5: Successfully updated final channel order for {roi_string}.")
+        return list(updated_final_order)
+    else:
+        print(f"   Phase 1.5: FAILED to update final channel order for {roi_string}. Will use its original ROI-specific order.")
+        return list(roi_info['ordered_channels_for_downstream']) # Fallback to its original ROI-specific order
+
 
 # Updated to accept resolution_param
-def _cluster_pixels(roi_raw_data: pd.DataFrame, roi_channels: List[str], scaled_pixel_expression: pd.DataFrame, resolution_param: float, config: Dict) -> Tuple[Optional[pd.DataFrame], Optional[Any], Optional[Any]]: # Use Any for igraph/leidenalg types
+def _cluster_pixels(
+    pixel_coords_df: pd.DataFrame, # DataFrame with 'X', 'Y' columns
+    scaled_expression_df_values: np.ndarray, # Numpy array of scaled expression values (no X,Y, no headers)
+    protein_channels_for_weighting: List[str], # List of channels corresponding to scaled_expression_df_values columns
+    resolution_param: float,
+    config: Dict,
+    # --- START: Added for background-derived thresholding ---
+    background_channel_data_for_thresholding: Optional[np.ndarray] = None,
+    background_channel_names_for_thresholding: Optional[List[str]] = None
+    # --- END: Added for background-derived thresholding ---
+) -> Tuple[Optional[pd.DataFrame], Optional[Any], Optional[Any], Optional[float]]:
     """Performs spatial Leiden clustering on pixel data for a specific resolution."""
     print(f"\nClustering pixels spatially (Resolution: {resolution_param})...")
     start_time = time.time()
-    # Get GPU config setting
-    use_gpu_config = config.get('processing', {}).get('use_gpu', False)
-    if use_gpu_config:
-        print("   GPU acceleration enabled via configuration.")
-    pixel_coordinates = roi_raw_data[['X', 'Y']].copy().loc[scaled_pixel_expression.index]
+    # Get the use_gpu setting from the main config file
+    use_gpu_config_from_yaml = config.get('processing', {}).get('use_gpu', False)
+    if use_gpu_config_from_yaml:
+        print(f"   Config 'processing.use_gpu' is True. Will request GPU paths in run_spatial_leiden if available.")
+    else:
+        print(f"   Config 'processing.use_gpu' is False. Will request CPU paths in run_spatial_leiden.")
+
+    # Get GPU memory limit if available
+    gpu_memory_limit_total_config = get_gpu_memory_limit(config)
+    if gpu_memory_limit_total_config:
+        # This is the full memory limit intended for a single GPU process
+        print(f"   Configured GPU memory limit for a single process: {gpu_memory_limit_total_config / (1024**3):.2f} GB")
+
     pixel_community_df, pixel_graph, community_partition, exec_time = run_spatial_leiden(
-        analysis_df=pixel_coordinates,
-        protein_channels=roi_channels,
-        scaled_expression_data_for_weights=scaled_pixel_expression.values,
+        analysis_df=pixel_coords_df, 
+        protein_channels=protein_channels_for_weighting, 
+        scaled_expression_data_for_weights=scaled_expression_df_values, 
         n_neighbors=config['analysis']['clustering']['n_neighbors'],
-        resolution_param=resolution_param, # Use passed parameter
+        resolution_param=resolution_param,
         seed=config['analysis']['clustering']['seed'],
-        verbose=True, # Keep verbose on
-        use_gpu_config=use_gpu_config # Pass GPU config setting
+        verbose=True,
+        use_gpu_from_config=use_gpu_config_from_yaml,
+        gpu_memory_limit=gpu_memory_limit_total_config,
+        config=config,
+        # --- START: Pass background data to run_spatial_leiden ---
+        background_channel_data=background_channel_data_for_thresholding,
+        background_channel_names=background_channel_names_for_thresholding
+        # --- END: Pass background data to run_spatial_leiden ---
     )
     if pixel_community_df is None or pixel_graph is None or community_partition is None:
         print(f"   ERROR: Leiden clustering failed for resolution {resolution_param}.")
-        return None, None, None
+        return None, None, None, None
     print(f"   --- Clustering finished in {time.time() - start_time:.2f} seconds (Leiden took {exec_time:.2f}s) ---")
-    return pixel_community_df, pixel_graph, community_partition
+    return pixel_community_df, pixel_graph, community_partition, exec_time
+
 
 # Updated to accept resolution_output_dir
-def _analyze_communities(pixel_results_df: pd.DataFrame, roi_channels: List[str], pixel_graph: Any, resolution_output_dir: str, roi_string: str, resolution_param: float, ordered_channels: List[str]) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.Series]]:
+def _analyze_communities(
+    current_pixel_results_df: pd.DataFrame, 
+    channels_for_profiles: List[str], 
+    pixel_graph: Any,
+    resolution_output_dir: str,
+    roi_string: str,
+    resolution_param: Any 
+    ) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.Series]]:
     """Calculates community profiles and differential expression for a specific resolution."""
     print(f"\nAnalyzing community characteristics (Resolution: {resolution_param})...")
     start_time = time.time()
-    # Calculate Profiles
+    res_str = f"{resolution_param:.3f}".rstrip('0').rstrip('.') if isinstance(resolution_param, float) else str(resolution_param)
+
     scaled_community_profiles = calculate_and_save_profiles(
-         results_df=pixel_results_df,
-         valid_channels=roi_channels,
-         roi_output_dir=resolution_output_dir, # Save profiles in resolution subdir
-         roi_string=f"{roi_string}_res_{resolution_param}", # Add resolution to filename
-         ordered_channels=ordered_channels # Pass the desired final order
+         results_df=current_pixel_results_df, 
+         valid_channels=channels_for_profiles, 
+         roi_output_dir=resolution_output_dir,
+         roi_string=f"{roi_string}_res_{res_str}",
+         ordered_channels=channels_for_profiles 
     )
     if scaled_community_profiles is None or scaled_community_profiles.empty:
         print(f"   Skipping differential expression for resolution {resolution_param}: Profile calculation failed or no communities found.")
         return None, None, None
 
-    # Calculate Differential Expression
     diff_expr_profiles, primary_channel_map = calculate_differential_expression(
-        results_df=pixel_results_df,
+        results_df=current_pixel_results_df, 
         community_profiles=scaled_community_profiles,
         graph=pixel_graph,
-        valid_channels=roi_channels
+        valid_channels=channels_for_profiles 
     )
 
-    # Save differential expression results in resolution subdir
     if diff_expr_profiles is not None and not diff_expr_profiles.empty:
-        diff_profiles_path = os.path.join(resolution_output_dir, f"community_diff_profiles_{roi_string}_res_{resolution_param}.csv")
+        diff_profiles_path = os.path.join(resolution_output_dir, f"community_diff_profiles_{roi_string}_res_{res_str}.csv")
         diff_expr_profiles.to_csv(diff_profiles_path)
         print(f"   Differential profiles saved to: {os.path.basename(diff_profiles_path)}")
     if primary_channel_map is not None and not primary_channel_map.empty:
-        top_channel_path = os.path.join(resolution_output_dir, f"community_primary_channels_{roi_string}_res_{resolution_param}.csv")
+        top_channel_path = os.path.join(resolution_output_dir, f"community_primary_channels_{roi_string}_res_{res_str}.csv")
         primary_channel_map.to_csv(top_channel_path, header=True)
         print(f"   Primary channel map saved to: {os.path.basename(top_channel_path)}")
     else:
@@ -290,634 +520,734 @@ def _analyze_communities(pixel_results_df: pd.DataFrame, roi_channels: List[str]
     print(f"   --- Community analysis finished in {time.time() - start_time:.2f} seconds ---")
     return scaled_community_profiles, diff_expr_profiles, primary_channel_map
 
-# === Main Analysis Orchestration ===
 
-def analyze_roi(file_idx: int, file_path: str, total_files: int, config: Dict, \
-                    roi_metadata: Optional[Dict] = None, reference_channel_order: Optional[List[str]] = None, first_timepoint_value: Optional[Any] = None):
-    """Orchestrates the analysis pipeline for a single ROI file, iterating through resolutions."""
-    print(f"\n================ Analyzing ROI {file_idx+1}/{total_files}: {os.path.basename(file_path)} ================")
+# --- New Helper for Spatial Region Creation ---
+def _create_spatial_regions_from_adjacencies(
+    community_adjacencies: Dict[str, List[str]],
+    pixel_results_df: pd.DataFrame,
+    min_pixels_per_region: int = 500,
+    adaptive_threshold_config: Optional[Dict] = None
+) -> Dict[str, List[str]]:
+    """
+    Creates spatial regions by grouping adjacent communities using connected components.
+    
+    Args:
+        community_adjacencies: Dictionary mapping community_id -> list of adjacent community_ids
+        pixel_results_df: DataFrame with pixel data including 'community' column
+        min_pixels_per_region: Fixed minimum number of pixels (used if adaptive_threshold_config is None)
+        adaptive_threshold_config: Dict with adaptive threshold settings:
+            - 'method': 'proportion' or 'percentile' or 'median_multiple'
+            - 'value': proportion of total pixels, percentile value, or multiple of median
+            
+    Returns:
+        Dictionary mapping region_id -> list of community_ids in that region
+    """
+    print(f"    Creating spatial regions from {len(community_adjacencies)} communities...")
+    
+    # Get pixel counts per community
+    community_pixel_counts = pixel_results_df['community'].value_counts().to_dict()
+    total_pixels = len(pixel_results_df)
+    
+    # Determine adaptive threshold if configured
+    if adaptive_threshold_config:
+        method = adaptive_threshold_config.get('method', 'proportion')
+        value = adaptive_threshold_config.get('value', 0.01)  # Default 1% of total pixels
+        
+        if method == 'proportion':
+            # Use proportion of total pixels in ROI
+            adaptive_min_pixels = max(50, int(total_pixels * value))  # At least 50 pixels
+            print(f"    Using proportional threshold: {value:.3f} of {total_pixels} pixels = {adaptive_min_pixels} pixels")
+        
+        elif method == 'percentile':
+            # Use percentile of community sizes
+            community_sizes = list(community_pixel_counts.values())
+            adaptive_min_pixels = max(50, int(np.percentile(community_sizes, value)))
+            print(f"    Using {value}th percentile of community sizes: {adaptive_min_pixels} pixels")
+        
+        elif method == 'median_multiple':
+            # Use multiple of median community size
+            community_sizes = list(community_pixel_counts.values())
+            median_size = np.median(community_sizes)
+            adaptive_min_pixels = max(50, int(median_size * value))
+            print(f"    Using {value}x median community size: {median_size:.1f} × {value} = {adaptive_min_pixels} pixels")
+        
+        else:
+            print(f"    Warning: Unknown adaptive method '{method}', falling back to fixed threshold")
+            adaptive_min_pixels = min_pixels_per_region
+            
+        min_pixels_threshold = adaptive_min_pixels
+    else:
+        min_pixels_threshold = min_pixels_per_region
+        print(f"    Using fixed threshold: {min_pixels_threshold} pixels")
+    
+    # Create a graph of community adjacencies
+    G = nx.Graph()
+    
+    # Add all communities as nodes
+    for comm_id in community_adjacencies.keys():
+        G.add_node(comm_id)
+    
+    # Add edges between adjacent communities
+    for comm_id, neighbors in community_adjacencies.items():
+        for neighbor_id in neighbors:
+            if neighbor_id in community_adjacencies:  # Ensure neighbor exists
+                G.add_edge(comm_id, neighbor_id)
+    
+    # Find connected components (groups of connected communities)
+    connected_components = list(nx.connected_components(G))
+    print(f"    Found {len(connected_components)} connected components.")
+    
+    # Create spatial regions, merging small components if needed
+    spatial_regions = {}
+    region_id = 0
+    total_pixels_in_regions = 0
+    skipped_pixels = 0
+    
+    for component in connected_components:
+        component_communities = list(component)
+        
+        # Calculate total pixels in this component
+        total_pixels_component = sum(community_pixel_counts.get(int(comm), 0) for comm in component_communities)
+        
+        if total_pixels_component >= min_pixels_threshold:
+            # Component is large enough to be its own region
+            spatial_regions[f"region_{region_id}"] = component_communities
+            total_pixels_in_regions += total_pixels_component
+            print(f"      Region region_{region_id}: {len(component_communities)} communities, {total_pixels_component} pixels")
+            region_id += 1
+        else:
+            # Component is too small
+            skipped_pixels += total_pixels_component
+            print(f"      Skipping small component: {len(component_communities)} communities, {total_pixels_component} pixels (< {min_pixels_threshold})")
+    
+    coverage_pct = (total_pixels_in_regions / total_pixels) * 100 if total_pixels > 0 else 0
+    print(f"    Created {len(spatial_regions)} valid spatial regions.")
+    print(f"    Coverage: {total_pixels_in_regions}/{total_pixels} pixels ({coverage_pct:.1f}%), {skipped_pixels} pixels in small components")
+    
+    return spatial_regions
 
-    cfg_paths = config['paths']
-    cfg_data = config['data']
-    cfg_analysis = config['analysis']
-    cfg_processing = config['processing'] # Get processing config
-    resolution_params = cfg_analysis['clustering'].get('resolution_params', [0.5])
-    if not isinstance(resolution_params, list) or not resolution_params:
-        print("Warning: 'resolution_params' not found or invalid in config. Defaulting to [0.5].")
-        resolution_params = [0.5]
-    print(f"Configured resolutions: {resolution_params}")
 
-    print("Loading and validating data...")
-    start_time_load = time.time()
-    roi_string, roi_output_dir, roi_raw_data, roi_channels = load_and_validate_roi_data(
-        file_path=file_path,
-        master_protein_channels=cfg_data['master_protein_channels'],
-        base_output_dir=cfg_paths['output_dir'],
-        metadata_cols=cfg_data['metadata_cols']
-    )
-    if roi_raw_data is None or roi_channels is None or roi_output_dir is None:
-        print(f"Skipping file {os.path.basename(file_path)} due to errors during loading or validation.")
-        return None
-    print(f"--- Loading finished in {time.time() - start_time_load:.2f} seconds ---")
+# --- New Phase 2 Function ---
+def analyze_single_resolution_for_roi(
+    roi_preprocessing_info: Dict[str, Any], 
+    resolution_param: Any, 
+):
+    """Analyzes a single resolution for a preprocessed ROI."""
+    roi_string = roi_preprocessing_info['roi_string']
+    roi_output_dir = roi_preprocessing_info['roi_output_dir']
+    scaled_pixel_expression_with_xy_path = roi_preprocessing_info['scaled_pixel_expression_with_xy_path']
+    # scaled_channel_columns are all channels available in the scaled data
+    all_available_scaled_channels = roi_preprocessing_info['scaled_channel_columns']
+    # ordered_channels_for_downstream is the final list (ROI-specific or consensus) to be used for profiles etc.
+    channels_for_profile_analysis = roi_preprocessing_info['ordered_channels_for_downstream']
+    config = roi_preprocessing_info['config']
 
-    print("\nCalculating optimal cofactors...")
-    start_time_cofactor = time.time()
-    roi_cofactors = calculate_asinh_cofactors_for_roi(
-        roi_df=roi_raw_data,
-        channels_to_process=roi_channels,
-        default_cofactor=cfg_data['default_arcsinh_cofactor'],
-        output_dir=roi_output_dir,
-        roi_string=roi_string
-    )
-    print(f"--- Cofactor calculation finished in {time.time() - start_time_cofactor:.2f} seconds ---")
+    resolution_str_clean = f"{resolution_param:.3f}".rstrip('0').rstrip('.').replace('.', '_') if isinstance(resolution_param, float) else str(resolution_param)
+    # This is the main output directory for this specific resolution, parent to context-specific dirs
+    resolution_parent_output_dir = os.path.join(roi_output_dir, f"resolution_{resolution_str_clean}")
+    os.makedirs(resolution_parent_output_dir, exist_ok=True)
+
+    print(f"\n===== Base Processing for ROI: {roi_string}, Resolution: {resolution_param} (Output Root: {resolution_parent_output_dir}) =====")
 
     try:
-        # --- Preprocessing ---
-        scaled_pixel_expression, used_cofactors = _preprocess_roi(roi_raw_data, roi_channels, roi_cofactors, config)
-        if scaled_pixel_expression is None:
-            print(f"ERROR: Preprocessing failed for ROI {roi_string}. Aborting.")
-            return None
+        base_scaled_pixel_expression_df = pd.read_csv(scaled_pixel_expression_with_xy_path, index_col=0)
+        if base_scaled_pixel_expression_df.empty or 'X' not in base_scaled_pixel_expression_df.columns or 'Y' not in base_scaled_pixel_expression_df.columns:
+            print(f"   ERROR: Loaded base scaled pixel expression data is invalid for {roi_string}. Skipping resolution {resolution_param}.")
+            return False
+    except Exception as e_load:
+        print(f"   ERROR loading base_scaled_pixel_expression_df for {roi_string}: {e_load}. Skipping resolution {resolution_param}.")
+        return False
 
-        # --- Save Scaled Pixel Expression ---
-        # Note: This DF only contains scaled channel data, not X/Y
-        scaled_expr_save_path = os.path.join(roi_output_dir, f"scaled_pixel_expression_{roi_string}.csv")
-        try:
-            scaled_pixel_expression.to_csv(scaled_expr_save_path, index=True)
-            print(f"   Scaled pixel expression saved to: {os.path.basename(scaled_expr_save_path)}")
-        except Exception as save_e:
-            print(f"   ERROR saving scaled pixel expression: {save_e}")
-            # Decide if this is fatal - potentially yes, as it's needed later.
-            return None
-        # --- End Save ---
+    # Initialize the DataFrame that will store all pixel annotations including multiple community assignments
+    final_pixel_annotations_df = base_scaled_pixel_expression_df.copy()
+    
+    # --- START: Prepare for background-derived thresholding ---
+    clustering_config = config.get('analysis', {}).get('clustering', {})
+    apply_thresholding = clustering_config.get('apply_similarity_thresholding', False)
+    threshold_type = clustering_config.get('similarity_threshold_type', 'percentile')
+    
+    background_data_for_leiden: Optional[np.ndarray] = None
+    background_names_for_leiden: Optional[List[str]] = None
 
-        # Determine if the current ROI is from the first timepoint
-        is_first_timepoint_roi = False
-        current_timepoint = None
-        if roi_metadata and first_timepoint_value is not None and config['experiment_analysis']['timepoint_col'] in roi_metadata:
-            timepoint_col = config['experiment_analysis']['timepoint_col']
-            current_timepoint = roi_metadata.get(timepoint_col)
-            # Compare safely (handle numeric/string)
-            is_first_timepoint_roi = str(current_timepoint) == str(first_timepoint_value)
-            if is_first_timepoint_roi:
-                print(f"   Processing as first timepoint ROI (Timepoint: {current_timepoint})")
-            else:
-                print(f"   Processing as subsequent timepoint ROI (Timepoint: {current_timepoint}, Reference Timepoint: {first_timepoint_value})")
-        elif reference_channel_order is not None:
-            # If we have a reference order, but couldn't determine this ROI's timepoint, assume it's not the first
-            print(f"   WARNING: Could not determine timepoint for ROI {roi_string}. Using provided reference order.")
-            is_first_timepoint_roi = False
+    if apply_thresholding and threshold_type == 'background_derived':
+        print(f"   Background-derived k-NN thresholding is active for ROI {roi_string}.")
+        config_background_channels = config.get('data', {}).get('background_channels', [])
+        user_spec_bg_channels_for_thresh = clustering_config.get('background_channels_for_thresholding', [])
+
+        if not user_spec_bg_channels_for_thresh: # If list is empty, use all from data.background_channels
+            background_names_for_leiden = [ch for ch in config_background_channels if ch in base_scaled_pixel_expression_df.columns]
+            print(f"      Using all available general background channels for thresholding: {background_names_for_leiden}")
+        else: # User specified a list
+            background_names_for_leiden = [ch for ch in user_spec_bg_channels_for_thresh if ch in base_scaled_pixel_expression_df.columns]
+            print(f"      Using user-specified background channels for thresholding: {background_names_for_leiden}")
+
+        if not background_names_for_leiden:
+            print("      WARNING: No valid background channels found for thresholding. Thresholding will be skipped for this context.")
+            # This will cause background_data_for_leiden to remain None, and run_spatial_leiden will handle it.
         else:
-             # No metadata or no reference timepoint identified - proceed normally
-             print(f"   Proceeding without timepoint-based reference order.")
-
-        # Determine the channel order to use for this ROI (or use reference)
-        fixed_order_for_calc = None
-        if not is_first_timepoint_roi and reference_channel_order is not None:
-            print(f"   Using reference channel order ({len(reference_channel_order)} channels).")
-            fixed_order_for_calc = reference_channel_order
-        else:
-            print(f"   Generating channel order based on this ROI's data ({len(roi_channels)} channels).")
-
-        # Calculate and save the channel order (potentially fixed)
-        ordered_channels_for_downstream = _calculate_and_save_ordered_channels(
-            scaled_pixel_expression=scaled_pixel_expression,
-            roi_channels=roi_channels,
-            roi_output_dir=roi_output_dir,
-            roi_string=roi_string,
-            config=config,
-            fixed_channel_order=fixed_order_for_calc
-        )
-
-        # If channel order determination failed, we cannot proceed reliably.
-        if ordered_channels_for_downstream is None:
-             print(f"ERROR: Failed to determine final channel order for ROI {roi_string}. Aborting analysis for this ROI.")
-             return None # Indicate failure
-
-        # --- Calculate and Save Pixel Correlation Matrix ---
-        # Use the final downstream order for saving the correlation matrix to ensure consistency
-        # with other outputs like community profiles.
-        print("   Calculating and saving pixel correlation matrix (using final channel order)...")
-        try:
-            # Use the final downstream order for the matrix columns/index
-            pixel_corr_matrix = scaled_pixel_expression[ordered_channels_for_downstream].corr(method='spearman')
-            pixel_corr_save_path = os.path.join(roi_output_dir, f"pixel_channel_correlation_{roi_string}.csv")
-            pixel_corr_matrix.to_csv(pixel_corr_save_path)
-            print(f"   Pixel correlation matrix saved to: {os.path.basename(pixel_corr_save_path)}")
-        except KeyError as ke:
-             print(f"   ERROR calculating pixel correlation: Channel mismatch between final order and scaled_pixel_expression columns: {ke}. Skipping save.")
-        except Exception as corr_e:
-             print(f"   ERROR calculating or saving pixel correlation matrix: {corr_e}")
-             # Decide if this is fatal - maybe not strictly fatal, but vis will fail.
-        # --- End Save ---
-
-        # If this IS the first timepoint ROI, the 'ordered_channels_for_downstream' variable now holds the order calculated from its data.
-        # This list will be returned by analyze_roi for potential consensus calculation.
-
-        print(f"\n>>> Processing {len(resolution_params)} Leiden resolutions: {resolution_params} <<<")
-        success_flag = False
-        for resolution in resolution_params:
-            pixel_community_df = None
-            pixel_graph = None
-            community_partition = None
-            current_pixel_results_df = None
-            scaled_community_profiles = None
-            diff_expr_profiles = None
-            primary_channel_map = None
-            umap_coords = None # Initialize umap_coords for this resolution loop
-
             try:
-                resolution_str = f"{resolution:.3f}".rstrip('0').rstrip('.').replace('.', '_') if isinstance(resolution, float) else str(resolution)
-                resolution_output_dir = os.path.join(roi_output_dir, f"resolution_{resolution_str}")
-                os.makedirs(resolution_output_dir, exist_ok=True)
-                print(f"\n===== Processing Resolution: {resolution} (Output: {resolution_output_dir}) =====")
+                background_data_for_leiden = base_scaled_pixel_expression_df[background_names_for_leiden].values.astype(np.float32)
+                if background_data_for_leiden.ndim == 1:
+                    background_data_for_leiden = background_data_for_leiden.reshape(-1,1)
+                print(f"      Extracted background data for thresholding with shape: {background_data_for_leiden.shape}")
+            except Exception as e_bg_extract:
+                print(f"      ERROR extracting background data for thresholding: {e_bg_extract}. Thresholding will be skipped.")
+                background_data_for_leiden = None
+                background_names_for_leiden = None
+    # --- END: Prepare for background-derived thresholding ---
 
-                pixel_community_df, pixel_graph, community_partition = _cluster_pixels(roi_raw_data, roi_channels, scaled_pixel_expression, resolution, config)
-                if pixel_community_df is None:
-                    print(f"Skipping further analysis for resolution {resolution} due to clustering failure.")
+    # Define clustering contexts
+    clustering_contexts = ["all_channels"] + [ch for ch in channels_for_profile_analysis if ch in all_available_scaled_channels]
+    
+    overall_success = True # Track if all contexts process successfully
+
+    for context_idx, context_name in enumerate(clustering_contexts):
+        print(f"\n--- Processing Context: {context_name} for ROI: {roi_string}, Resolution: {resolution_param} ---")
+        context_output_dir_specific = os.path.join(resolution_parent_output_dir, f"context_{context_name}")
+        os.makedirs(context_output_dir_specific, exist_ok=True)
+
+        # Initialize variables for this context
+        context_pixel_community_df_from_leiden = None
+        context_pixel_graph = None
+        # current_pixel_results_df_for_context will be final_pixel_annotations_df up to the previous context,
+        # and then we add the current context's community column to it for analysis within this loop iteration.
+        
+        try:
+            pixel_coords_for_clustering = base_scaled_pixel_expression_df[['X', 'Y']].copy()
+            
+            channels_for_this_clustering = []
+            if context_name == "all_channels":
+                channels_for_this_clustering = [ch for ch in all_available_scaled_channels if ch in base_scaled_pixel_expression_df.columns]
+            else: # Single channel context
+                if context_name in base_scaled_pixel_expression_df.columns:
+                    channels_for_this_clustering = [context_name]
+                else:
+                    print(f"   WARNING: Channel {context_name} for single-channel clustering not found in scaled data. Skipping context.")
                     continue
 
-                # Prepare the main results dataframe for this resolution
-                current_pixel_results_df = roi_raw_data[['X', 'Y']].join(scaled_pixel_expression).join(pixel_community_df[['community']])
-                # Optionally add raw data back if needed, though maybe not required if scaled is saved
-                # for ch in roi_channels:
-                #      if ch not in current_pixel_results_df.columns and ch in roi_raw_data.columns:
-                #          current_pixel_results_df[ch] = roi_raw_data.loc[current_pixel_results_df.index, ch]
+            if not channels_for_this_clustering:
+                print(f"   ERROR: No valid channels for clustering context '{context_name}'. Skipping context.")
+                overall_success = False
+                continue
+            
+            scaled_expression_values_for_clustering = base_scaled_pixel_expression_df[channels_for_this_clustering].values
+            if scaled_expression_values_for_clustering.ndim == 1: # Ensure 2D for single channel
+                 scaled_expression_values_for_clustering = scaled_expression_values_for_clustering.reshape(-1, 1)
 
-                # Save intermediate scaled results (already done before community analysis?) - Let's save the final one instead later.
-                # scaled_results_path = os.path.join(resolution_output_dir, f"pixel_scaled_results_{roi_string}_res_{resolution}.csv")
-                # current_pixel_results_df.to_csv(scaled_results_path, index=True)
-                # print(f"   Intermediate pixel results saved to: {os.path.basename(scaled_results_path)}")
+            context_pixel_community_df_from_leiden, context_pixel_graph, _, _ = _cluster_pixels(
+                pixel_coords_df=pixel_coords_for_clustering,
+                scaled_expression_df_values=scaled_expression_values_for_clustering,
+                protein_channels_for_weighting=channels_for_this_clustering,
+                resolution_param=resolution_param,
+                config=config,
+                # --- START: Pass background data to _cluster_pixels ---
+                background_channel_data_for_thresholding=background_data_for_leiden,
+                background_channel_names_for_thresholding=background_names_for_leiden
+                # --- END: Pass background data to _cluster_pixels ---
+            )
 
-                scaled_community_profiles, diff_expr_profiles, primary_channel_map = _analyze_communities(
-                    current_pixel_results_df, roi_channels, pixel_graph, resolution_output_dir, roi_string, resolution, ordered_channels_for_downstream
+            if context_pixel_community_df_from_leiden is None or context_pixel_graph is None:
+                print(f"   Leiden clustering failed for context '{context_name}'. Skipping further analysis for this context.")
+                overall_success = False
+                continue
+
+            # --- Save per-context pixel community memberships --- START MODIFICATION
+            try:
+                # Create a DataFrame with X, Y, and the community assignments for this context
+                # Assuming base_scaled_pixel_expression_df.index aligns with context_pixel_community_df_from_leiden
+                # and that context_pixel_community_df_from_leiden has a 'community' column.
+                per_context_membership_df = base_scaled_pixel_expression_df[['X', 'Y']].copy()
+                # Assigning .values ensures that if context_pixel_community_df_from_leiden has a simple RangeIndex,
+                # it correctly aligns with per_context_membership_df which shares index with base_scaled_pixel_expression_df.
+                per_context_membership_df[f'community_{context_name}'] = context_pixel_community_df_from_leiden['community'].values
+
+                context_membership_save_path = os.path.join(
+                    context_output_dir_specific,
+                    f"pixel_community_membership_{roi_string}_res_{resolution_str_clean}_context_{context_name}.csv"
                 )
-                if scaled_community_profiles is None:
-                    print(f"Skipping UMAP and further analysis for resolution {resolution} due to community analysis failure.")
-                    # Still need to save the final pixel results even if profiles failed? Yes.
-                    # The save happens later. Continue to next resolution.
-                    continue # Skip UMAP, correlation, linkage etc. if profiles failed
-                else:
-                    # --- Calculate and Save Community Correlation Matrix ---
-                    print(f"   Calculating and saving community correlation matrix for resolution {resolution}...")
-                    try:
-                        # Use ordered_channels_for_downstream for consistency
-                        community_corr_matrix = scaled_community_profiles[ordered_channels_for_downstream].corr(method='spearman')
+                per_context_membership_df.to_csv(context_membership_save_path, index=True) # Save with original pixel index
+                print(f"   Per-context pixel community memberships saved to: {os.path.basename(context_membership_save_path)}")
+            except Exception as e_save_context_membership:
+                print(f"   ERROR saving per-context pixel community memberships for context '{context_name}': {e_save_context_membership}")
+            # --- END MODIFICATION ---
+
+            # Add/update community column in the main annotation DF
+            community_col_name = f"community_{context_name}"
+            final_pixel_annotations_df[community_col_name] = context_pixel_community_df_from_leiden['community']
+            
+
+            # --- Calculate and Save Community Adjacencies for this context ---
+            if 'community' in context_pixel_community_df_from_leiden.columns: # Leiden output has 'community'
+                # Pass the original context_pixel_community_df_from_leiden here as it directly maps to graph
+                _ = calculate_and_save_community_adjacencies(
+                    pixel_graph=context_pixel_graph,
+                    pixel_community_df=context_pixel_community_df_from_leiden, 
+                    output_dir=context_output_dir_specific, # Save to context-specific dir
+                    roi_string=roi_string, # Base ROI string
+                    resolution_param=resolution_param, # Base resolution
+                    config=config, # Pass config
+                    n_jobs=config['processing']['parallel_jobs'] # Pass n_jobs
+                )
+            else:
+                print(f"   Skipping community adjacency calculation for context '{context_name}': 'community' column not in Leiden output.")
+
+            # Prepare current_pixel_results_df for _analyze_communities for this context
+            # It needs the expression data and the *current context's* community assignments.
+            # The 'community' column expected by _analyze_communities should be the one for the current context.
+            temp_analysis_df = base_scaled_pixel_expression_df.copy()
+            temp_analysis_df['community'] = final_pixel_annotations_df[community_col_name] # Use current context's community
+
+            if 'community' not in temp_analysis_df.columns or temp_analysis_df['community'].isnull().all():
+                print(f"   ERROR: 'community' column (for context {context_name}) is missing or all NaN. Cannot proceed with community analysis for this context.")
+                overall_success = False
+                continue
+
+            context_scaled_community_profiles, context_diff_expr_profiles, context_primary_channel_map = _analyze_communities(
+                current_pixel_results_df=temp_analysis_df, # Has expression data + this context's community col
+                channels_for_profiles=channels_for_profile_analysis, # Use the globally defined channel order for profiles
+                pixel_graph=context_pixel_graph,
+                resolution_output_dir=context_output_dir_specific, # Save to context-specific dir
+                roi_string=roi_string, # Base ROI string
+                resolution_param=resolution_param 
+            )
+            del temp_analysis_df # Clean up intermediate df
+
+            if context_scaled_community_profiles is None:
+                print(f"   Profile calculation failed for context '{context_name}'. Some downstream steps might be skipped for this context.")
+                 # Continue to try other analyses for the context if possible, but overall_success might be affected by this.
+
+            if context_scaled_community_profiles is not None and not context_scaled_community_profiles.empty:
+                print(f"   Calculating and saving community correlation matrix for context '{context_name}'...")
+                try:
+                    valid_channels_for_comm_corr = [ch for ch in channels_for_profile_analysis if ch in context_scaled_community_profiles.columns]
+                    if valid_channels_for_comm_corr:
+                        community_corr_matrix = context_scaled_community_profiles[valid_channels_for_comm_corr].corr(method='spearman')
                         community_corr_save_path = os.path.join(
-                            resolution_output_dir,
-                            f"community_channel_correlation_{roi_string}_res_{resolution}.csv"
+                            context_output_dir_specific, # Save to context dir
+                            f"community_channel_correlation_{roi_string}_res_{resolution_str_clean}.csv" # Filename can be simple
                         )
                         community_corr_matrix.to_csv(community_corr_save_path)
-                        print(f"   Community correlation matrix saved to: {os.path.basename(community_corr_save_path)}")
-                    except KeyError as ke:
-                         print(f"     ERROR calculating community correlation: Channel mismatch between final order and community profile columns: {ke}. Skipping save.")
-                    except Exception as comm_corr_e:
-                         print(f"     ERROR calculating or saving community correlation matrix: {comm_corr_e}")
-                    # --- End Save ---
+                        print(f"   Community correlation matrix for context '{context_name}' saved to: {os.path.basename(community_corr_save_path)}")
+                    else: print(f"     ERROR: No valid channels from final order in community profiles for correlation (context '{context_name}'). Skipping save.")
+                except Exception as comm_corr_e: print(f"     ERROR calculating/saving community correlation matrix for context '{context_name}': {comm_corr_e}")
 
-                    # --- Calculate and Save UMAP ---
-                    umap_coords = calculate_and_save_umap(
-                        diff_expr_profiles=diff_expr_profiles,
-                        scaled_community_profiles=scaled_community_profiles,
-                        roi_channels=roi_channels,
-                        resolution_output_dir=resolution_output_dir,
-                        roi_string=roi_string,
-                        resolution_param=resolution,
-                        config=config,
-                        umap_available=umap_available # Pass the flag
-                    )
+            _ = calculate_and_save_umap(
+                diff_expr_profiles=context_diff_expr_profiles,
+                scaled_community_profiles=context_scaled_community_profiles,
+                roi_channels=channels_for_profile_analysis, 
+                resolution_output_dir=context_output_dir_specific, # Save to context dir
+                roi_string=roi_string, # Base ROI string
+                resolution_param=resolution_param,
+                config=config,
+                umap_available=umap_available
+            )
 
-                    # --- Calculate and Save Community Linkage Matrix using Utility Function ---
-                    linkage_file_prefix = f"community_linkage_matrix_{roi_string}_res_{resolution}"
-                    community_linkage = calculate_and_save_community_linkage(
-                        scaled_community_profiles=scaled_community_profiles,
-                        ordered_channels=ordered_channels_for_downstream, # Use final order here too
-                        output_dir=resolution_output_dir,
-                        file_prefix=linkage_file_prefix,
-                        config=config
-                    )
+            linkage_file_prefix = f"community_linkage_matrix_{roi_string}_res_{resolution_str_clean}" # Prefix can be simple
+            _ = calculate_and_save_community_linkage(
+                scaled_community_profiles=context_scaled_community_profiles,
+                ordered_channels=channels_for_profile_analysis,
+                output_dir=context_output_dir_specific, # Save to context dir
+                file_prefix=linkage_file_prefix, 
+                config=config
+            )
+            print(f"--- Finished context: {context_name} for ROI: {roi_string}, Resolution: {resolution_param} ---")
 
-                # Add primary channel mapping to the final results dataframe (if calculated)
-                if primary_channel_map is not None and not primary_channel_map.empty:
-                    # Convert mapped series to object type BEFORE fillna to handle potential new 'Mapping Error' string
-                    current_pixel_results_df['primary_channel'] = current_pixel_results_df['community'].map(primary_channel_map).astype(object).fillna('Mapping Error')
-                else:
-                    current_pixel_results_df['primary_channel'] = 'Not Calculated'
+        except Exception as context_e:
+            print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            print(f"   ERROR during processing context '{context_name}' for ROI {roi_string}, resolution {resolution_param}: {str(context_e)}")
+            print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            traceback.print_exc()
+            overall_success = False
+            # Continue to the next context
+        finally:
+            # Clean up context-specific large objects
+            if 'context_pixel_community_df_from_leiden' in locals(): del context_pixel_community_df_from_leiden
+            if 'context_pixel_graph' in locals(): del context_pixel_graph
+            if 'context_scaled_community_profiles' in locals(): del context_scaled_community_profiles
+            if 'context_diff_expr_profiles' in locals(): del context_diff_expr_profiles
+            if 'context_primary_channel_map' in locals(): del context_primary_channel_map
+            gc.collect()
 
-                # Add average community profiles mapped back to pixels (if calculated)
-                if scaled_community_profiles is not None and not scaled_community_profiles.empty:
-                    for channel in roi_channels:
-                         avg_col_name = f'{channel}_asinh_scaled_avg'
-                         # Map the average scaled profile for the community onto each pixel, leaving NaNs if map fails
-                         current_pixel_results_df[avg_col_name] = current_pixel_results_df['community'].map(scaled_community_profiles[channel])
+    # After all contexts, save the consolidated pixel annotation file
+    final_annotations_save_path = os.path.join(
+        resolution_parent_output_dir, # Saved in the parent resolution dir
+        f"pixel_data_with_community_annotations_{roi_string}_res_{resolution_str_clean}.csv"
+    )
+    try:
+        final_pixel_annotations_df.to_csv(final_annotations_save_path, index=True)
+        print(f"\n   Consolidated pixel data with all community annotations for {roi_string} resolution {resolution_param} saved to: {os.path.basename(final_annotations_save_path)}")
+    except Exception as e_save_final:
+        print(f"   ERROR saving final consolidated annotations: {e_save_final}")
+        overall_success = False
 
-                final_results_save_path = os.path.join(
-                    resolution_output_dir,
-                    f"pixel_results_annotated_{roi_string}_res_{resolution}.csv"
+
+    # Explicitly delete large DataFrames that were used throughout the resolution processing
+    # Context-specific DFs are deleted inside the context loop's finally block
+    try:
+        if 'base_scaled_pixel_expression_df' in locals():
+            del base_scaled_pixel_expression_df
+        if 'final_pixel_annotations_df' in locals():
+            del final_pixel_annotations_df
+        gc.collect()
+        print(f"   --- Final memory cleanup for ROI {roi_string}, Resolution {resolution_param} completed ---")
+    except NameError as ne:
+        print(f"   Warning during final cleanup: {ne}")
+
+    return overall_success
+
+
+# --- New Helper for Community Adjacencies ---
+def _process_edge_chunk(
+    edge_chunk: List[Tuple[int, int]], # Changed from List[Any] to List of (source_vid, target_vid) tuples
+    pixel_community_df: pd.DataFrame,
+    num_total_edges: int # For progress reporting if needed by worker (optional)
+) -> Dict[str, set]:
+    """Processes a chunk of edges to build a partial adjacency dictionary."""
+    partial_adjacencies = {}
+    for source_vid, target_vid in edge_chunk: # Iterate through (source, target) tuples
+        try:
+            comm_source = pixel_community_df.iloc[source_vid]['community']
+            comm_target = pixel_community_df.iloc[target_vid]['community']
+            if comm_source != comm_target:
+                partial_adjacencies.setdefault(str(comm_source), set()).add(str(comm_target))
+                partial_adjacencies.setdefault(str(comm_target), set()).add(str(comm_source))
+        except IndexError:
+            continue
+        except KeyError:
+            continue
+    return partial_adjacencies
+
+def calculate_and_save_community_adjacencies(
+    pixel_graph: Any,
+    pixel_community_df: pd.DataFrame,
+    output_dir: str,
+    roi_string: str,
+    resolution_param: Any,
+    config: Dict,
+    n_jobs: int = 1 # Add n_jobs parameter
+) -> Optional[str]:
+    """
+    Calculates and saves the adjacency list for communities based on the pixel graph.
+    Parallelized edge processing.
+    """
+    print(f"   Calculating community adjacencies for {roi_string} res {resolution_param} (using up to {n_jobs} cores)...")
+    start_time = time.time()
+    final_adjacencies = {}
+
+    if pixel_graph is None:
+        print("    ERROR: Pixel graph is None. Cannot calculate community adjacencies.")
+        return None
+    if pixel_community_df.empty or 'community' not in pixel_community_df.columns:
+        print("    ERROR: Pixel community DataFrame is invalid or missing 'community' column.")
+        return None
+
+    try:
+        if len(pixel_community_df) != pixel_graph.vcount():
+            print(f"    WARNING: Length of pixel_community_df ({len(pixel_community_df)}) does not match pixel_graph vertex count ({pixel_graph.vcount()}). Review if mapping is correct.")
+            # Proceeding with iloc mapping assumption.
+
+        # Convert edges to (source_vid, target_vid) tuples for pickling
+        all_edges_tuples = [(edge.source, edge.target) for edge in pixel_graph.es]
+        num_total_edges = len(all_edges_tuples)
+        print(f"    Processing {num_total_edges} edges in the pixel graph...")
+
+        if n_jobs == 1 or num_total_edges == 0: # Fallback to serial processing for n_jobs=1 or no edges
+            print("    Running adjacency calculation in serial mode.")
+            processed_edges = 0
+            for source_vid, target_vid in all_edges_tuples: # Use the tuples here too for consistency
+                try:
+                    comm_source = pixel_community_df.iloc[source_vid]['community']
+                    comm_target = pixel_community_df.iloc[target_vid]['community']
+                except IndexError:
+                    continue
+                except KeyError:
+                    continue
+
+                if comm_source != comm_target:
+                    final_adjacencies.setdefault(str(comm_source), set()).add(str(comm_target))
+                    final_adjacencies.setdefault(str(comm_target), set()).add(str(comm_source))
+                
+                processed_edges +=1
+                if processed_edges > 0 and processed_edges % 500000 == 0: # Adjusted progress reporting for serial
+                    print(f"      (Serial) Processed {processed_edges}/{num_total_edges} edges...")
+        else:
+            print(f"    Running adjacency calculation in parallel with {n_jobs} jobs.")
+            chunk_size = math.ceil(num_total_edges / n_jobs)
+            edge_chunks = [all_edges_tuples[i : i + chunk_size] for i in range(0, num_total_edges, chunk_size)]
+            
+            with Parallel(n_jobs=n_jobs, verbose=0) as parallel:
+                list_of_partial_adjacencies = parallel(
+                    delayed(_process_edge_chunk)(chunk, pixel_community_df, num_total_edges) for chunk in edge_chunks
                 )
-                current_pixel_results_df.to_csv(final_results_save_path, index=True)
-                print(f"\n   Annotated pixel results for resolution {resolution} saved to: {os.path.basename(final_results_save_path)}")
-                success_flag = True
 
-            except Exception as resolution_e:
-                 print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                 print(f"   ERROR during processing resolution {resolution} for ROI {roi_string}: {str(resolution_e)}")
-                 print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                 traceback.print_exc()
+            print("    Merging partial adjacencies from parallel jobs...")
+            for partial_adj in list_of_partial_adjacencies:
+                for comm, neighbors in partial_adj.items():
+                    if comm not in final_adjacencies:
+                        final_adjacencies[comm] = set()
+                    final_adjacencies[comm].update(neighbors)
+            print("    Merging complete.")
 
-            finally:
-                print(f"   Cleaning up memory for resolution {resolution}...")
-                del pixel_community_df
-                del pixel_graph
-                del community_partition
-                del current_pixel_results_df
-                del scaled_community_profiles
-                del diff_expr_profiles
-                del primary_channel_map
-                del umap_coords # Clean up umap_coords
-                gc.collect()
+        # Convert sets to sorted lists for JSON serialization
+        for comm in final_adjacencies:
+            final_adjacencies[comm] = sorted(list(final_adjacencies[comm]))
 
-        if not success_flag:
-             print(f"\n--- WARNING: Analysis failed for all resolutions for ROI: {roi_string} ---")
-             return None # Indicate overall failure if no resolution worked
+        res_str_clean = f"{resolution_param:.3f}".rstrip('0').rstrip('.').replace('.', '_') if isinstance(resolution_param, float) else str(resolution_param)
+        output_filename = f"community_adjacencies_{roi_string}_res_{res_str_clean}.json"
+        output_path = os.path.join(output_dir, output_filename)
 
-        print(f"\n--- Successfully finished processing all resolutions for ROI: {roi_string} ---")
-        # Return the ROI string AND the final channel order used/calculated for its plots
-        return roi_string, ordered_channels_for_downstream
+        with open(output_path, 'w') as f:
+            json.dump(final_adjacencies, f, indent=4)
+        
+        print(f"    Community adjacencies saved to: {os.path.basename(output_path)} ({len(final_adjacencies)} communities)")
+        print(f"    --- Community adjacency calculation finished in {time.time() - start_time:.2f} seconds ---")
+        return output_path
 
-    except Exception as e: # Catch errors outside the resolution loop
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print(f"   FATAL ERROR during analysis for ROI {roi_string} (outside resolution loop): {str(e)}")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    except AttributeError as ae:
+        print(f"    ERROR: AttributeError during graph processing: {ae}. Is pixel_graph an igraph.Graph object? Type: {type(pixel_graph)}")
         traceback.print_exc()
-        # Ensure failure returns None, which is not a tuple, so downstream processing can handle it
-        return None # Indicate failure
+        return None
+    except Exception as e:
+        print(f"    ERROR calculating community adjacencies: {e}")
+        traceback.print_exc()
+        return None
+
 
 # --- Script Execution Entry Point ---
 if __name__ == '__main__':
-    # Need to import plt for seaborn clustermap even if not showing plots directly
-    # --- REMOVED: plt import no longer needed --- #
-    # import matplotlib.pyplot as plt
-    print("\n--- Starting IMC Pixel-wise Analysis Pipeline (Analysis Only) ---")
-    # Check for GPU acceleration
+    print("\n--- Starting IMC Pixel-wise Analysis Pipeline ---")
     gpu_available = check_gpu_availability()
-    if gpu_available:
-        print("GPU acceleration is available and will be used where implemented.")
-    else:
-        print("GPU acceleration is not available or not properly configured. Proceeding with CPU-only path.")
+    if gpu_available: print("GPU acceleration is available.")
+    else: print("GPU acceleration not available. Proceeding with CPU-only.")
 
     start_pipeline_time = time.time()
+    config = load_config("config.yaml")
+    if config is None: sys.exit(1)
 
-    # --- Load Configuration ---
-    config = load_config("config.yaml") # Load from default path
-    if config is None:
-        print("Exiting due to configuration loading error.")
-        sys.exit(1) # Exit script if config fails
-
-    # --- 1. Find Input Files ---
     data_dir = config['paths']['data_dir']
     try:
         imc_files = glob.glob(os.path.join(data_dir, "*.txt"))
-        if not imc_files:
-            print(f"ERROR: No .txt files found in data directory: {data_dir}")
-            sys.exit(1)
-        print(f"\nFound {len(imc_files)} IMC data files to process.")
-    except Exception as e:
-         print(f"ERROR finding input files in {data_dir}: {e}")
-         sys.exit(1)
+        if not imc_files: print(f"ERROR: No .txt files in {data_dir}"); sys.exit(1)
+        print(f"\nFound {len(imc_files)} IMC data files.")
+    except Exception as e: print(f"ERROR finding input files: {e}"); sys.exit(1)
 
-    # --- 2. Setup Output Directory ---
     output_dir = config['paths']['output_dir']
     try:
         os.makedirs(output_dir, exist_ok=True)
-        print(f"Data directory: {data_dir}")
-        print(f"Output directory: {output_dir}")
-    except Exception as e:
-         print(f"ERROR creating output directory {output_dir}: {e}")
-         sys.exit(1)
+        print(f"Data directory: {data_dir}\nOutput directory: {output_dir}")
+    except Exception as e: print(f"ERROR creating output directory: {e}"); sys.exit(1)
 
-    # --- 2b. Load Metadata (Early) ---
     metadata_file = config['paths'].get('metadata_file')
-    metadata = None
     metadata_map = {}
-    first_timepoint = None
-    
-    # Define helper function locally within the main block or globally if preferred
+    first_timepoint_value_global = None # Renamed to avoid conflict with preprocess_single_roi internal var
+    timepoint_col_name = config.get('experiment_analysis', {}).get('timepoint_col')
+    metadata_roi_col_name = config.get('experiment_analysis', {}).get('metadata_roi_col')
+
     def get_roi_string_from_path(p):
-        """
-        Extracts the ROI string (e.g. ROI_D7_M1_01_21) from 
-        a full filename like IMC_241218_Alun_ROI_D7_M1_01_21.txt
-        """
-        fname = os.path.basename(p)
-        base, _ = os.path.splitext(fname)
-        # Updated Regex: Look for ROI_ followed by alphanumeric/underscore, 
-        # ensuring it's anchored reasonably (e.g., preceded by _ or start)
-        # and extending towards the end. Adjust if pattern is different.
-        match = re.search(r'(?:^|_)(ROI_[A-Za-z0-9_]+)', base) 
-        if match:
-            return match.group(1)
-        else:
-            # Fallback or error handling needed if pattern MUST exist
-            print(f"Warning: Could not extract standard ROI string from '{fname}'. Using base '{base}'.")
-            return base
-            
-    if metadata_file and os.path.exists(metadata_file):
+        fname = os.path.basename(p); base, _ = os.path.splitext(fname)
+        match = re.search(r'(?:^|_)(ROI_[A-Za-z0-9_]+)', base)
+        if match: return match.group(1)
+        print(f"Warning: Could not extract ROI string from '{fname}'. Using base '{base}'."); return base
+
+    if metadata_file and os.path.exists(metadata_file) and timepoint_col_name and metadata_roi_col_name:
         try:
-            metadata = pd.read_csv(metadata_file)
-            print(f"Metadata loaded successfully from: {metadata_file}")
-            # Prepare for reference timepoint identification
-            metadata_roi_col = config['experiment_analysis']['metadata_roi_col']
-            timepoint_col = config['experiment_analysis']['timepoint_col']
-            if metadata_roi_col not in metadata.columns:
-                 raise ValueError(f"Metadata ROI column '{metadata_roi_col}' not found in {metadata_file}")
-            if timepoint_col not in metadata.columns:
-                 raise ValueError(f"Metadata timepoint column '{timepoint_col}' not found in {metadata_file}")
-
-            # Create a map from filename base (ROI string) to metadata row for faster lookup
-            metadata[metadata_roi_col] = metadata[metadata_roi_col].astype(str) # Ensure consistent type
-            
-            # --- Create metadata_map using the extracted ROI string ---
-            temp_metadata_map = {}
-            for _, row in metadata.iterrows():
-                 roi_key_in_meta = row[metadata_roi_col] 
-                 # Assume the metadata ROI col directly contains the key like 'ROI_D1_M1_01_9'
-                 temp_metadata_map[roi_key_in_meta] = row.to_dict() 
-            metadata_map = temp_metadata_map
+            metadata_df = pd.read_csv(metadata_file)
+            print(f"Metadata loaded from: {metadata_file}")
+            if metadata_roi_col_name not in metadata_df.columns: raise ValueError(f"Meta ROI col missing: {metadata_roi_col_name}")
+            if timepoint_col_name not in metadata_df.columns: raise ValueError(f"Meta timepoint col missing: {timepoint_col_name}")
+            metadata_df[metadata_roi_col_name] = metadata_df[metadata_roi_col_name].astype(str)
+            metadata_map = {row[metadata_roi_col_name]: row.to_dict() for _, row in metadata_df.iterrows()}
             print(f"   Created metadata map with {len(metadata_map)} entries.")
-            # --- End map creation ---
-
-            # Identify the first timepoint value
-            timepoint_values = metadata[timepoint_col].unique()
-            try:
-                # Attempt numeric sort first
-                first_timepoint = sorted([v for v in timepoint_values if pd.notna(v)], key=lambda x: float(x))[0]
-            except (ValueError, TypeError):
-                # Fallback to string sort if numeric fails
-                first_timepoint = sorted([str(v) for v in timepoint_values if pd.notna(v)])[0]
-            print(f"Identified first timepoint: {first_timepoint} (from column '{timepoint_col}')")
-
-        except FileNotFoundError:
-            print(f"WARNING: Metadata file specified but not found: {metadata_file}. Cannot use metadata features.")
-            metadata = None
-            metadata_map = {}
-            first_timepoint = None
-        except KeyError as e:
-             print(f"WARNING: Missing expected key in config for metadata: {e}. Cannot use metadata features.")
-             metadata = None
-             metadata_map = {}
-             first_timepoint = None
-        except ValueError as e:
-            print(f"WARNING: Error processing metadata: {e}. Cannot use metadata features.")
-            metadata = None
-            metadata_map = {}
-            first_timepoint = None
-        except Exception as e:
-            print(f"ERROR loading or processing metadata from {metadata_file}: {e}")
-            metadata = None # Treat as if no metadata available
-            metadata_map = {}
-            first_timepoint = None
-    else:
-        print("WARNING: No metadata file specified or found. Cannot apply metadata-based ordering.")
-        metadata = None
-        metadata_map = {}
-        first_timepoint = None
-
-    # --- 3. Determine Parallel Jobs ---
-    try:
-        parallel_jobs_config = config['processing']['parallel_jobs']
-        cpu_count = multiprocessing.cpu_count()
-        if isinstance(parallel_jobs_config, int):
-            if parallel_jobs_config == -1:
-                n_jobs = cpu_count
-            elif parallel_jobs_config <= -2:
-                n_jobs = max(1, cpu_count + parallel_jobs_config + 1) # e.g., -2 means cpu_count - 1
-            elif parallel_jobs_config > 0:
-                n_jobs = min(parallel_jobs_config, cpu_count)
-            else: # 0 or invalid
-                n_jobs = 1
-        else:
-             print("Warning: Invalid 'parallel_jobs' value in config. Defaulting to 1 core.")
-             n_jobs = 1
-    except KeyError:
-         print("Warning: 'parallel_jobs' not found in config processing section. Defaulting to 1 core.")
-         n_jobs = 1
-    except Exception as e:
-         print(f"Warning: Error determining parallel jobs from config: {e}. Defaulting to 1 core.")
-         n_jobs = 1
-
-    print(f"\nStarting parallel processing using {n_jobs} cores...")
-
-    # --- 3b. Calculate Reference Channel Order (if metadata available) ---
-    reference_channel_order = None
-    if metadata is not None and first_timepoint is not None:
-        print(f"\n--- Preparing reference channel order based on timepoint: {first_timepoint} ---")
-
-        # 1) Gather *all* ROIs at the first timepoint (using the same logic as before)
-        first_tp_files: List[str] = []
-        for fp in imc_files:
-            rk = get_roi_string_from_path(fp)
-            if not rk: # Skip if ROI string couldn't be extracted
-                continue
-
-            # Implement partial string matching: check if rk is *in* any metadata map key
-            found_key = None
-            md_entry = None
-            for map_key, metadata_entry in metadata_map.items():
-                # Check if the extracted roi_string (rk) is a substring of the metadata key (map_key)
-                if rk in map_key:
-                    md_entry = metadata_entry
-                    found_key = map_key
-                    # print(f"   DEBUG: Partial match found: ROI string '{rk}' in metadata key '{map_key}'") # Optional debug
-                    break # Found the first match, assume it's the correct one
-
-            # Check if a partial match was found and if the timepoint matches
-            if found_key and md_entry:
-                if str(md_entry.get(timepoint_col)) == str(first_timepoint):
-                    first_tp_files.append(fp)
-                    # print(f"   DEBUG: Added {fp} to first_tp_files (Timepoint match)") # Optional debug
-                # else: # Optional debug
-                    # print(f"   DEBUG: Partial match found for {rk}, but timepoint mismatch ({md_entry.get(timepoint_col)} != {first_timepoint})")
-            # else: # Optional debug
-                # print(f"   DEBUG: No partial match found for ROI string '{rk}' in metadata keys.")
-
-        if not first_tp_files:
-            print(f"WARNING: No ROIs found for first timepoint {first_timepoint}. Cannot generate reference order.")
-        else:
-            print(f"Found {len(first_tp_files)} candidate ROIs at timepoint {first_timepoint}.")
-
-            # 2) Calculate correlation matrix for each first-timepoint ROI
-            correlation_matrices = []
-            all_channels_set = set()
-            failed_loads = 0
-
-            for i, ref_path in enumerate(first_tp_files):
-                roi_key = get_roi_string_from_path(ref_path)
-                print(f"  Processing reference ROI {i+1}/{len(first_tp_files)}: {roi_key}")
-
-                # Load data for this ROI
-                _, _, raw_df, roi_chs = load_and_validate_roi_data(
-                    file_path=ref_path,
-                    master_protein_channels=config['data']['master_protein_channels'],
-                    base_output_dir=config['paths']['output_dir'], # Temporary output dir not strictly needed here
-                    metadata_cols=config['data']['metadata_cols']
-                )
-                if raw_df is None or roi_chs is None:
-                    print(f"    WARNING: Failed to load/validate data for {roi_key}. Skipping.")
-                    failed_loads += 1
-                    continue
-
-                # Calculate cofactors (output dir not critical here, just need the dict)
-                temp_roi_output_dir = os.path.join(output_dir, roi_key) # Need a dir for cofactor calc
-                os.makedirs(temp_roi_output_dir, exist_ok=True) # Ensure it exists
-                roi_cofactors = calculate_asinh_cofactors_for_roi(
-                    roi_df=raw_df,
-                    channels_to_process=roi_chs,
-                    default_cofactor=config['data']['default_arcsinh_cofactor'],
-                    output_dir=temp_roi_output_dir,
-                    roi_string=roi_key
-                )
-
-                # Apply scaling
-                scaled_df, _ = apply_per_channel_arcsinh_and_scale(
-                    data_df=raw_df,
-                    channels=roi_chs,
-                    cofactors_map=roi_cofactors,
-                    default_cofactor=config['data']['default_arcsinh_cofactor']
-                )
-                if scaled_df.empty:
-                    print(f"    WARNING: Scaling failed for {roi_key}. Skipping.")
-                    failed_loads += 1
-                    continue
-
-                # Get channels present in *this* scaled df
-                current_roi_channels = [ch for ch in config['data']['master_protein_channels'] if ch in scaled_df.columns]
-                if not current_roi_channels:
-                    print(f"    WARNING: No master protein channels in scaled data for {roi_key}. Skipping.")
-                    failed_loads += 1
-                    continue
-
-                # Calculate correlation matrix for channels present in this ROI
-                corr_mat = scaled_df[current_roi_channels].corr(method='spearman')
-                correlation_matrices.append(corr_mat)
-                all_channels_set.update(current_roi_channels)
-                gc.collect() # Clean up memory
-
-            print(f"  Finished processing reference ROIs. {len(correlation_matrices)} successful, {failed_loads} failed/skipped.")
-
-            # 3) Compute average correlation matrix and cluster
-            if not correlation_matrices:
-                print("ERROR: No correlation matrices were generated from first-timepoint ROIs.")
-                reference_channel_order = None # Indicate failure
+            unique_timepoints = metadata_df[timepoint_col_name].unique()
+            
+            # Robustly determine the first timepoint value
+            valid_timepoints = [tp for tp in unique_timepoints if pd.notna(tp)]
+            if not valid_timepoints:
+                print("   WARNING: No valid (non-NaN) timepoint values found in metadata.")
             else:
-                consensus_channels = sorted(list(all_channels_set))
-                print(f"  Found {len(consensus_channels)} unique channels across reference ROIs.")
-
-                # Reindex all matrices to the full set of channels
-                reindexed_matrices = [
-                    mat.reindex(index=consensus_channels, columns=consensus_channels)
-                    for mat in correlation_matrices
-                ]
-
-                # Stack matrices and compute mean, ignoring NaNs
-                stacked_matrices = np.stack([mat.to_numpy() for mat in reindexed_matrices], axis=0)
-                average_corr_matrix_np = np.nanmean(stacked_matrices, axis=0)
-
-                # Convert back to DataFrame
-                average_corr_matrix_df = pd.DataFrame(average_corr_matrix_np, index=consensus_channels, columns=consensus_channels)
-
-                # Handle potential NaNs (e.g., fill with 0 - assumes uncorrelated)
-                average_corr_matrix_df = average_corr_matrix_df.fillna(0)
-                # Optional: Check for remaining NaNs after fillna
-                if average_corr_matrix_df.isnull().values.any():
-                     print("  WARNING: NaNs remain in average correlation matrix after fillna(0). Check input data.")
-                     # Decide how to handle this - maybe use alphabetical order as fallback?
-
-                print("\n  --- Clustering Average Correlation Matrix ---")
                 try:
-                    # Perform hierarchical clustering (Ward method)
-                    # Use pdist for distance calculation (1 - correlation could also be used)
-                    linkage_matrix = sch.linkage(sch.distance.pdist(average_corr_matrix_df.values), method='ward')
+                    # Try sorting as numbers
+                    first_timepoint_value_global = sorted(valid_timepoints, key=lambda x: float(x))[0]
+                except (ValueError, TypeError):
+                    # Fallback to string sort if numeric sort fails
+                    print("   Note: Could not sort all timepoints numerically, falling back to string sort for first timepoint determination.")
+                    first_timepoint_value_global = sorted(valid_timepoints, key=lambda x: str(x))[0]
+            
+            if first_timepoint_value_global is not None:
+                 print(f"Identified first timepoint for reference: {first_timepoint_value_global} (Type: {type(first_timepoint_value_global)})")
+            else:
+                print("   WARNING: Could not determine the first timepoint value globally.")
 
-                    # Get the order from the linkage
-                    dendrogram = sch.dendrogram(linkage_matrix, no_plot=True)
-                    ordered_indices = dendrogram['leaves']
-                    reference_channel_order = [average_corr_matrix_df.columns[i] for i in ordered_indices]
+        except Exception as e_meta: print(f"ERROR processing metadata: {e_meta}. No metadata features."); metadata_map, first_timepoint_value_global = {}, None
+    else: print("WARNING: No metadata or incomplete config. No metadata-based ordering."); metadata_map, first_timepoint_value_global = {}, None
 
-                    print(f"  >>> Consensus Reference Channel Order ({len(reference_channel_order)} channels) computed from average correlation:")
-                    print("     ", reference_channel_order[:10], "..." if len(reference_channel_order) > 10 else "")
+    try:
+        cfg_parallel = config['processing']['parallel_jobs']; cpu_count = multiprocessing.cpu_count()
+        if isinstance(cfg_parallel, int):
+            if cfg_parallel == -1: n_jobs_cpu_tasks = cpu_count
+            elif cfg_parallel <= -2: n_jobs_cpu_tasks = max(1, cpu_count + cfg_parallel + 1)
+            elif cfg_parallel > 0: n_jobs_cpu_tasks = min(cfg_parallel, cpu_count)
+            else: n_jobs_cpu_tasks = 1
+        else: n_jobs_cpu_tasks = 1
+    except KeyError: n_jobs_cpu_tasks = 1 # Default if key is missing
+    except Exception: n_jobs_cpu_tasks = 1 # General fallback
 
-                    # --- Save Linkage Matrix and Average Correlation Matrix ---
-                    linkage_save_path = os.path.join(output_dir, "reference_channel_linkage.npy")
-                    avg_corr_save_path = os.path.join(output_dir, "reference_average_correlation.csv")
-                    try:
-                        np.save(linkage_save_path, linkage_matrix)
-                        print(f"  Reference linkage matrix saved to: {os.path.basename(linkage_save_path)}")
-                    except Exception as link_e:
-                        print(f"  Warning: Could not save reference linkage matrix to {linkage_save_path}: {link_e}")
-                    try:
-                        average_corr_matrix_df.to_csv(avg_corr_save_path)
-                        print(f"  Reference average correlation matrix saved to: {os.path.basename(avg_corr_save_path)}")
-                    except Exception as corr_e:
-                        print(f"  Warning: Could not save reference average correlation matrix to {avg_corr_save_path}: {corr_e}")
-                    # --- End Save ---
+    # Determine n_jobs for top-level parallel phases (ROI preprocessing, Resolution analysis)
+    # If GPU is used, these phases should have limited parallelism to avoid OOM.
+    # CPU-bound tasks *within* these phases (like adjacency) can use n_jobs_cpu_tasks.
+    n_jobs_gpu_aware_phases = n_jobs_cpu_tasks # Default to CPU task parallelism
+    max_concurrent_gpu_jobs = config.get('processing', {}).get('max_concurrent_gpu_jobs', 1)
 
-                except ImportError:
-                    print("  ERROR: Need scipy (scipy.cluster.hierarchy) to perform clustering on the average matrix.")
-                    print("  Install with: pip install scipy")
-                    reference_channel_order = consensus_channels # Fallback to alphabetical
-                except Exception as e:
-                    print(f"  ERROR during clustering of average matrix: {e}")
-                    traceback.print_exc()
-                    reference_channel_order = consensus_channels # Fallback
+    # Check if GPU will actually be used by downstream functions like run_spatial_leiden
+    # This logic should mirror how run_spatial_leiden determines GPU use based on 'use_gpu' config and availability.
+    # For simplicity, we assume if config.processing.use_gpu is 'true' or 'auto' (and gpu_available is True), then GPU will be attempted.
+    cfg_use_gpu_setting = config.get('processing', {}).get('use_gpu', 'auto')
+    attempt_gpu_downstream = False
+    if isinstance(cfg_use_gpu_setting, str) and cfg_use_gpu_setting.lower() == 'true':
+        attempt_gpu_downstream = True
+    elif isinstance(cfg_use_gpu_setting, bool) and cfg_use_gpu_setting:
+        attempt_gpu_downstream = True
+    elif isinstance(cfg_use_gpu_setting, str) and cfg_use_gpu_setting.lower() == 'auto' and gpu_available:
+        attempt_gpu_downstream = True
+    # If actual gpu_utils_available is False (e.g. torch not found), then gpu_available would be False too.
 
-                # Save the final reference order (optional, but potentially useful)
-                if reference_channel_order:
-                     ref_order_path = os.path.join(output_dir, "reference_channel_order.json")
-                     try:
-                         with open(ref_order_path, 'w') as f:
-                             json.dump(reference_channel_order, f, indent=4)
-                         print(f"  Reference channel order saved to: {ref_order_path}")
-                     except Exception as json_e:
-                         print(f"  Warning: Could not save reference channel order to {ref_order_path}: {json_e}")
-
+    if attempt_gpu_downstream and gpu_available: # only cap if GPU is configured AND available
+        n_jobs_gpu_aware_phases = max(1, min(n_jobs_cpu_tasks, max_concurrent_gpu_jobs))
+        print(f"\nGPU acceleration is active. Top-level parallel phases will use up to {n_jobs_gpu_aware_phases} concurrent job(s) to manage GPU memory.")
+        print(f"CPU-bound sub-tasks within each job can still use up to {n_jobs_cpu_tasks} cores if parallelized internally.")
     else:
-         print("\nSkipping reference channel order calculation (no metadata or first timepoint).")
+        print(f"\nUsing up to {n_jobs_cpu_tasks} cores for parallel tasks (GPU not actively used by top-level phases or not available).")
 
+    # --- Phase 1: Preprocessing all ROIs (generates ROI-specific orders) ---
+    print(f"\n--- Starting Phase 1: Initial Preprocessing for {len(imc_files)} ROIs (using {n_jobs_gpu_aware_phases} jobs) ---")
+    phase1_args = [
+        (i, fp, len(imc_files), config, metadata_map.get(get_roi_string_from_path(fp)), first_timepoint_value_global)
+        for i, fp in enumerate(imc_files[-1:])
+    ]
+    with Parallel(n_jobs=n_jobs_gpu_aware_phases, verbose=10) as parallel:
+        phase1_results_infos = parallel(delayed(preprocess_single_roi)(*args) for args in phase1_args)
+    
+    # Filter out None results (failed preprocessing)
+    successfully_preprocessed_roi_infos = [info for info in phase1_results_infos if info is not None]
+    if not successfully_preprocessed_roi_infos:
+        print("ERROR: Phase 1 preprocessing failed for all ROIs. Exiting."); sys.exit(1)
+    print(f"--- Phase 1: Successfully preprocessed {len(successfully_preprocessed_roi_infos)} ROIs initially ---")
 
-    # --- 4. Run Parallel Processing ---
-    print(f"\n--- Starting main parallel analysis for {len(imc_files)} ROIs ---")
-    # Check if metadata_map exists before using it in the loop
-    if not metadata_map:
-        print("WARNING: metadata_map is empty. Proceeding without passing specific ROI metadata to analyze_roi.")
-        
-    analysis_results = Parallel(n_jobs=n_jobs, verbose=10)(
-        # Pass the loaded config, reference order, and specific ROI metadata to each worker
-        delayed(analyze_roi)(
-            i,
-            file_path,
-            len(imc_files),
-            config,
-            # Safely get metadata using the extracted ROI string
-            roi_metadata=metadata_map.get(get_roi_string_from_path(file_path)), 
-            reference_channel_order=reference_channel_order, # Pass the calculated order
-            first_timepoint_value=first_timepoint # Pass the value for comparison
-            )
-        for i, file_path in enumerate(imc_files) # Process all files
-    )
+    # --- Phase 1.5: Calculate Consensus Reference Order & Update Non-First Timepoint ROIs ---
+    consensus_reference_channel_order = None
+    if first_timepoint_value_global is not None: # Only proceed if metadata and first timepoint were identified
+        print(f"\n--- Starting Phase 1.5: Consensus Reference Order Calculation (using timepoint {first_timepoint_value_global}) ---")
+        first_timepoint_roi_infos_for_consensus = [info for info in successfully_preprocessed_roi_infos if info['is_first_timepoint_roi']]
 
-    # --- 5. Aggregate Results ---
-    # Filter results based on the return value of analyze_roi
-    # Successful calls return a tuple (roi_string, ordered_channels)
-    # Failed calls return None
-    successful_results = [r for r in analysis_results if isinstance(r, tuple) and len(r) == 2 and r[0] is not None]
-    successful_rois = [r[0] for r in successful_results] # Extract just the ROI strings for the count
-    failed_rois_count = len(imc_files) - len(successful_rois)
+        if not first_timepoint_roi_infos_for_consensus:
+            print(f"WARNING: No first timepoint ROIs found/successfully preprocessed. Cannot generate consensus reference order.")
+        else:
+            print(f"Found {len(first_timepoint_roi_infos_for_consensus)} first-timepoint ROIs for consensus calculation.")
+            correlation_matrices_for_consensus = []
+            all_channels_for_consensus = set()
+            failed_consensus_rois = 0
 
+            for ft_roi_info in first_timepoint_roi_infos_for_consensus:
+                corr_path = ft_roi_info.get('pixel_correlation_matrix_path')
+                if corr_path and os.path.exists(corr_path):
+                    try:
+                        corr_mat = pd.read_csv(corr_path, index_col=0)
+                        actual_channels_in_corr = corr_mat.columns.tolist()
+                        if not actual_channels_in_corr:
+                            print(f"  WARNING: Correlation matrix for {ft_roi_info['roi_string']} is empty. Skipping for consensus."); failed_consensus_rois+=1; continue
+                        correlation_matrices_for_consensus.append(corr_mat)
+                        all_channels_for_consensus.update(actual_channels_in_corr)
+                    except Exception as e_corr_load:
+                        print(f"  WARNING: Failed to load/process correlation matrix from {corr_path} for {ft_roi_info['roi_string']}: {e_corr_load}"); failed_consensus_rois+=1
+                else:
+                    print(f"  WARNING: Missing correlation matrix for first timepoint ROI {ft_roi_info['roi_string']}. Skipping for consensus."); failed_consensus_rois+=1
+            
+            print(f"  Processed {len(correlation_matrices_for_consensus)} correlation matrices for consensus ({failed_consensus_rois} skipped/failed).")
+
+            if correlation_matrices_for_consensus:
+                consensus_channels_list = sorted(list(all_channels_for_consensus))
+                reindexed_matrices = [m.reindex(index=consensus_channels_list, columns=consensus_channels_list) for m in correlation_matrices_for_consensus]
+                valid_reindexed_matrices = [m.to_numpy() for m in reindexed_matrices if not m.isnull().all().all()]
+                
+                if valid_reindexed_matrices:
+                    stacked_matrices = np.stack(valid_reindexed_matrices, axis=0)
+                    average_corr_matrix_np = np.nanmean(stacked_matrices, axis=0)
+                    avg_corr_df = pd.DataFrame(average_corr_matrix_np, index=consensus_channels_list, columns=consensus_channels_list).fillna(0)
+
+                    if not avg_corr_df.empty and len(avg_corr_df.columns) >= 2:
+                        try:
+                            linkage_ref = sch.linkage(sch.distance.pdist(avg_corr_df.values), method='ward')
+                            dend_ref = sch.dendrogram(linkage_ref, no_plot=True)
+                            consensus_reference_channel_order = [avg_corr_df.columns[i] for i in dend_ref['leaves']]
+                            print(f"  >>> Consensus Reference Channel Order ({len(consensus_reference_channel_order)} channels) computed.")
+                            np.save(os.path.join(output_dir, "reference_channel_linkage.npy"), linkage_ref)
+                            avg_corr_df.to_csv(os.path.join(output_dir, "reference_average_correlation.csv"))
+                            with open(os.path.join(output_dir, "reference_channel_order.json"), 'w') as f: json.dump(consensus_reference_channel_order, f, indent=4)
+                            print(f"  Consensus reference order and related files saved to: {output_dir}")
+                        except Exception as e_consensus_cluster:
+                            print(f"  ERROR during clustering of consensus average matrix: {e_consensus_cluster}. No consensus order.")
+                            consensus_reference_channel_order = None
+                    else: print("  WARNING: Consensus average correlation matrix empty/too small. No consensus order.")
+                else: print("  WARNING: No valid correlation matrices after reindexing for consensus. No consensus order.")
+            else: print("ERROR: No correlation matrices gathered from first-timepoint ROIs. No consensus order.")
+
+        # Now, update non-first-timepoint ROIs if consensus_reference_channel_order was successfully created
+        if consensus_reference_channel_order:
+            print(f"\n  Updating non-first-timepoint ROIs with consensus order...")
+            tasks_for_reorder = []
+            for i, roi_info_dict in enumerate(successfully_preprocessed_roi_infos):
+                if not roi_info_dict['is_first_timepoint_roi']:
+                    tasks_for_reorder.append( (roi_info_dict, consensus_reference_channel_order, config) )
+            
+            if tasks_for_reorder:
+                print(f"    Re-evaluating final order for {len(tasks_for_reorder)} non-first-timepoint ROIs.")
+                with Parallel(n_jobs=n_jobs_cpu_tasks, verbose=5) as parallel_reorder:
+                    updated_orders_list = parallel_reorder(delayed(recalculate_final_order_with_consensus)(*task_args) for task_args in tasks_for_reorder)
+                
+                task_idx = 0
+                for i, roi_info_dict in enumerate(successfully_preprocessed_roi_infos):
+                    if not roi_info_dict['is_first_timepoint_roi']:
+                        if task_idx < len(updated_orders_list) and updated_orders_list[task_idx] is not None:
+                            successfully_preprocessed_roi_infos[i]['ordered_channels_for_downstream'] = updated_orders_list[task_idx]
+                        task_idx += 1
+            else:
+                print("    No non-first-timepoint ROIs to update with consensus order.")
+        else:
+            print("  Skipping update of non-first-timepoint ROIs as no consensus order was generated.")
+    else:
+        print("\n--- Skipping Phase 1.5: Consensus Reference Order Calculation (no metadata/first timepoint defined globally) ---")
+
+    # --- Phase 2: Resolution processing for all (successfully) preprocessed ROIs ---
+    print(f"\n--- Starting Phase 2: Resolution processing for {len(successfully_preprocessed_roi_infos)} ROIs ---")
+    resolution_params_cfg = config['analysis']['clustering'].get('resolution_params', [0.5])
+    if not isinstance(resolution_params_cfg, list) or not resolution_params_cfg: resolution_params_cfg = [0.5]
+    print(f"Configured resolutions for Phase 2: {resolution_params_cfg}")
+
+    phase2_tasks = []
+    for roi_info_item in successfully_preprocessed_roi_infos:
+        for res_p in resolution_params_cfg:
+            phase2_tasks.append( (roi_info_item, res_p) )
+
+    if not phase2_tasks: print("No resolution tasks for Phase 2. Exiting."); sys.exit(0)
+    print(f"Total resolution tasks for Phase 2: {len(phase2_tasks)} (using {n_jobs_gpu_aware_phases} top-level jobs)")
+
+    with Parallel(n_jobs=n_jobs_gpu_aware_phases, verbose=10) as parallel:
+        phase2_results_flags = parallel(delayed(analyze_single_resolution_for_roi)(*task_args_p2) for task_args_p2 in phase2_tasks)
+    
+    successful_phase2_tasks = sum(1 for s in phase2_results_flags if s)
+    failed_phase2_tasks = len(phase2_results_flags) - successful_phase2_tasks
+
+    # --- Summary ---
     print(f"\n--- Pipeline Summary ---")
-    print(f"Successfully completed processing for {len(successful_rois)} ROIs (across all resolutions).")
-    if failed_rois_count > 0:
-        print(f"Failed to process or fully complete {failed_rois_count} ROIs (check logs above for details).")
+    print(f"Phase 1: Initial preprocessing completed for {len(successfully_preprocessed_roi_infos)} ROIs.")
+    if consensus_reference_channel_order:
+        print(f"Phase 1.5: Consensus reference order ({len(consensus_reference_channel_order)} channels) was calculated and applied.")
+    else:
+        print("Phase 1.5: Consensus reference order was not calculated or not applied; ROIs use their own specific orders or initial settings.")
+    print(f"Phase 2: Successfully completed {successful_phase2_tasks} of {len(phase2_tasks)} resolution analysis tasks.")
+    if failed_phase2_tasks > 0: print(f"  Failed {failed_phase2_tasks} resolution tasks (see logs).")
 
-    total_pipeline_time = time.time() - start_pipeline_time
-    print(f"Total pipeline execution time: {total_pipeline_time:.2f} seconds ({total_pipeline_time/60:.2f} minutes).")
-    print("\n================ Completed processing all files. ================")
+    total_time = time.time() - start_pipeline_time
+    print(f"Total pipeline execution time: {total_time:.2f}s ({total_time/60:.2f}m).")
+    print("\n================ Completed processing. ================")
 

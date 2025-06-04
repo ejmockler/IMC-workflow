@@ -2,13 +2,13 @@
 
 # --- Input/Output Paths ---
 paths:
-  data_dir: "/home/noot/IMC/data/241218_IMC_Alun" # Directory containing input .txt files
-  output_dir: "/home/noot/IMC/output_plots/"    # Base directory for all outputs
-  metadata_file: "/home/noot/IMC/data/Data_annotations_Karen/Metadata-Table 1.csv" # Path to metadata file with ROI annotations
+  data_dir: "/home/noot/IMC/data/241218_IMC_Alun" # Directory containing input .txt files (one per ROI)
+  output_dir: "/home/noot/IMC/output"    # Base directory for all pipeline outputs
+  metadata_file: "/home/noot/IMC/data/Data_annotations_Karen/Metadata-Table 1.csv" # CSV file with ROI annotations (e.g., timepoint, condition)
 
 # --- Data Loading & Preprocessing ---
 data:
-  metadata_cols: # Columns to ignore as channels/features
+  metadata_cols: # Columns from raw .txt files to be ignored as measurement channels (e.g., spatial coordinates, acquisition metadata)
     - 'Start_push'
     - 'End_push'
     - 'Pushes_duration'
@@ -18,7 +18,7 @@ data:
     - 'MinorAxisLength'
     - 'Orientation'
     - 'Eccentricity'
-  master_protein_channels: # Master list of expected protein channels (for validation)
+  protein_channels: # Master list of protein/marker channels to be used in analysis
     - 'CD45(Y89Di)'
     - 'Ly6G(Pr141Di)'
     - 'CD11b(Nd143Di)'
@@ -30,27 +30,66 @@ data:
     - 'CD44(Yb171Di)'
     - 'DNA1(Ir191Di)'
     - 'DNA2(Ir193Di)'
+  background_channels: # Channels considered as background or non-biological signals
     - '190BCKG(BCKG190Di)'
     - '80ArAr(ArAr80Di)'
     - '130Ba(Ba130Di)'
     - '131Xe(Xe131Di)'
+  
 
-  default_arcsinh_cofactor: 5.0 # Fallback cofactor if optimization fails
+  default_arcsinh_cofactor: 5.0 # Fallback arcsinh cofactor if per-channel optimization fails
 
 # --- Analysis Parameters ---
 analysis:
-  clustering:
-    n_neighbors: 30    # Number of neighbors for spatial graph (Leiden)
-    resolution_params: [30, 100] # List of Leiden resolutions to test
-    seed: 42            # Random seed for reproducibility
-    linkage: 'ward'     # Linkage method for hierarchical clustering
-  umap:
-    n_components: 8     # Number of components for UMAP embedding (if run)
-    min_dist: 0.1       # UMAP min_dist parameter
+  clustering: # Settings for pixel clustering (Leiden algorithm)
+    n_neighbors: 30    # Number of spatial neighbors for constructing the pixel graph
+    resolution_params: [0.0001, 0.00001] # List of Leiden resolution parameters to iterate over (higher value = more, smaller communities)
+    seed: 42            # Random seed for reproducibility of clustering
+    linkage: 'ward'     # Linkage method for hierarchical clustering of channel correlation matrices (e.g., for ordering heatmaps)
+    
+    # Feature weighting for k-NN graph construction
+    spatial_weight: 1.0        # Relative weight for spatial coordinates (X, Y) in k-NN search
+    expression_weight: 1.0     # Relative weight for expression channels in k-NN search
+                               # Higher values emphasize that component more in neighbor selection
+                               # Example: spatial_weight=2.0, expression_weight=1.0 means spatial proximity is twice as important
+    
+    # --- k-NN Edge Thresholding (Optional) ---
+    # Filters edges in the k-NN graph. If enabled, only edges representing similarity
+    # greater than a specified threshold will be kept. This can make the graph sparser
+    # and communities more distinct.
+    apply_similarity_thresholding: true # Master switch for this feature. Default: false
+    similarity_threshold_type: 'percentile' # Options: 'percentile', 'absolute', 'background_derived'. Default: 'percentile'
+    
+    # Settings for 'percentile' type:
+    # Keeps edges corresponding to distances below this percentile of all k-NN distances.
+    # e.g., 25 means only the closest 25% of potential k-NN connections (by distance) are kept.
+    distance_percentile_threshold: 90   # Valid range: 0-100. Default: 25
+    
+    # Settings for 'absolute' type:
+    # Keeps edges where the distance in the combined (weighted, 0-1 scaled) feature space is below this value.
+    # Tuning this may require experimentation.
+    absolute_distance_threshold: 0.5  # Default: 0.5
+    
+    # Settings for 'background_derived' type:
+    # Derives an absolute distance threshold nonparametrically from background channels.
+    # A temporary k-NN graph is built using spatial features and selected background channels.
+    # The distance at the specified percentile from THIS background graph is used as the
+    # absolute threshold for the main protein-based k-NN graph.
+    # This ensures connections are stronger than typical "noise" or background similarity.
+    background_channels_for_thresholding: [] # List of background channel names from 'data.background_channels' to use.
+                                             # If empty, ALL channels in 'data.background_channels' will be used.
+    background_derived_threshold_percentile: 75 # Percentile (0-100) of background distances to set the threshold.
+                                                # e.g., 75 means distances in the protein graph must be less than
+                                                # the 75th percentile of distances in the background graph. Default: 75
+
+  umap: # Settings for UMAP dimensionality reduction (optional, applied to community profiles)
+    n_components: 8     # Number of UMAP components
+    min_dist: 0.1       # UMAP min_dist parameter (controls local structure)
     metric: 'euclidean' # UMAP distance metric
-    n_neighbors: 15     # UMAP n_neighbors parameter (max value, adjusted down if fewer communities)
+    n_neighbors: 15     # UMAP n_neighbors (controls balance between local/global structure)
   differential_expression:
-    # Define channels to exclude from UMAP based on differential profiles
+    # Channels to exclude from UMAP input if UMAP is run on differentially expressed features.
+    # Typically non-protein markers that might skew biological interpretation.
     non_protein_markers_for_umap:
       - '80ArAr(ArAr80Di)'
       - '130Ba(Ba130Di)'
@@ -61,43 +100,60 @@ analysis:
 
 # --- Processing & Plotting Options ---
 processing:
-  parallel_jobs: -2   # Number of CPU cores for parallel processing (-1 = all, -2 = all except 1)
-  use_gpu: auto       # Use GPU acceleration: true, false, or auto (detect RAPIDS/CUDA)
-  plot_dpi: 150       # DPI for saving plots
-  visualization:
-    scatter_size: 1        # Size for spatial scatter plots
-    scatter_marker: '.'    # Marker for spatial scatter plots
-    comparison_cmap: 'viridis' # Colormap for raw vs scaled comparison plot
+  parallel_jobs: 16   # Number of CPU cores for parallel processing (-1 = all available, -2 = all except 1, 1 = single core)
+  use_gpu: auto       # GPU acceleration: 'true', 'false', or 'auto' (attempts to detect RAPIDS/CUDA)
+  plot_dpi: 150       # DPI for saving static plots
+  visualization: # Default visual settings for various plots
+    scatter_size: 1        # Default point size for spatial scatter plots
+    scatter_marker: '.'    # Default marker style for spatial scatter plots
+    comparison_cmap: 'viridis' # Default colormap for comparing raw vs. scaled images
 
 # --- Experiment Level Analysis ---
+# Settings for aggregating results from multiple ROIs (run_experiment_analysis.py)
 experiment_analysis:
-  resolution_to_aggregate: 0.3 # Leiden resolution output to use
-  metadata_roi_col: 'File_Name'   # Column name in metadata file that matches ROI strings
-  output_subdir: 'experiment_summary' # Subdirectory for experiment results
+  resolution_to_aggregate: 30 # Default Leiden resolution from ROI analysis to use for experiment-wide summaries
+  metadata_roi_col: 'File_Name'   # Column name in 'metadata_file' that contains ROI identifiers matching file names/patterns
+  output_subdir: 'experiment_summary' # Subdirectory within 'paths:output_dir' for experiment-level results
 
   # --- Metadata Column Names ---
-  # Define the actual column names from your metadata file
-  condition_col: 'Condition'     # e.g., 'Treatment', 'Group'
-  timepoint_col: 'Injury_Day'         # e.g., 'Timepoint'
-  region_col: 'Tissue_Area'         # e.g., 'Tissue_Area'
-  replicate_col: 'Mouse'       # e.g., 'Subject_ID' - IMPORTANT for stats
+  # Specify the exact column names from your 'metadata_file' for different experimental factors.
+  condition_col: 'Condition'     # Primary experimental condition (e.g., 'Treatment', 'Genotype')
+  timepoint_col: 'Injury_Day'    # Temporal variable (e.g., 'Day', 'Timepoint')
+  region_col: 'Tissue_Area'      # Spatial or anatomical region, if applicable
+  replicate_col: 'Mouse'       # Biological or technical replicate identifier (e.g., 'Animal_ID', 'Sample_ID') - CRUCIAL for correct statistical modeling.
 
   # --- Meta-Clustering Settings ---
-  perform_metaclustering: True      # Set to False to skip meta-clustering and use original communities
-  metacluster_distance_threshold: null # Set based on profile_clustermap_for_threshold.png
-  metacluster_metric: 'euclidean'    # Distance metric for profile clustering
-  metacluster_linkage: 'ward'        # Linkage method for hierarchical clustering
-  metacluster_scale_profiles: True   # Whether to scale profiles before clustering
+  # Meta-clustering groups similar community profiles across all ROIs.
+  perform_metaclustering: True      # If False, original community IDs are used directly.
+  metacluster_distance_threshold: 0.1 # Distance threshold for cutting the dendrogram of community profiles to form meta-clusters.
+                                      # Inspect 'profile_clustermap_for_threshold.png' (generated by experiment analysis) to tune this.
+  metacluster_metric: 'euclidean'    # Distance metric for clustering community profiles.
+  metacluster_linkage: 'ward'        # Linkage method for hierarchical clustering of community profiles.
+  metacluster_scale_profiles: True   # Whether to Z-score scale community profiles before meta-clustering.
+
+  # --- Stratified Profile Calculation ---
+  # Calculates average meta-cluster profiles, stratified by specified metadata factors.
+  calculate_stratified_profiles: True
+  profile_stratification_cols:        # List of metadata columns (from above) to stratify by.
+    - 'Condition'
+    - 'Injury_Day'
+    # - 'Tissue_Area' # Example: Add other relevant factors
 
   # --- Statistical Analysis ---
-  # Formula for PERMANOVA on composition (uses column names defined above)
-  permanova_formula: "Condition + Injury_Day + Tissue_Area + Condition*Injury_Day" # Example: Include interaction
-  # Add GLMM formulas here later if needed for individual meta-clusters
+  # Example PERMANOVA formula for analyzing differences in community composition.
+  # Uses metadata column names defined above.
+  permanova_formula: "Condition + Injury_Day + Tissue_Area + Condition*Injury_Day"
+  # Future: Add configurations for GLMMs or other statistical tests on meta-cluster abundance or properties.
+
+  # Columns from metadata to consider when analyzing compositional changes (e.g., for tables, plots).
+  metadata_cols_for_composition:
+    - 'Condition'
+    - 'Injury_Day'
+    - 'Tissue_Area'
+    - 'Mouse'
 
   # --- Visualization ---
-  # Columns from metadata for plotting aesthetics
+  # Default metadata columns for aesthetics in experiment-level plots (e.g., seaborn hue, style).
   plot_hue_col: 'Condition'
   plot_style_col: 'Injury_Day'
-  # Add other plot settings if needed
-
-  # Add other experiment-level parameters here (e.g., stats tests, plot settings) 
+  # Add other global plot settings if needed. 

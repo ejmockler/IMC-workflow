@@ -18,7 +18,7 @@ __pycache__/
 adhoc analysis/
 output_plots*/
 logs/
-output/
+output*/
 data/
 
-venv/
+.venv/

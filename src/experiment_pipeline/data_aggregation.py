@@ -4,19 +4,22 @@ import glob
 import pandas as pd
 from typing import List, Tuple, Optional, Dict, Any
 import yaml # Added for standalone testing block
+from src.experiment_pipeline.analysis_core import get_channel_columns # <-- Added import
 
 def load_metadata(config: Dict[str, Any]) -> Optional[pd.DataFrame]:
-    """Loads the metadata file specified in the configuration.
+    """Loads the metadata file specified in the configuration and adds a standardized ROI key column.
 
     Args:
         config: The configuration dictionary.
 
     Returns:
-        A pandas DataFrame containing the metadata, or None if loading fails.
+        A pandas DataFrame containing the metadata with an added 'roi_standard_key' column,
+        or None if loading fails.
     """
     print("--- Loading Metadata --- ")
     metadata_file = config.get('paths', {}).get('metadata_file')
-    roi_col_name = config.get('experiment_analysis', {}).get('metadata_roi_col')
+    # This is the *original* column name in the CSV containing the (potentially full) filename
+    original_roi_col_name = config.get('experiment_analysis', {}).get('metadata_roi_col')
 
     if not metadata_file:
         print("ERROR: 'metadata_file' path not found in config['paths'].")
@@ -25,8 +28,8 @@ def load_metadata(config: Dict[str, Any]) -> Optional[pd.DataFrame]:
     # else:
     #    print(f"Metadata file path specified: {metadata_file}")
 
-    if not roi_col_name:
-        print("ERROR: 'metadata_roi_col' not found in config['experiment_analysis'].")
+    if not original_roi_col_name:
+        print("ERROR: 'metadata_roi_col' not found in config['experiment_analysis']. This should point to the column with filenames.")
         return None
 
     if not metadata_file or not os.path.exists(metadata_file):
@@ -38,20 +41,64 @@ def load_metadata(config: Dict[str, Any]) -> Optional[pd.DataFrame]:
         metadata_df = pd.read_csv(metadata_file)
         print(f"Successfully loaded metadata from: {metadata_file}")
 
-        if roi_col_name not in metadata_df.columns:
-            print(f"ERROR: Specified ROI column '{roi_col_name}' not found in metadata columns:")
+        # --- Clean column names: Remove trailing whitespace --- #
+        original_columns = metadata_df.columns.tolist()
+        metadata_df.columns = metadata_df.columns.str.rstrip()
+        new_columns = metadata_df.columns.tolist()
+        if original_columns != new_columns:
+            print("   Cleaned metadata column names (removed trailing whitespace).")
+            # Optional: Show changes
+            # changed_cols = {orig: new for orig, new in zip(original_columns, new_columns) if orig != new}
+            # print(f"      Changes: {changed_cols}")
+        # ----------------------------------------------------- #
+
+        if original_roi_col_name not in metadata_df.columns:
+            print(f"ERROR: Specified ROI column '{original_roi_col_name}' not found in metadata columns (after cleaning):")
             print(f"   {metadata_df.columns.tolist()}")
             return None
 
-        print(f"   Found ROI column: '{roi_col_name}'")
+        print(f"   Found original ROI column: '{original_roi_col_name}'")
         print(f"   Metadata shape: {metadata_df.shape}")
+
+        # --- Add Standardized ROI Key ---
+        print(f"   Extracting standard ROI key from '{original_roi_col_name}' column...")
+        # Use regex consistent with profile/pixel loading (adjust if needed)
+        # This pattern assumes format like '...ROI_D1_M1_01_9...' or '...ROI_Test01_1...'
+        # --- MODIFIED REGEX ---
+        # Capture 'ROI_' followed by any characters non-greedily (.*?),
+        # up to an optional common suffix like _res_..., .tif, .csv, or end of string.
+        # This makes it more robust to different filename conventions in the metadata.
+        # roi_extract_pattern = re.compile(r'(ROI_\\w+_\\d+(?:_\\d+)?)') # Old restrictive pattern
+        roi_extract_pattern = re.compile(r'(ROI_.*?)(?:_res_|_processed|_analysis|\\.tiff?|\\.csv|$)')
+
+        # Apply the regex extraction. Use .astype(str) for safety.
+        # .extract(0) gets the first captured group as a Series.
+        extracted_keys = metadata_df[original_roi_col_name].astype(str).str.extract(roi_extract_pattern, expand=False)
+
+        # Add the new column
+        standard_key_col = 'roi_standard_key'
+        metadata_df[standard_key_col] = extracted_keys
+
+        # Check for failures
+        missing_keys = metadata_df[standard_key_col].isnull().sum()
+        if missing_keys > 0:
+            print(f"   Warning: Failed to extract standard ROI key for {missing_keys} rows in metadata.")
+            # Optionally show examples of failures
+            failed_examples = metadata_df[metadata_df[standard_key_col].isnull()][original_roi_col_name].unique()
+            print(f"      Example values in '{original_roi_col_name}' that failed extraction: {list(failed_examples[:5])}")
+            # Decide if this is fatal? For now, proceed but downstream merges might fail for these rows.
+            # Consider dropping rows with missing standard keys if they cannot be used:
+            # metadata_df = metadata_df.dropna(subset=[standard_key_col])
+            # print(f"   Proceeding with {len(metadata_df)} rows after dropping those with missing standard keys.")
+
+        print(f"   Added standardized ROI key column: '{standard_key_col}'")
         return metadata_df
 
     except pd.errors.EmptyDataError:
         print(f"ERROR: Metadata file {metadata_file} is empty.")
         return None
     except Exception as e:
-        print(f"ERROR: Failed to read metadata file {metadata_file}: {e}")
+        print(f"ERROR: Failed to read metadata file {metadata_file} or add standard key: {e}")
         return None
 
 def find_roi_output_files(config: Dict[str, Any], file_pattern: str) -> List[str]:
@@ -120,7 +167,7 @@ def load_aggregate_community_profiles(config: Dict[str, Any]) -> Optional[pd.Dat
     # Define the pattern - adjusted to match ROI pipeline output
     # Example target filename: community_profiles_scaled_ROI_D1_M1_03_11_res_0.3.csv
     res_str_filename = f"{resolution:.3f}".rstrip('0').rstrip('.') if isinstance(resolution, float) else str(resolution)
-    file_pattern = f"community_profiles_scaled_*_res_{res_str_filename}.csv" # Corrected order
+    file_pattern = f"community_profiles*_res_{res_str_filename}.csv" # Corrected order
 
     profile_files = find_roi_output_files(config, file_pattern)
 
@@ -132,8 +179,11 @@ def load_aggregate_community_profiles(config: Dict[str, Any]) -> Optional[pd.Dat
     processed_files_count = 0
     skipped_files_count = 0
 
-    # Regex to extract ROI string (e.g., ROI_D1_M1_03_11)
-    roi_pattern = re.compile(r'(ROI_\w+_\d+_\d+)')
+    # Regex to extract ROI string (e.g., ROI_D1_M1_03_11 or ROI_Test01_1)
+    # Captures content between 'ROI_' and '_res_'
+    # --- Use the SAME regex as in load_metadata for consistency ---
+    # roi_pattern = re.compile(r'(ROI_.*?)(?:_res_)') # Old restrictive pattern
+    roi_pattern = re.compile(r'(ROI_.*?)(?:_res_|_processed|_analysis|\\\\.tiff?|\\\\.csv|$)') # Consistent pattern
 
     for f_path in profile_files:
         filename = os.path.basename(f_path)
@@ -148,25 +198,46 @@ def load_aggregate_community_profiles(config: Dict[str, Any]) -> Optional[pd.Dat
         try:
             df = pd.read_csv(f_path)
             # Assuming the first column is the community ID from the CSV
-            if df.columns[0].lower() == 'community':
-                 df = df.rename(columns={df.columns[0]: 'community'})
-                 # Do not set index yet, keep community as a column
-            elif 'community' in df.columns:
-                 pass # Keep community as a column
-            else:
-                 print(f"   Warning: 'community' column not found as index or column in {filename}. Assuming first column is community ID.")
-                 df = df.rename(columns={df.columns[0]: 'community'})
+            community_col = df.columns[0] # Get the name of the first column
+            if community_col.lower() != 'community':
+                 print(f"   Warning: First column name in {filename} is '{community_col}', expected 'community'. Renaming for consistency.")
+                 df = df.rename(columns={community_col: 'community'})
+                 community_col = 'community' # Update the variable
 
-            df['roi_string'] = roi_string
-            df['resolution'] = resolution # Add resolution info
-            all_profiles.append(df)
+            # --- MODIFICATION START: Select only essential columns ---
+            # Identify channel columns in this specific DataFrame
+            current_channel_cols = get_channel_columns(df, config)
+            if not current_channel_cols:
+                 print(f"   Warning: Could not identify channel columns in {filename}. Skipping file.")
+                 skipped_files_count += 1
+                 continue
+
+            # Define essential columns: community ID + channels
+            essential_cols = [community_col] + current_channel_cols
+            missing_essential = [col for col in essential_cols if col not in df.columns]
+            if missing_essential:
+                 print(f"   Warning: Essential columns {missing_essential} not found in {filename}. Skipping file.")
+                 skipped_files_count += 1
+                 continue
+
+            # Select only these columns
+            df_selected = df[essential_cols].copy()
+            # --- MODIFICATION END ---
+
+            # Add ROI string to the selected DataFrame
+            df_selected['roi_string'] = roi_string
+            df_selected['resolution'] = resolution # Add resolution info
+            all_profiles.append(df_selected)
             processed_files_count += 1
+        except pd.errors.EmptyDataError:
+            print(f"   Warning: File {filename} is empty. Skipping.")
+            skipped_files_count += 1
         except Exception as e:
-            print(f"   ERROR: Failed to load or process profile file {filename}: {e}")
+            print(f"   ERROR processing file {filename}: {e}. Skipping.")
             skipped_files_count += 1
 
     if not all_profiles:
-        print("ERROR: No profile files were successfully loaded and processed.")
+        print("ERROR: No valid community profile files were successfully processed.")
         return None
 
     # Concatenate all dataframes
@@ -200,7 +271,7 @@ def load_aggregate_pixel_results(config: Dict[str, Any]) -> Optional[pd.DataFram
 
     # Define the pattern for final pixel result files
     res_str_filename = f"{resolution:.3f}".rstrip('0').rstrip('.') if isinstance(resolution, float) else str(resolution)
-    file_pattern = f"pixel_results_annotated_*_res_{res_str_filename}.csv"
+    file_pattern = f"pixel_data_with_community_annotations_*_res_{res_str_filename}.csv"
 
     pixel_result_files = find_roi_output_files(config, file_pattern)
 
@@ -213,7 +284,10 @@ def load_aggregate_pixel_results(config: Dict[str, Any]) -> Optional[pd.DataFram
     skipped_files_count = 0
 
     # Regex to extract ROI string
-    roi_pattern = re.compile(r'(ROI_\w+_\d+_\d+)')
+    # Captures content between 'ROI_' and '_res_'
+    # --- Use the SAME regex as in load_metadata for consistency ---
+    # roi_pattern = re.compile(r'(ROI_.*?)(?:_res_)') # Old restrictive pattern
+    roi_pattern = re.compile(r'(ROI_.*?)(?:_res_|_processed|_analysis|\\\\.tiff?|\\\\.csv|$)') # Consistent pattern
 
     # Define essential columns to keep for abundance calculation
     columns_to_keep = ['community']
@@ -311,72 +385,60 @@ def aggregate_and_merge_data(config: Dict[str, Any]) -> Tuple[Optional[pd.DataFr
 
     # --- Merge Profiles with Metadata ---
     print("\n--- Merging Aggregated Profiles with Metadata --- ")
-    roi_col_name = config.get('experiment_analysis', {}).get('metadata_roi_col')
+    roi_col_name = config.get('experiment_analysis', {}).get('metadata_roi_col') # Get original name for potential error messages
     merged_profiles_df = None # Initialize
 
     # Check if necessary columns exist before attempting merge
     if agg_profiles_df is None or 'roi_string' not in agg_profiles_df.columns:
         print("ERROR: Aggregated profiles missing or 'roi_string' column not found.")
         return None, agg_pixels_df # Return pixels if they exist
-    if metadata_df is None or roi_col_name not in metadata_df.columns:
-        print(f"ERROR: Metadata missing or ROI column '{roi_col_name}' not found.")
+    # Check for the *standard key* which should have been added by load_metadata
+    if metadata_df is None or 'roi_standard_key' not in metadata_df.columns:
+        print(f"ERROR: Metadata missing or internal 'roi_standard_key' column not found. Check load_metadata function.")
         return agg_profiles_df, agg_pixels_df # Return profiles if they exist
 
     try:
-        # --- Flexible Merge Logic (using str.contains) ---
-        metadata_df[roi_col_name] = metadata_df[roi_col_name].astype(str)
+        # --- Standard Merge Logic using internal keys ---
+        print(f"   Performing standard merge using analysis 'roi_string' and metadata 'roi_standard_key'...")
+        # Ensure join keys are the same type (string)
         agg_profiles_df['roi_string'] = agg_profiles_df['roi_string'].astype(str)
+        metadata_df['roi_standard_key'] = metadata_df['roi_standard_key'].astype(str)
 
-        merged_data_list = []
-        unique_roi_strings = agg_profiles_df['roi_string'].unique()
-        processed_roi_strings = set()
-        skipped_roi_strings_no_match = set()
-        skipped_roi_strings_multi_match = set()
+        merged_profiles_df = pd.merge(
+            agg_profiles_df,
+            metadata_df,
+            left_on='roi_string',       # Key from analysis results
+            right_on='roi_standard_key', # Standardized key from metadata
+            how='inner'                 # Keep only ROIs present in both
+        )
 
-        print(f"Attempting flexible merge: Finding rows in metadata['{roi_col_name}'] that contain profile 'roi_string'...")
-        for roi_str in unique_roi_strings:
-            # Use regex=False for literal substring matching
-            matching_meta_rows = metadata_df[metadata_df[roi_col_name].str.contains(roi_str, na=False, regex=False)]
+        print(f"Standard profile merge successful. Shape: {merged_profiles_df.shape}")
 
-            if len(matching_meta_rows) == 1:
-                # Perform merge for this specific roi_str
-                roi_profile_data = agg_profiles_df[agg_profiles_df['roi_string'] == roi_str]
-                # Use pd.merge with a temporary key or cross merge approach
-                # Simple cross merge then filter (might be slow for large data)
-                # temp_merged = roi_profile_data.merge(matching_meta_rows, how='cross')
-                # Or assign values directly (simpler if only one meta row)
-                meta_row_values = matching_meta_rows.iloc[0]
-                temp_merged = roi_profile_data.assign(**{col: meta_row_values[col] for col in metadata_df.columns if col != roi_col_name})
+        # Report mismatches
+        analysis_rois = set(agg_profiles_df['roi_string'].unique())
+        metadata_keys = set(metadata_df['roi_standard_key'].dropna().unique())
+        merged_rois = set(merged_profiles_df['roi_string'].unique())
 
-                merged_data_list.append(temp_merged)
-                processed_roi_strings.add(roi_str)
-            elif len(matching_meta_rows) == 0:
-                skipped_roi_strings_no_match.add(roi_str)
-            else:
-                skipped_roi_strings_multi_match.add(roi_str)
-                # print(f"   Warning: Multiple metadata entries found for '{roi_str}': {matching_meta_rows[roi_col_name].tolist()}")
+        rois_in_analysis_not_meta = analysis_rois - metadata_keys
+        rois_in_meta_not_analysis = metadata_keys - analysis_rois # Less common issue
 
-        if merged_data_list:
-            merged_profiles_df = pd.concat(merged_data_list, ignore_index=True)
-            print(f"Flexible profile merge successful. Shape: {merged_profiles_df.shape}")
-            print(f"   Processed {len(processed_roi_strings)} unique ROI strings.")
-        else:
-            print("ERROR: Flexible profile merge failed to combine any data.")
-            merged_profiles_df = None
-
-        if skipped_roi_strings_no_match:
-             print(f"   Warning: {len(skipped_roi_strings_no_match)} ROI strings found no match in metadata (e.g., '{next(iter(skipped_roi_strings_no_match))}').")
-        if skipped_roi_strings_multi_match:
-             print(f"   Warning: {len(skipped_roi_strings_multi_match)} ROI strings found multiple matches in metadata (e.g., '{next(iter(skipped_roi_strings_multi_match))}'). Profiles skipped.")
+        if rois_in_analysis_not_meta:
+             print(f"   Warning: {len(rois_in_analysis_not_meta)} ROIs found in analysis results but not in metadata (or failed key extraction):")
+             print(f"      Examples: {list(rois_in_analysis_not_meta)[:5]}")
+        if rois_in_meta_not_analysis:
+            print(f"   Info: {len(rois_in_meta_not_analysis)} ROIs found in metadata but not in analysis results:")
+            print(f"      Examples: {list(rois_in_meta_not_analysis)[:5]}")
+        if len(merged_profiles_df) == 0 and len(analysis_rois) > 0:
+            print("ERROR: Merge resulted in empty DataFrame despite having analysis data. Check ROI key matching.")
+            merged_profiles_df = None # Ensure return is None
 
     except Exception as e:
-        print(f"ERROR: An unexpected error occurred during flexible profile merge: {e}")
+        print(f"ERROR: An unexpected error occurred during standard profile merge: {e}")
         import traceback
         traceback.print_exc()
         merged_profiles_df = None # Ensure it's None on error
 
     # --- Merging Pixel data --- (Keep returning raw aggregated pixels)
-    # ... (rest of function remains the same) ...
 
     # Return results
     if merged_profiles_df is None or agg_pixels_df is None:
@@ -387,43 +449,43 @@ def aggregate_and_merge_data(config: Dict[str, Any]) -> Tuple[Optional[pd.DataFr
         return merged_profiles_df, agg_pixels_df
 
 # Example usage block (would be called from run_experiment_analysis.py)
-if __name__ == '__main__':
-    # This block allows testing this script directly
-    # Assumes config.yaml is in the parent directory
-    CONFIG_PATH = "../config.yaml" # Adjust path as needed relative to src/experiment_pipeline
-
-    def load_config_main(config_path=CONFIG_PATH):
-        if not os.path.exists(config_path):
-            print(f"ERROR: Config file not found at {config_path} for testing.")
-            return None
-        try:
-            with open(config_path, 'r') as f:
-                conf = yaml.safe_load(f)
-            print(f"Config loaded for testing from: {config_path}")
-            return conf
-        except Exception as e:
-            print(f"Error loading config {config_path} for testing: {e}")
-            return None
-
-    config = load_config_main()
-    if config:
-        # Test the merging function - now returns a tuple
-        merged_profiles, aggregated_pixels = aggregate_and_merge_data(config) # Updated call
-
-        if merged_profiles is not None:
-            print("\n--- Example Merged Profile Data (First 5 rows) --- ")
-            print(merged_profiles.head())
-            print("Shape:", merged_profiles.shape)
-        else:
-            print("\n--- Profile aggregation or merge failed. ---")
-
-        if aggregated_pixels is not None:
-             print("\n--- Example Aggregated Pixel Data (First 5 rows) --- ")
-             print(aggregated_pixels.head())
-             print("Shape:", aggregated_pixels.shape)
-             # Note: This can be very large!
-        else:
-             print("\n--- Pixel aggregation failed. ---")
-
-    else:
-        print("Could not load config for testing.")
+# if __name__ == '__main__':
+#     # This block allows testing this script directly
+#     # Assumes config.yaml is in the parent directory
+#     CONFIG_PATH = "../config.yaml" # Adjust path as needed relative to src/experiment_pipeline
+# 
+#     def load_config_main(config_path=CONFIG_PATH):
+#         if not os.path.exists(config_path):
+#             print(f"ERROR: Config file not found at {config_path} for testing.")
+#             return None
+#         try:
+#             with open(config_path, 'r') as f:
+#                 conf = yaml.safe_load(f)
+#             print(f"Config loaded for testing from: {config_path}")
+#             return conf
+#         except Exception as e:
+#             print(f"Error loading config {config_path} for testing: {e}")
+#             return None
+# 
+#     config = load_config_main()
+#     if config:
+#         # Test the merging function - now returns a tuple
+#         merged_profiles, aggregated_pixels = aggregate_and_merge_data(config) # Updated call
+# 
+#         if merged_profiles is not None:
+#             print("\n--- Example Merged Profile Data (First 5 rows) --- ")
+#             print(merged_profiles.head())
+#             print("Shape:", merged_profiles.shape)
+#         else:
+#             print("\n--- Profile aggregation or merge failed. ---")
+# 
+#         if aggregated_pixels is not None:
+#              print("\n--- Example Aggregated Pixel Data (First 5 rows) --- ")
+#              print(aggregated_pixels.head())
+#              print("Shape:", aggregated_pixels.shape)
+#              # Note: This can be very large!
+#         else:
+#              print("\n--- Pixel aggregation failed. ---")
+# 
+#     else:
+#         print("Could not load config for testing.")
