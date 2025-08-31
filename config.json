@@ -1,0 +1,90 @@
+{
+  "analysis": {
+    "max_pixels_per_roi": 5000,
+    "distance_measurements": [5, 10, 25, 50],
+    "colocalization_distance": 15,
+    "correlation_threshold": 0.5,
+    "min_observations_per_pair": 3,
+    "statistical_tests": ["t_test", "anova"],
+    "fold_change_threshold": 1.5
+  },
+  "network_analysis": {
+    "colocalization_threshold": 0.25,
+    "hub_centrality_threshold": 0.1,
+    "max_nodes_per_plot": 15,
+    "edge_weight_scaling": 4.0,
+    "node_size_scaling": 1000,
+    "layout_algorithm": "spring",
+    "community_detection": "greedy_modularity"
+  },
+  "visualization": {
+    "figure_size": [32, 14],
+    "grid_layout": [2, 4],
+    "color_palette": "viridis",
+    "font_size": 8,
+    "save_format": "png",
+    "dpi": 300,
+    "extended_plots": true,
+    "replicate_aware": true,
+    "top_interactions_count": 8,
+    "replicate_interactions_count": 12
+  },
+  "proteins": {
+    "immune_activation_panel": [
+      "CD45", "CD11b", "CD206", "CD44", "CD140b", "CD31", "CD34"
+    ],
+    "channels": [
+      "CD45(Y89Di)", "CD11b(Nd143Di)", "CD206(Tm169Di)", 
+      "CD44(Yb171Di)", "CD140b(Eu151Di)", "CD31(Sm154Di)", "CD34(Er166Di)"
+    ],
+    "functional_groups": {
+      "kidney_inflammation": ["CD45", "CD11b", "Ly6G"],
+      "kidney_repair": ["CD206", "CD44"],
+      "kidney_vasculature": ["CD31", "CD34", "CD140a", "CD140b"],
+      "structural_controls": ["DNA1", "DNA2"]
+    },
+    "annotations": {
+      "CD45": "Pan-leukocyte marker - tracks immune infiltration into injured kidney",
+      "CD11b": "Myeloid cells - neutrophils/macrophages mediating kidney inflammation", 
+      "CD206": "M2 macrophages - tissue repair and injury resolution in kidney",
+      "Ly6G": "Neutrophils - early inflammatory responders in acute kidney injury",
+      "CD31": "Endothelial cells - kidney vascular integrity and repair",
+      "CD34": "Progenitor cells - regenerative potential in kidney recovery",
+      "CD140a": "PDGFRA+ mesenchymal cells - kidney interstitial remodeling",
+      "CD140b": "Pericytes - kidney vascular stability and repair",
+      "CD44": "ECM receptor - matrix remodeling during kidney healing"
+    },
+    "background_channels": ["80ArAr(ArAr80Di)", "190BCKG(BCKG190Di)"],
+    "control_channels": ["130Ba(Ba130Di)", "131Xe(Xe131Di)"],
+    "dna_channels": ["DNA1(Ir191Di)", "DNA2(Ir193Di)"]
+  },
+  "experimental": {
+    "timepoints": [0, 1, 3, 7],
+    "timepoint_labels": ["Sham", "Day1", "Day3", "Day7"],
+    "regions": ["Cortex", "Medulla"],
+    "replicates": ["MS1", "MS2"],
+    "metadata_file": "data/241218_IMC_Alun/Metadata-Table 1.csv",
+    "filename_patterns": [
+      {"pattern": "ROI_(?P<condition>\\w+\\d*)_(?P<replicate>\\w+)_(?P<roi>\\d+)_(?P<id>\\d+)", "priority": 1}
+    ]
+  },
+  "output": {
+    "results_dir": "results",
+    "plots_dir": "plots",
+    "data_format": "json",
+    "analysis_prefix": "analysis_results",
+    "visualization_prefix": "kidney_analysis"
+  },
+  "performance": {
+    "batch_mode": true,
+    "parallel_processes": 8,
+    "memory_limit_gb": 4,
+    "enable_caching": true
+  },
+  "network_visualization": {
+    "edge_label_min_weight": 0.2,
+    "max_edge_labels": 8,
+    "min_edge_weight_to_draw": 0.1,
+    "repulsion_scale": 3.5
+  }
+}

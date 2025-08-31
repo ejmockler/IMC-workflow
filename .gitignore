@@ -1,0 +1,81 @@
+*.pdf
+*.png
+*.csv
+*.rds
+*.txt
+*.RData
+*.RData
+__pycache__/
+
+.DS_Store
+.Rapp.history
+.Rhistory
+.Rprofile
+.Renviron
+.RData
+.Rhistory
+
+adhoc analysis/
+output_plots*/
+logs/
+output*/
+data/
+
+.venv/
+
+# Results directories
+/results/
+/demo_results/
+/plots/
+test_output/
+final_demo/
+final_test/
+universe_test/
+demo_output/
+
+# Large binary files
+*.whl
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Analysis results (keep only config.json)
+*.json
+!config.json
+
+# Network analysis outputs
+*network*.png
+*experimental*.png
+*replicate*.png
+*hub*.png
+*temporal*.png
+*discovery*.png
+*evolution*.png
+*insights*.md
+*analysis_summary*.png
+*comparison*.png
+*progression*.png
+*colocalization*.png
+
+# Large analysis result files
+batch_experimental_results.json
+analysis_results.json
+*_analysis.json
+*_results.json
+
+# Temporary and output files
+*.log
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.npz
+*.npy
+# __pycache__ directories
+__pycache__/
+*.pyc
+*.pyo
+
+# Results directories with any prefix
+results*/
