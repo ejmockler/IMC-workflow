@@ -12,14 +12,15 @@ src/
 │   └── network.py      # Network analysis and graph theory
 ├── visualization/
 │   ├── main.py         # VisualizationPipeline - orchestrates all figures
+│   ├── roi.py          # ROIVisualizer - single ROI analysis figures
 │   ├── temporal.py     # Time-series visualizations
 │   ├── condition.py    # Condition comparison plots
 │   ├── replicate.py    # Replicate variance analysis
 │   ├── network.py      # Network visualizations
+│   ├── network_clean.py # CleanNetworkVisualizer - protein colocalization networks
 │   └── components.py   # Shared visualization utilities
 ├── utils/
-│   ├── helpers.py      # Metadata classes and utilities
-│   └── config.py       # Configuration loading and validation
+│   └── helpers.py      # Metadata classes and utilities
 └── config.py           # Main configuration class
 ```
 

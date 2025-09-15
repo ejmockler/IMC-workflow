@@ -9,10 +9,13 @@ from src.config import Config
 from src.utils.helpers import (
     Metadata, find_roi_files, canonicalize_pair
 )
+from src.utils.data_loader import load_roi_data
 from src.analysis.spatial import (
-    load_roi_data,
     identify_expression_blobs,
-    analyze_blob_spatial_relationships
+    analyze_blob_spatial_relationships,
+    identify_tissue_neighborhoods,
+    calculate_neighborhood_entropy_map,
+    analyze_multiscale_neighborhoods
 )
 from src.analysis.pipeline import parse_roi_metadata
 
@@ -48,14 +51,38 @@ class ROIAnalyzer:
         # Load data
         coords, values, protein_names = load_roi_data(roi_file, 'config.json')
         
-        # Identify blobs
-        blob_labels, blob_signatures, blob_type_mapping = identify_expression_blobs(
-            coords, values, protein_names
+        # Identify blobs with validation
+        result = identify_expression_blobs(
+            coords, values, protein_names, validate=True
         )
+        
+        # Handle both old and new return formats (with or without validation)
+        if len(result) == 4:
+            blob_labels, blob_signatures, blob_type_mapping, validation_results = result
+        else:
+            blob_labels, blob_signatures, blob_type_mapping = result
+            validation_results = None
         
         # Get contacts
         blob_contacts = analyze_blob_spatial_relationships(
             coords, blob_labels, blob_signatures, blob_type_mapping
+        )
+        
+        # Identify neighborhoods - multi-scale if configured
+        multiscale_neighborhoods = analyze_multiscale_neighborhoods(
+            coords, blob_labels, blob_signatures, blob_type_mapping, 'config.json'
+        )
+        
+        # For backward compatibility, also store default scale
+        default_scale = self.config.raw.get('neighborhood_analysis', {}).get('default_scale', 'microenvironment')
+        if default_scale in multiscale_neighborhoods:
+            neighborhoods = multiscale_neighborhoods[default_scale]
+        else:
+            # Use first available scale
+            neighborhoods = list(multiscale_neighborhoods.values())[0] if multiscale_neighborhoods else None
+        
+        entropy_map = calculate_neighborhood_entropy_map(
+            coords, blob_labels, blob_type_mapping, config_path='config.json'
         )
         
         # Get metadata using pipeline parser
@@ -83,6 +110,10 @@ class ROIAnalyzer:
             'blob_type_mapping': blob_type_mapping,
             'blob_contacts': blob_contacts,
             'canonical_contacts': canonical_contacts,
+            'neighborhoods': neighborhoods,
+            'multiscale_neighborhoods': multiscale_neighborhoods,
+            'entropy_map': entropy_map,
+            'validation_results': validation_results,
             'total_pixels': len(coords)
         }
     
@@ -147,11 +178,7 @@ class BatchAnalyzer:
                     r_copy['metadata'] = r_copy['metadata'].to_dict()
                 elif hasattr(r_copy['metadata'], '_asdict'):
                     r_copy['metadata'] = r_copy['metadata']._asdict()
-                # Exclude non-serializable data
-                r_copy.pop('coords', None)
-                r_copy.pop('values', None)
-                r_copy.pop('blob_labels', None)
-                # Convert numpy types
+                # Convert numpy types (keeps all spatial data for visualization)
                 r_copy = make_serializable(r_copy)
                 serializable.append(r_copy)
             json.dump(serializable, f, indent=2)

@@ -7,6 +7,9 @@ from collections import defaultdict
 
 from src.config import Config
 from src.utils.helpers import top_n_items
+from scipy.stats import ttest_ind
+from scipy.cluster.hierarchy import dendrogram, linkage
+from scipy.spatial.distance import pdist
 
 
 class ReplicateVisualizer:
@@ -429,3 +432,483 @@ class ReplicateVisualizer:
             sorted_domains = sorted([domain1.strip(), domain2.strip()])
             return f"{sorted_domains[0]} ↔ {sorted_domains[1]}"
         return contact
+    
+    def create_region_temporal_trajectories(self, results: List[Dict], config: Config) -> plt.Figure:
+        """Create region-specific temporal trajectory analysis."""
+        fig, axes = plt.subplots(2, 4, figsize=(20, 12))
+        
+        # Group by region and timepoint
+        by_region_time = defaultdict(lambda: defaultdict(list))
+        for roi in results:
+            metadata = roi['metadata']
+            if isinstance(metadata, dict):
+                day = metadata.get('injury_day')
+                region = metadata.get('tissue_region', 'Unknown')
+            else:
+                day = getattr(metadata, 'injury_day', None)
+                region = getattr(metadata, 'tissue_region', 'Unknown')
+            
+            if day is not None and region in ['Cortex', 'Medulla']:
+                tp_key = f"D{day}"
+                by_region_time[region][tp_key].append(roi)
+        
+        # Get timepoints and labels
+        exp_cfg = config.raw.get('experimental', {})
+        tp_vals = exp_cfg.get('timepoints', [])
+        tp_labels = exp_cfg.get('timepoint_labels', [])
+        timepoints = sorted([f"D{tp}" for tp in tp_vals], key=lambda x: int(x[1:]))
+        label_map = {f"D{tp}": lbl for tp, lbl in zip(tp_vals, tp_labels)}
+        
+        regions = ['Cortex', 'Medulla']
+        functional_groups = config.raw.get('proteins', {}).get('functional_groups', {})
+        
+        # Plot functional group trajectories for each region
+        metrics = ['domains', 'contacts', 'inflammation', 'repair']
+        colors = {'Cortex': '#e74c3c', 'Medulla': '#3498db'}
+        
+        for col, metric in enumerate(metrics):
+            ax = axes[0, col]
+            
+            for region in regions:
+                values = []
+                errors = []
+                
+                for tp in timepoints:
+                    if tp in by_region_time[region]:
+                        rois = by_region_time[region][tp]
+                        
+                        if metric == 'domains':
+                            vals = [len(r['blob_signatures']) for r in rois]
+                        elif metric == 'contacts':
+                            vals = [len(r.get('canonical_contacts', {})) for r in rois]
+                        elif metric == 'inflammation':
+                            vals = [self._calculate_functional_percentage(r, functional_groups.get('kidney_inflammation', []), functional_groups) for r in rois]
+                        elif metric == 'repair':
+                            vals = [self._calculate_functional_percentage(r, functional_groups.get('kidney_repair', []), functional_groups) for r in rois]
+                        
+                        values.append(np.mean(vals) if vals else 0)
+                        errors.append(np.std(vals) / np.sqrt(len(vals)) if len(vals) > 1 else 0)
+                    else:
+                        values.append(0)
+                        errors.append(0)
+                
+                x_pos = range(len(timepoints))
+                ax.errorbar(x_pos, values, yerr=errors, marker='o', linewidth=2, 
+                           label=region, color=colors[region], markersize=6)
+            
+            ax.set_xticks(range(len(timepoints)))
+            ax.set_xticklabels([label_map.get(tp, tp) for tp in timepoints])
+            ax.set_title(f'{metric.capitalize()} Progression by Region')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+        
+        # Bottom row: Statistical comparisons and differential analysis
+        self._plot_regional_differences(axes[1, :], by_region_time, timepoints, label_map, functional_groups, config)
+        
+        fig.suptitle('Region-Specific Kidney Healing Trajectories', fontsize=16, fontweight='bold')
+        plt.tight_layout()
+        return fig
+    
+    def _calculate_functional_percentage(self, roi, target_proteins, all_functional_groups):
+        """Calculate percentage of tissue covered by functional group."""
+        total_pixels = roi.get('total_pixels', 0) or sum(sig['size'] for sig in roi['blob_signatures'].values())
+        if total_pixels <= 0:
+            return 0.0
+        
+        group_size = 0
+        for sig in roi['blob_signatures'].values():
+            domain_proteins = sig['dominant_proteins'][:2]
+            if any(p in target_proteins for p in domain_proteins):
+                group_size += sig['size']
+        
+        return 100.0 * group_size / total_pixels
+    
+    def _plot_regional_differences(self, axes, by_region_time, timepoints, label_map, functional_groups, config):
+        """Plot statistical comparisons between regions."""
+        regions = ['Cortex', 'Medulla']
+        
+        # Panel 1: Differential inflammation/repair ratio
+        ax = axes[0]
+        inflammation_markers = functional_groups.get('kidney_inflammation', [])
+        repair_markers = functional_groups.get('kidney_repair', [])
+        
+        cortex_ratios = []
+        medulla_ratios = []
+        timepoint_labels = []
+        
+        for tp in timepoints:
+            if tp in by_region_time['Cortex'] and tp in by_region_time['Medulla']:
+                cortex_inflam = np.mean([self._calculate_functional_percentage(r, inflammation_markers, functional_groups) for r in by_region_time['Cortex'][tp]])
+                cortex_repair = np.mean([self._calculate_functional_percentage(r, repair_markers, functional_groups) for r in by_region_time['Cortex'][tp]])
+                medulla_inflam = np.mean([self._calculate_functional_percentage(r, inflammation_markers, functional_groups) for r in by_region_time['Medulla'][tp]])
+                medulla_repair = np.mean([self._calculate_functional_percentage(r, repair_markers, functional_groups) for r in by_region_time['Medulla'][tp]])
+                
+                cortex_ratio = cortex_inflam / max(cortex_repair, 1.0)
+                medulla_ratio = medulla_inflam / max(medulla_repair, 1.0)
+                
+                cortex_ratios.append(cortex_ratio)
+                medulla_ratios.append(medulla_ratio)
+                timepoint_labels.append(label_map.get(tp, tp))
+        
+        x_pos = range(len(timepoint_labels))
+        ax.plot(x_pos, cortex_ratios, 'o-', label='Cortex', color='#e74c3c', linewidth=2)
+        ax.plot(x_pos, medulla_ratios, 's-', label='Medulla', color='#3498db', linewidth=2)
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(timepoint_labels)
+        ax.set_ylabel('Inflammation/Repair Ratio')
+        ax.set_title('Regional Inflammation Balance')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # Panel 2: Vascular integrity comparison
+        ax = axes[1]
+        vascular_markers = functional_groups.get('kidney_vasculature', [])
+        
+        cortex_vasc = []
+        medulla_vasc = []
+        
+        for tp in timepoints:
+            if tp in by_region_time['Cortex'] and tp in by_region_time['Medulla']:
+                cortex_v = np.mean([self._calculate_functional_percentage(r, vascular_markers, functional_groups) for r in by_region_time['Cortex'][tp]])
+                medulla_v = np.mean([self._calculate_functional_percentage(r, vascular_markers, functional_groups) for r in by_region_time['Medulla'][tp]])
+                
+                cortex_vasc.append(cortex_v)
+                medulla_vasc.append(medulla_v)
+        
+        ax.plot(x_pos, cortex_vasc, 'o-', label='Cortex', color='#e74c3c', linewidth=2)
+        ax.plot(x_pos, medulla_vasc, 's-', label='Medulla', color='#3498db', linewidth=2)
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(timepoint_labels)
+        ax.set_ylabel('Vascular Coverage (%)')
+        ax.set_title('Regional Vascular Integrity')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # Panel 3: Domain complexity comparison
+        ax = axes[2]
+        
+        cortex_domains = []
+        medulla_domains = []
+        
+        for tp in timepoints:
+            if tp in by_region_time['Cortex'] and tp in by_region_time['Medulla']:
+                cortex_d = np.mean([len(r['blob_signatures']) for r in by_region_time['Cortex'][tp]])
+                medulla_d = np.mean([len(r['blob_signatures']) for r in by_region_time['Medulla'][tp]])
+                
+                cortex_domains.append(cortex_d)
+                medulla_domains.append(medulla_d)
+        
+        ax.plot(x_pos, cortex_domains, 'o-', label='Cortex', color='#e74c3c', linewidth=2)
+        ax.plot(x_pos, medulla_domains, 's-', label='Medulla', color='#3498db', linewidth=2)
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(timepoint_labels)
+        ax.set_ylabel('Number of Domains')
+        ax.set_title('Regional Complexity')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # Panel 4: Statistical significance
+        ax = axes[3]
+        self._plot_significance_matrix(ax, by_region_time, timepoints, label_map, functional_groups)
+    
+    def _plot_significance_matrix(self, ax, by_region_time, timepoints, label_map, functional_groups):
+        """Plot statistical significance matrix for regional differences."""
+        metrics = ['Inflammation', 'Repair', 'Vascular']
+        p_values = np.ones((len(metrics), len(timepoints)))
+        
+        inflammation_markers = functional_groups.get('kidney_inflammation', [])
+        repair_markers = functional_groups.get('kidney_repair', [])
+        vascular_markers = functional_groups.get('kidney_vasculature', [])
+        
+        for j, tp in enumerate(timepoints):
+            if tp in by_region_time['Cortex'] and tp in by_region_time['Medulla']:
+                cortex_rois = by_region_time['Cortex'][tp]
+                medulla_rois = by_region_time['Medulla'][tp]
+                
+                if len(cortex_rois) >= 2 and len(medulla_rois) >= 2:
+                    # Inflammation
+                    cortex_inflam = [self._calculate_functional_percentage(r, inflammation_markers, functional_groups) for r in cortex_rois]
+                    medulla_inflam = [self._calculate_functional_percentage(r, inflammation_markers, functional_groups) for r in medulla_rois]
+                    _, p_values[0, j] = ttest_ind(cortex_inflam, medulla_inflam)
+                    
+                    # Repair
+                    cortex_repair = [self._calculate_functional_percentage(r, repair_markers, functional_groups) for r in cortex_rois]
+                    medulla_repair = [self._calculate_functional_percentage(r, repair_markers, functional_groups) for r in medulla_rois]
+                    _, p_values[1, j] = ttest_ind(cortex_repair, medulla_repair)
+                    
+                    # Vascular
+                    cortex_vasc = [self._calculate_functional_percentage(r, vascular_markers, functional_groups) for r in cortex_rois]
+                    medulla_vasc = [self._calculate_functional_percentage(r, vascular_markers, functional_groups) for r in medulla_rois]
+                    _, p_values[2, j] = ttest_ind(cortex_vasc, medulla_vasc)
+        
+        # Create significance heatmap
+        sig_matrix = -np.log10(p_values + 1e-10)  # -log10(p-value)
+        im = ax.imshow(sig_matrix, cmap='Reds', aspect='auto', vmax=2)  # p=0.01 → 2
+        
+        ax.set_xticks(range(len(timepoints)))
+        ax.set_xticklabels([label_map.get(tp, tp) for tp in timepoints])
+        ax.set_yticks(range(len(metrics)))
+        ax.set_yticklabels(metrics)
+        ax.set_title('Regional Significance\n(-log10 p-value)')
+        
+        # Add significance annotations
+        for i in range(len(metrics)):
+            for j in range(len(timepoints)):
+                p_val = p_values[i, j]
+                if p_val < 0.001:
+                    marker = '***'
+                elif p_val < 0.01:
+                    marker = '**'
+                elif p_val < 0.05:
+                    marker = '*'
+                else:
+                    marker = ''
+                
+                if marker:
+                    ax.text(j, i, marker, ha='center', va='center', 
+                           color='white' if sig_matrix[i, j] > 1 else 'black', fontweight='bold')
+        
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    
+    def create_region_time_interaction_heatmap(self, results: List[Dict], config: Config) -> plt.Figure:
+        """Create comprehensive region × time interaction heatmap for top protein domains."""
+        # Group by region and timepoint
+        by_region_time = defaultdict(lambda: defaultdict(list))
+        for roi in results:
+            metadata = roi['metadata']
+            if isinstance(metadata, dict):
+                day = metadata.get('injury_day')
+                region = metadata.get('tissue_region', 'Unknown')
+            else:
+                day = getattr(metadata, 'injury_day', None)
+                region = getattr(metadata, 'tissue_region', 'Unknown')
+            
+            if day is not None and region in ['Cortex', 'Medulla']:
+                tp_key = f"D{day}"
+                by_region_time[region][tp_key].append(roi)
+        
+        # Get timepoints and create region-time combinations
+        exp_cfg = config.raw.get('experimental', {})
+        tp_vals = exp_cfg.get('timepoints', [])
+        tp_labels = exp_cfg.get('timepoint_labels', [])
+        timepoints = sorted([f"D{tp}" for tp in tp_vals], key=lambda x: int(x[1:]))
+        label_map = {f"D{tp}": lbl for tp, lbl in zip(tp_vals, tp_labels)}
+        
+        # Create region-time combinations
+        regions = ['Cortex', 'Medulla']
+        region_time_combos = []
+        combo_labels = []
+        
+        for tp in timepoints:
+            for region in regions:
+                region_time_combos.append((region, tp))
+                combo_labels.append(f"{region}\n{label_map.get(tp, tp)}")
+        
+        # Collect all protein domains and their frequencies
+        domain_frequencies = defaultdict(lambda: defaultdict(float))
+        
+        for region in regions:
+            for tp in timepoints:
+                if tp in by_region_time[region]:
+                    for roi in by_region_time[region][tp]:
+                        total_pixels = sum(sig['size'] for sig in roi['blob_signatures'].values())
+                        for domain_name, sig in roi['blob_signatures'].items():
+                            # Create canonical domain name from dominant proteins
+                            proteins = sorted(sig['dominant_proteins'][:2])
+                            canonical_domain = '+'.join(proteins)
+                            
+                            percentage = 100.0 * sig['size'] / total_pixels if total_pixels > 0 else 0
+                            domain_frequencies[(region, tp)][canonical_domain] += percentage
+                    
+                    # Average across ROIs in this region-time combination
+                    n_rois = len(by_region_time[region][tp])
+                    for domain in domain_frequencies[(region, tp)]:
+                        domain_frequencies[(region, tp)][domain] /= n_rois
+        
+        # Get top domains by overall frequency
+        all_domain_scores = defaultdict(float)
+        for combo_freqs in domain_frequencies.values():
+            for domain, freq in combo_freqs.items():
+                all_domain_scores[domain] += freq
+        
+        # Select top 20 domains for the heatmap
+        top_domains = sorted(all_domain_scores.items(), key=lambda x: x[1], reverse=True)[:20]
+        domain_names = [domain for domain, _ in top_domains]
+        
+        # Create the data matrix
+        n_domains = len(domain_names)
+        n_combos = len(region_time_combos)
+        matrix = np.zeros((n_domains, n_combos))
+        
+        for j, (region, tp) in enumerate(region_time_combos):
+            combo_data = domain_frequencies.get((region, tp), {})
+            for i, domain in enumerate(domain_names):
+                matrix[i, j] = combo_data.get(domain, 0)
+        
+        # Create the figure with adjusted layout
+        fig = plt.figure(figsize=(18, 12))
+        
+        # Create GridSpec for layout with dendrograms - increased wspace for colorbar clearance
+        gs = fig.add_gridspec(2, 3, width_ratios=[0.15, 1, 1], hspace=0.3, wspace=0.35, 
+                             left=0.08, right=0.92, bottom=0.1, top=0.93)
+        
+        # Prepare data for clustering - TOP ROW (main heatmap and regional differences)
+        # We'll cluster based on the full matrix across all region-time combinations
+        if n_domains > 1:
+            # Calculate distance matrix and perform hierarchical clustering for top row
+            distances_top = pdist(matrix, metric='euclidean')
+            linkage_matrix_top = linkage(distances_top, method='ward')
+            
+            # Get dendrogram ordering for top row
+            dendro_top = dendrogram(linkage_matrix_top, no_plot=True)
+            row_order_top = dendro_top['leaves']
+            
+            # Reorder matrix and domain names for top row
+            matrix_clustered = matrix[row_order_top, :]
+            domain_names_clustered_top = [domain_names[i] for i in row_order_top]
+            
+            # Prepare data for BOTTOM ROW clustering (Cortex and Medulla temporal profiles)
+            # Extract combined temporal data for clustering
+            temporal_matrix = np.zeros((n_domains, len(timepoints) * 2))  # Cortex + Medulla
+            for j, tp in enumerate(timepoints):
+                cortex_idx = region_time_combos.index(('Cortex', tp)) if ('Cortex', tp) in region_time_combos else None
+                medulla_idx = region_time_combos.index(('Medulla', tp)) if ('Medulla', tp) in region_time_combos else None
+                if cortex_idx is not None:
+                    temporal_matrix[:, j] = matrix[:, cortex_idx]
+                if medulla_idx is not None:
+                    temporal_matrix[:, j + len(timepoints)] = matrix[:, medulla_idx]
+            
+            # Calculate distance matrix and perform hierarchical clustering for bottom row
+            distances_bottom = pdist(temporal_matrix, metric='euclidean')
+            linkage_matrix_bottom = linkage(distances_bottom, method='ward')
+            
+            # Get dendrogram ordering for bottom row
+            dendro_bottom = dendrogram(linkage_matrix_bottom, no_plot=True)
+            row_order_bottom = dendro_bottom['leaves']
+            
+            # Domain names for bottom row
+            domain_names_clustered_bottom = [domain_names[i] for i in row_order_bottom]
+        else:
+            matrix_clustered = matrix
+            domain_names_clustered_top = domain_names
+            domain_names_clustered_bottom = domain_names
+            linkage_matrix_top = None
+            linkage_matrix_bottom = None
+            row_order_top = [0]
+            row_order_bottom = [0]
+        
+        # Dendrogram for top row
+        if linkage_matrix_top is not None:
+            ax_dendro_top = fig.add_subplot(gs[0, 0])
+            dendro_plot = dendrogram(linkage_matrix_top, orientation='left', ax=ax_dendro_top, 
+                                    color_threshold=0, above_threshold_color='black')
+            ax_dendro_top.set_xticks([])
+            ax_dendro_top.set_yticks([])
+            ax_dendro_top.spines['top'].set_visible(False)
+            ax_dendro_top.spines['right'].set_visible(False)
+            ax_dendro_top.spines['bottom'].set_visible(False)
+            ax_dendro_top.spines['left'].set_visible(False)
+        
+        # Main clustered heatmap (top-middle)
+        ax_main = fig.add_subplot(gs[0, 1])
+        im = ax_main.imshow(matrix_clustered, cmap='YlOrRd', aspect='auto', vmin=0, vmax=np.percentile(matrix, 95))
+        ax_main.set_xticks(range(n_combos))
+        ax_main.set_xticklabels(combo_labels, rotation=45, ha='right', fontsize=8)
+        ax_main.set_yticks(range(len(domain_names_clustered_top)))
+        ax_main.set_yticklabels(domain_names_clustered_top, fontsize=7)
+        ax_main.set_title('Clustered Protein Domains Across Regions and Time', fontsize=12, fontweight='bold')
+        
+        # Add colorbar for main heatmap
+        cbar = plt.colorbar(im, ax=ax_main, fraction=0.046, pad=0.04)
+        cbar.set_label('Tissue Coverage (%)', fontsize=9)
+        
+        # Regional comparison (difference between Cortex and Medulla) - also clustered
+        ax_diff = fig.add_subplot(gs[0, 2])
+        
+        # Create difference matrix (Cortex - Medulla)
+        diff_matrix = np.zeros((n_domains, len(timepoints)))
+        for j, tp in enumerate(timepoints):
+            cortex_idx = region_time_combos.index(('Cortex', tp)) if ('Cortex', tp) in region_time_combos else None
+            medulla_idx = region_time_combos.index(('Medulla', tp)) if ('Medulla', tp) in region_time_combos else None
+            
+            if cortex_idx is not None and medulla_idx is not None:
+                diff_matrix[:, j] = matrix[:, cortex_idx] - matrix[:, medulla_idx]
+        
+        # Apply same clustering order (top row) to difference matrix
+        if linkage_matrix_top is not None:
+            diff_matrix_clustered = diff_matrix[row_order_top, :]
+        else:
+            diff_matrix_clustered = diff_matrix
+        
+        im_diff = ax_diff.imshow(diff_matrix_clustered, cmap='RdBu_r', aspect='auto', 
+                                vmin=-np.max(np.abs(diff_matrix)), vmax=np.max(np.abs(diff_matrix)))
+        ax_diff.set_xticks(range(len(timepoints)))
+        ax_diff.set_xticklabels([label_map.get(tp, tp) for tp in timepoints], fontsize=9)
+        ax_diff.set_yticks(range(len(domain_names_clustered_top)))
+        ax_diff.set_yticklabels(domain_names_clustered_top, fontsize=7)  # Keep y-axis labels on rightmost plot
+        ax_diff.set_title('Regional Differences (Cortex - Medulla)', fontsize=12, fontweight='bold')
+        
+        # Add colorbar for difference heatmap with more padding
+        cbar_diff = plt.colorbar(im_diff, ax=ax_diff, fraction=0.046, pad=0.08)
+        cbar_diff.set_label('Difference (%)', fontsize=9)
+        
+        # Dendrogram for bottom row (different clustering based on temporal profiles)
+        if linkage_matrix_bottom is not None:
+            ax_dendro_bottom = fig.add_subplot(gs[1, 0])
+            dendro_plot2 = dendrogram(linkage_matrix_bottom, orientation='left', ax=ax_dendro_bottom, 
+                                     color_threshold=0, above_threshold_color='black')
+            ax_dendro_bottom.set_xticks([])
+            ax_dendro_bottom.set_yticks([])
+            ax_dendro_bottom.spines['top'].set_visible(False)
+            ax_dendro_bottom.spines['right'].set_visible(False)
+            ax_dendro_bottom.spines['bottom'].set_visible(False)
+            ax_dendro_bottom.spines['left'].set_visible(False)
+        
+        # Temporal profile heatmap for Cortex
+        ax_cortex = fig.add_subplot(gs[1, 1])
+        
+        # Extract Cortex data only - use bottom row clustering order
+        cortex_matrix = np.zeros((len(domain_names_clustered_bottom), len(timepoints)))
+        for j, tp in enumerate(timepoints):
+            cortex_idx = region_time_combos.index(('Cortex', tp)) if ('Cortex', tp) in region_time_combos else None
+            if cortex_idx is not None:
+                cortex_matrix[:, j] = matrix[row_order_bottom, cortex_idx]
+        
+        im_cortex = ax_cortex.imshow(cortex_matrix, cmap='YlOrRd', aspect='auto', vmin=0, vmax=np.percentile(matrix, 95))
+        ax_cortex.set_xticks(range(len(timepoints)))
+        ax_cortex.set_xticklabels([label_map.get(tp, tp) for tp in timepoints], fontsize=9)
+        ax_cortex.set_yticks(range(len(domain_names_clustered_bottom)))
+        ax_cortex.set_yticklabels(domain_names_clustered_bottom, fontsize=7)
+        ax_cortex.set_title('Cortex Temporal Progression', fontsize=12, fontweight='bold')
+        ax_cortex.set_xlabel('Timepoint', fontsize=10)
+        
+        # Add colorbar
+        cbar_cortex = plt.colorbar(im_cortex, ax=ax_cortex, fraction=0.046, pad=0.04)
+        cbar_cortex.set_label('Coverage (%)', fontsize=9)
+        
+        # Temporal profile heatmap for Medulla
+        ax_medulla = fig.add_subplot(gs[1, 2])
+        
+        # Extract Medulla data only - use bottom row clustering order
+        medulla_matrix = np.zeros((len(domain_names_clustered_bottom), len(timepoints)))
+        for j, tp in enumerate(timepoints):
+            medulla_idx = region_time_combos.index(('Medulla', tp)) if ('Medulla', tp) in region_time_combos else None
+            if medulla_idx is not None:
+                medulla_matrix[:, j] = matrix[row_order_bottom, medulla_idx]
+        
+        im_medulla = ax_medulla.imshow(medulla_matrix, cmap='YlOrRd', aspect='auto', vmin=0, vmax=np.percentile(matrix, 95))
+        ax_medulla.set_xticks(range(len(timepoints)))
+        ax_medulla.set_xticklabels([label_map.get(tp, tp) for tp in timepoints], fontsize=9)
+        ax_medulla.set_yticks(range(len(domain_names_clustered_bottom)))
+        ax_medulla.set_yticklabels(domain_names_clustered_bottom, fontsize=7)  # Keep y-axis labels on rightmost plot
+        ax_medulla.set_title('Medulla Temporal Progression', fontsize=12, fontweight='bold')
+        ax_medulla.set_xlabel('Timepoint', fontsize=10)
+        
+        # Add colorbar with more padding to avoid overlap
+        cbar_medulla = plt.colorbar(im_medulla, ax=ax_medulla, fraction=0.046, pad=0.08)
+        cbar_medulla.set_label('Coverage (%)', fontsize=9)
+        
+        fig.suptitle('Hierarchical Clustering of Protein Domain Landscapes Across Kidney Healing', 
+                    fontsize=14, fontweight='bold')
+        
+        return fig

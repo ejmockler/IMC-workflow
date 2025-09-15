@@ -328,24 +328,60 @@ class AnalysisPipeline:
         data = self._subsample(data)
         print(f"   📊 {len(data.coords)} pixels, {len(data.protein_names)} proteins")
         
-        # 2. Build spatial structure
-        spatial_structure = SpatialAnalyzer.build_spatial_structure(data.coords, self.distances)
-        print(f"   🕸️  Spatial structure computed")
+        # 2. Enhanced spatial analysis (new robust method)
+        use_robust = self.config.get('spatial_analysis', {}).get('scale_selection', {}).get('method') == 'adaptive_data_driven'
         
-        # 3. Analyze organization
-        spatial_org = {}
-        for i, protein in enumerate(data.protein_names):
-            org_results, scale = OrganizationAnalyzer.analyze_protein(data.values[:, i], spatial_structure)
-            spatial_org[protein] = {
-                'correlations': org_results,
-                'organization_scale': scale
-            }
-            print(f"   🔍 {protein}: {scale}μm")
+        if use_robust:
+            print(f"   🔬 Using robust spatial analysis (superpixel + squidpy)")
+            try:
+                from .spatial import analyze_roi_spatial_organization
+                comprehensive_results = analyze_roi_spatial_organization(
+                    data.coords, data.values, data.protein_names, 
+                    self.config_path, use_robust_analysis=True
+                )
+                
+                # Extract spatial statistics for pipeline compatibility
+                spatial_stats = comprehensive_results.get('spatial_statistics', {})
+                spatial_autocorr = spatial_stats.get('spatial_autocorrelation', {})
+                coloc = spatial_stats.get('colocalization', {})
+                spatial_org = {}
+                
+                # Convert spatial autocorr to legacy format for visualization compatibility
+                for protein, stats in spatial_autocorr.items():
+                    protein_clean = protein.split('(')[0]
+                    spatial_org[protein_clean] = {
+                        'morans_i': stats.get('morans_i', 0.0),
+                        'p_value': stats.get('p_value_corrected', 1.0),
+                        'significant': stats.get('significant_corrected', False),
+                        'organization_scale': spatial_stats.get('spatial_parameters', {}).get('functional_radius', 75.0)
+                    }
+                
+                print(f"   📊 Enhanced analysis: {len(spatial_autocorr)} proteins, {len(coloc)} pairs")
+                
+            except Exception as e:
+                print(f"   ⚠️  Robust analysis failed: {e}, falling back to legacy")
+                use_robust = False
         
-        # 4. Colocalization
-        threshold = self.config['analysis'].get('correlation_threshold', 0.05)
-        coloc = ColocalizationAnalyzer.analyze_proteins(data, spatial_structure, self.coloc_distance, threshold)
-        print(f"   🤝 {len(coloc)} colocalization pairs")
+        if not use_robust:
+            print(f"   🔬 Using legacy spatial analysis")
+            # Legacy spatial analysis
+            spatial_structure = SpatialAnalyzer.build_spatial_structure(data.coords, self.distances)
+            print(f"   🕸️  Spatial structure computed")
+            
+            # 3. Analyze organization
+            spatial_org = {}
+            for i, protein in enumerate(data.protein_names):
+                org_results, scale = OrganizationAnalyzer.analyze_protein(data.values[:, i], spatial_structure)
+                spatial_org[protein] = {
+                    'correlations': org_results,
+                    'organization_scale': scale
+                }
+                print(f"   🔍 {protein}: {scale}μm")
+            
+            # 4. Colocalization
+            threshold = self.config['analysis'].get('correlation_threshold', 0.05)
+            coloc = ColocalizationAnalyzer.analyze_proteins(data, spatial_structure, self.coloc_distance, threshold)
+            print(f"   🤝 {len(coloc)} colocalization pairs")
         
         # 5. Phenotypes
         # Removed phenotype analysis - focus on spatial protein patterns

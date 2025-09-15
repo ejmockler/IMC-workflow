@@ -1,12 +1,62 @@
 {
   "analysis": {
     "max_pixels_per_roi": 5000,
-    "distance_measurements": [5, 10, 25, 50],
-    "colocalization_distance": 15,
     "correlation_threshold": 0.5,
     "min_observations_per_pair": 3,
-    "statistical_tests": ["t_test", "anova"],
-    "fold_change_threshold": 1.5
+    "statistical_tests": [
+      "t_test",
+      "anova"
+    ],
+    "fold_change_threshold": 1.5,
+    "k_strategy": "dual_combinations",
+    "validation": {
+      "enabled": true,
+      "validators": [
+        "consistency",
+        "silhouette",
+        "spatial_coherence"
+      ],
+      "consistency_runs": 2,
+      "silhouette_max_samples": 5000,
+      "quality_threshold": 0.7,
+      "report_format": "summary"
+    }
+  },
+  "clustering": {
+    "algorithm": "kmeans",
+    "algorithms": {
+      "kmeans": {
+        "n_init": 10,
+        "max_iter": 300,
+        "random_state": 42
+      },
+      "minibatch": {
+        "batch_size": 1000,
+        "n_init": 3,
+        "max_iter": 100,
+        "random_state": 42
+      },
+      "phenograph": {
+        "k_neighbors": 30,
+        "resolution": 1.0,
+        "min_cluster_size": 10
+      },
+      "leiden": {
+        "resolution": 1.0,
+        "n_iterations": 2,
+        "random_state": 42
+      },
+      "flowsom": {
+        "grid_size": [
+          10,
+          10
+        ],
+        "learning_rate": 0.5,
+        "n_iter": 100
+      }
+    },
+    "auto_select": false,
+    "benchmark_algorithms": false
   },
   "network_analysis": {
     "colocalization_threshold": 0.25,
@@ -17,9 +67,91 @@
     "layout_algorithm": "spring",
     "community_detection": "greedy_modularity"
   },
+  "spatial_analysis": {
+    "scale_selection": {
+      "method": "adaptive_data_driven",
+      "strategies": {
+        "variogram": {
+          "enabled": true,
+          "max_lag": 200,
+          "n_lags": 20,
+          "tolerance": 0.5
+        },
+        "ripleys_k": {
+          "enabled": true,
+          "max_radius": 150,
+          "n_steps": 30,
+          "confidence_level": 0.95
+        },
+        "adaptive_knn": {
+          "enabled": true,
+          "k_neighbors": 20,
+          "density_adaptive": true
+        }
+      },
+      "fallback_radii": {
+        "cellular": 20,
+        "tissue": 100
+      }
+    },
+    "neighborhoods": {
+      "method": "adaptive_knn",
+      "k_neighbors": 20,
+      "min_blob_size": 100,
+      "min_neighborhood_size": 500
+    },
+    "colocalization": {
+      "method": "adaptive_radius",
+      "base_radius": 15,
+      "density_scaling": true
+    },
+    "validation": {
+      "permutation_testing": {
+        "enabled": true,
+        "n_permutations": 1000,
+        "confidence_level": 0.95
+      },
+      "cross_validation": {
+        "enabled": true,
+        "n_folds": 5,
+        "stability_threshold": 0.8
+      }
+    },
+    "performance": {
+      "cache_spatial_structures": true,
+      "use_sparse_matrices": true,
+      "parallel_roi_processing": true
+    }
+  },
+  "spatial_kernels": {
+    "enabled": false,
+    "method": "adaptive_data_driven",
+    "default_kernel": "gaussian",
+    "gaussian": {
+      "sigma": "auto",
+      "sigma_multiplier": 1.5
+    },
+    "adaptive": {
+      "min_neighbors": 10,
+      "density_threshold": 0.01
+    },
+    "laplacian": {
+      "sigma": "auto",
+      "sigma_multiplier": 2.0
+    },
+    "lambda_mixing": 0.5,
+    "auto_radius_selection": true,
+    "benchmark_kernels": false
+  },
   "visualization": {
-    "figure_size": [32, 14],
-    "grid_layout": [2, 4],
+    "figure_size": [
+      32,
+      14
+    ],
+    "grid_layout": [
+      2,
+      4
+    ],
     "color_palette": "viridis",
     "font_size": 8,
     "save_format": "png",
@@ -31,21 +163,47 @@
   },
   "proteins": {
     "immune_activation_panel": [
-      "CD45", "CD11b", "CD206", "CD44", "CD140b", "CD31", "CD34"
+      "CD45",
+      "CD11b",
+      "CD206",
+      "CD44",
+      "CD140b",
+      "CD31",
+      "CD34"
     ],
     "channels": [
-      "CD45(Y89Di)", "CD11b(Nd143Di)", "CD206(Tm169Di)", 
-      "CD44(Yb171Di)", "CD140b(Eu151Di)", "CD31(Sm154Di)", "CD34(Er166Di)"
+      "CD45(Y89Di)",
+      "CD11b(Nd143Di)",
+      "CD206(Tm169Di)",
+      "CD44(Yb171Di)",
+      "CD140b(Eu151Di)",
+      "CD31(Sm154Di)",
+      "CD34(Er166Di)"
     ],
     "functional_groups": {
-      "kidney_inflammation": ["CD45", "CD11b", "Ly6G"],
-      "kidney_repair": ["CD206", "CD44"],
-      "kidney_vasculature": ["CD31", "CD34", "CD140a", "CD140b"],
-      "structural_controls": ["DNA1", "DNA2"]
+      "kidney_inflammation": [
+        "CD45",
+        "CD11b",
+        "Ly6G"
+      ],
+      "kidney_repair": [
+        "CD206",
+        "CD44"
+      ],
+      "kidney_vasculature": [
+        "CD31",
+        "CD34",
+        "CD140a",
+        "CD140b"
+      ],
+      "structural_controls": [
+        "DNA1",
+        "DNA2"
+      ]
     },
     "annotations": {
       "CD45": "Pan-leukocyte marker - tracks immune infiltration into injured kidney",
-      "CD11b": "Myeloid cells - neutrophils/macrophages mediating kidney inflammation", 
+      "CD11b": "Myeloid cells - neutrophils/macrophages mediating kidney inflammation",
       "CD206": "M2 macrophages - tissue repair and injury resolution in kidney",
       "Ly6G": "Neutrophils - early inflammatory responders in acute kidney injury",
       "CD31": "Endothelial cells - kidney vascular integrity and repair",
@@ -54,18 +212,46 @@
       "CD140b": "Pericytes - kidney vascular stability and repair",
       "CD44": "ECM receptor - matrix remodeling during kidney healing"
     },
-    "background_channels": ["80ArAr(ArAr80Di)", "190BCKG(BCKG190Di)"],
-    "control_channels": ["130Ba(Ba130Di)", "131Xe(Xe131Di)"],
-    "dna_channels": ["DNA1(Ir191Di)", "DNA2(Ir193Di)"]
+    "background_channels": [
+      "80ArAr(ArAr80Di)",
+      "190BCKG(BCKG190Di)"
+    ],
+    "control_channels": [
+      "130Ba(Ba130Di)",
+      "131Xe(Xe131Di)"
+    ],
+    "dna_channels": [
+      "DNA1(Ir191Di)",
+      "DNA2(Ir193Di)"
+    ]
   },
   "experimental": {
-    "timepoints": [0, 1, 3, 7],
-    "timepoint_labels": ["Sham", "Day1", "Day3", "Day7"],
-    "regions": ["Cortex", "Medulla"],
-    "replicates": ["MS1", "MS2"],
+    "timepoints": [
+      0,
+      1,
+      3,
+      7
+    ],
+    "timepoint_labels": [
+      "Sham",
+      "Day1",
+      "Day3",
+      "Day7"
+    ],
+    "regions": [
+      "Cortex",
+      "Medulla"
+    ],
+    "replicates": [
+      "MS1",
+      "MS2"
+    ],
     "metadata_file": "data/241218_IMC_Alun/Metadata-Table 1.csv",
     "filename_patterns": [
-      {"pattern": "ROI_(?P<condition>\\w+\\d*)_(?P<replicate>\\w+)_(?P<roi>\\d+)_(?P<id>\\d+)", "priority": 1}
+      {
+        "pattern": "ROI_(?P<condition>\\w+\\d*)_(?P<replicate>\\w+)_(?P<roi>\\d+)_(?P<id>\\d+)",
+        "priority": 1
+      }
     ]
   },
   "output": {
@@ -86,5 +272,63 @@
     "max_edge_labels": 8,
     "min_edge_weight_to_draw": 0.1,
     "repulsion_scale": 3.5
+  },
+  "benchmarking": {
+    "enabled": false,
+    "clustering_algorithms": [
+      "kmeans",
+      "minibatch",
+      "flowsom"
+    ],
+    "kernel_types": [
+      "gaussian",
+      "adaptive"
+    ],
+    "subset_sizes": [
+      500,
+      1000
+    ],
+    "lambda_values": [
+      0.3,
+      0.5,
+      0.7
+    ],
+    "output_formats": [
+      "markdown",
+      "html"
+    ],
+    "max_cells_for_integrated": 3000,
+    "report_directory": "benchmark_reports"
+  },
+  "tissue_analysis": {
+    "enabled": true,
+    "superpixel": {
+      "method": "adaptive_slic",
+      "target_segments": 500,
+      "compactness": 10,
+      "adaptive": true,
+      "size_adaptive": true,
+      "similarity_threshold": 0.8,
+      "min_segments": 100
+    },
+    "texture": {
+      "adaptive_windows": true,
+      "base_window_size": 20,
+      "window_multipliers": [0.5, 1.0, 2.5],
+      "features": ["haralick", "lbp", "glcm"],
+      "n_gray_levels": 32,
+      "resolution": 1.0
+    },
+    "spatial_statistics": {
+      "methods": ["morans_i", "gearys_c", "getis_ord", "variogram"],
+      "adaptive_bandwidth": true,
+      "permutations": 999
+    },
+    "region_graph": {
+      "adaptive_tiling": true,
+      "base_tile_size": 50,
+      "adjacency": "adaptive",
+      "similarity_threshold": 0.7
+    }
   }
 }

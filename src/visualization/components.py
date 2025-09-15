@@ -31,6 +31,12 @@ def plot_spatial_domains(ax, coords, blob_labels, blob_signatures):
     """Plot spatial distribution of domains with consistent pair colors"""
     blob_compositions = []
     
+    # Convert coords to numpy array if it's a list (from JSON)
+    if isinstance(coords, list):
+        coords = np.array(coords)
+    if isinstance(blob_labels, list):
+        blob_labels = np.array(blob_labels)
+    
     # Build a stable color map for all observed pairs
     all_pairs = []
     for sig in blob_signatures.values():
@@ -45,6 +51,9 @@ def plot_spatial_domains(ax, coords, blob_labels, blob_signatures):
         blob_coords = sig.get('coords')
         if blob_coords is None or len(blob_coords) == 0:
             continue
+        # Convert blob_coords to numpy array if needed
+        if isinstance(blob_coords, list):
+            blob_coords = np.array(blob_coords)
         dominant = sig['dominant_proteins'][:2]
         label_pair = '+'.join(dominant)
         canonical = '+'.join(sorted(dominant))
@@ -161,6 +170,12 @@ def plot_spatial_contact_matrix(ax, blob_labels, cluster_signatures, coords, rad
         ax.axis('off')
         return
     
+    # Convert coords to numpy array if it's a list (from JSON)
+    if isinstance(coords, list):
+        coords = np.array(coords)
+    if isinstance(blob_labels, list):
+        blob_labels = np.array(blob_labels)
+    
     # KDTree over pixels
     tree = cKDTree(coords)
     
@@ -180,7 +195,8 @@ def plot_spatial_contact_matrix(ax, blob_labels, cluster_signatures, coords, rad
     all_neighbors = tree.query_ball_point(sampled_coords, r=radius)
     for i, neighbors in enumerate(all_neighbors):
         cid = sampled_labels[i]
-        domain = blob_to_type.get(cid)
+        # Handle both string and integer keys from JSON serialization
+        domain = blob_to_type.get(str(cid) if isinstance(cid, (int, np.integer)) else cid)
         if domain is None:
             continue
             
@@ -194,7 +210,8 @@ def plot_spatial_contact_matrix(ax, blob_labels, cluster_signatures, coords, rad
             if nb_idx == sample_indices[i]:
                 continue
             nb_cid = blob_labels[nb_idx]
-            nb_domain = blob_to_type.get(nb_cid)
+            # Handle both string and integer keys from JSON serialization
+            nb_domain = blob_to_type.get(str(nb_cid) if isinstance(nb_cid, (int, np.integer)) else nb_cid)
             if nb_domain is None or nb_domain == domain:
                 continue
             
@@ -229,7 +246,8 @@ def plot_spatial_contact_matrix(ax, blob_labels, cluster_signatures, coords, rad
         all_neighbors = tree.query_ball_point(sampled_coords, r=expanded_radius)
         for i, neighbors in enumerate(all_neighbors):
             cid = sampled_labels[i]
-            domain = blob_to_type.get(cid)
+            # Handle both string and integer keys from JSON serialization
+            domain = blob_to_type.get(str(cid) if isinstance(cid, (int, np.integer)) else cid)
             if domain is None:
                 continue
             proteins_in_domain = domain.split('+')
@@ -239,7 +257,8 @@ def plot_spatial_contact_matrix(ax, blob_labels, cluster_signatures, coords, rad
                 if nb_idx == sample_indices[i]:
                     continue
                 nb_cid = blob_labels[nb_idx]
-                nb_domain = blob_to_type.get(nb_cid)
+                # Handle both string and integer keys from JSON serialization
+                nb_domain = blob_to_type.get(str(nb_cid) if isinstance(nb_cid, (int, np.integer)) else nb_cid)
                 if nb_domain is None or nb_domain == domain:
                     continue
                 if '+' in nb_domain:
@@ -438,4 +457,223 @@ def plot_aggregated_domain_signatures(ax, rois, top_n=12):
         ax.set_yticklabels(protein_names, fontsize=8)
         ax.set_title('Aggregated Domain Protein Signatures')
         plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+
+def plot_tissue_neighborhoods(ax, coords, neighborhoods, blob_signatures):
+    """Plot tissue neighborhoods with distinct colors and boundaries."""
+    import matplotlib.patches as patches
+    from matplotlib.colors import ListedColormap
+    
+    if isinstance(coords, list):
+        coords = np.array(coords)
+    
+    if neighborhoods is None:
+        ax.text(0.5, 0.5, 'No neighborhoods detected', ha='center', va='center')
+        ax.axis('off')
+        return
+    
+    # Handle different neighborhood data structures
+    if isinstance(neighborhoods, dict) and 'pixel_assignments' in neighborhoods:
+        pixel_assignments = neighborhoods['pixel_assignments']
+        n_neighborhoods = neighborhoods.get('n_neighborhoods', 0)
+        
+        if n_neighborhoods == 0:
+            ax.text(0.5, 0.5, 'No neighborhoods detected', ha='center', va='center')
+            ax.axis('off')
+            return
+        
+        # Create colormap for neighborhoods
+        colors = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99', '#ff99cc', '#c2c2f0', 
+                  '#ffb366', '#66ffb3', '#ff6666', '#9999ff']
+        
+        # Plot each neighborhood
+        for neighborhood_id in range(n_neighborhoods):
+            color = colors[neighborhood_id % len(colors)]
+            
+            # Get pixels assigned to this neighborhood
+            mask = pixel_assignments == neighborhood_id
+            if np.any(mask):
+                neighborhood_coords = coords[mask]
+                
+                # Plot neighborhood pixels
+                ax.scatter(neighborhood_coords[:, 0], neighborhood_coords[:, 1], 
+                          c=color, alpha=0.6, s=1, label=f'N{neighborhood_id}')
+        
+        ax.set_xlabel('X (μm)')
+        ax.set_ylabel('Y (μm)')
+        ax.set_title('Tissue Neighborhoods')
+        if n_neighborhoods < 10:
+            ax.legend(fontsize=8)
+        ax.set_aspect('equal')
+    
+    else:
+        ax.text(0.5, 0.5, 'Unsupported neighborhood format', ha='center', va='center')
+        ax.axis('off')
+
+
+def plot_neighborhood_entropy_map(ax, coords, entropy_map):
+    """Plot spatial entropy map showing tissue organization boundaries."""
+    if isinstance(coords, list):
+        coords = np.array(coords)
+    
+    if entropy_map is None:
+        ax.text(0.5, 0.5, 'No entropy map available', ha='center', va='center')
+        ax.axis('off')
+        return
+    
+    # Handle different entropy map formats
+    if isinstance(entropy_map, dict):
+        # Dictionary format: {(x, y): entropy_value}
+        x_coords = [pos[0] for pos in entropy_map.keys()]
+        y_coords = [pos[1] for pos in entropy_map.keys()]
+        entropy_values = list(entropy_map.values())
+    elif isinstance(entropy_map, (list, tuple)) and len(entropy_map) >= 3:
+        # Tuple format: (x_coords, y_coords, entropy_values)
+        x_coords, y_coords, entropy_values = entropy_map[:3]
+    else:
+        ax.text(0.5, 0.5, 'Unsupported entropy format', ha='center', va='center')
+        ax.axis('off')
+        return
+    
+    if not entropy_values or len(entropy_values) == 0:
+        ax.text(0.5, 0.5, 'No entropy data', ha='center', va='center')
+        ax.axis('off')
+        return
+    
+    # Create scatter plot with entropy as color
+    scatter = ax.scatter(x_coords, y_coords, c=entropy_values, 
+                        cmap='viridis', alpha=0.7, s=20)
+    
+    ax.set_xlabel('X (μm)')
+    ax.set_ylabel('Y (μm)')
+    ax.set_title('Spatial Entropy Map')
+    ax.set_aspect('equal')
+    
+    # Add colorbar
+    plt.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04, label='Shannon Entropy')
+
+
+def plot_neighborhood_composition(ax, neighborhoods, blob_signatures):
+    """Plot neighborhood composition showing dominant protein pairs."""
+    if neighborhoods is None:
+        ax.text(0.5, 0.5, 'No neighborhoods detected', ha='center', va='center')
+        ax.axis('off')
+        return
+    
+    # Handle the new simplified neighborhood format
+    if isinstance(neighborhoods, dict) and 'neighborhoods' in neighborhoods:
+        neighborhood_data = neighborhoods['neighborhoods']
+        n_neighborhoods = neighborhoods.get('n_neighborhoods', 0)
+        
+        if n_neighborhoods == 0:
+            ax.text(0.5, 0.5, 'No neighborhoods detected', ha='center', va='center')
+            ax.axis('off')
+            return
+        
+        # Extract dominant protein pairs from each neighborhood
+        neighborhood_labels = []
+        neighborhood_sizes = []
+        dominant_pairs = []
+        
+        for nid in range(n_neighborhoods):
+            if nid in neighborhood_data:
+                nbhd = neighborhood_data[nid]
+                neighborhood_labels.append(f'N{nid}')
+                neighborhood_sizes.append(nbhd['size'])
+                
+                # Get top dominant pairs
+                if nbhd.get('dominant_pairs'):
+                    dominant_pairs.append(nbhd['dominant_pairs'][0])  # Top pair
+                else:
+                    dominant_pairs.append('Mixed')
+        
+        if not neighborhood_sizes:
+            ax.text(0.5, 0.5, 'No composition data', ha='center', va='center')
+            ax.axis('off')
+            return
+        
+        # Create bar plot with colors based on dominant pairs
+        colors = plt.cm.Set3(np.linspace(0, 1, len(set(dominant_pairs))))
+        pair_colors = {pair: colors[i] for i, pair in enumerate(set(dominant_pairs))}
+        
+        bar_colors = [pair_colors[pair] for pair in dominant_pairs]
+        bars = ax.bar(range(len(neighborhood_labels)), neighborhood_sizes, 
+                     color=bar_colors, alpha=0.8)
+        
+        # Add value labels on bars
+        for bar, size, pair in zip(bars, neighborhood_sizes, dominant_pairs):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(neighborhood_sizes)*0.01,
+                   f'{size}\n{pair}', ha='center', va='bottom', fontsize=7)
+        
+        ax.set_xlabel('Neighborhood')
+        ax.set_ylabel('Size (pixels)')
+        ax.set_title('Neighborhood Composition')
+        ax.set_xticks(range(len(neighborhood_labels)))
+        ax.set_xticklabels(neighborhood_labels)
+        
+        # Add legend for dominant pairs
+        unique_pairs = list(set(dominant_pairs))
+        if len(unique_pairs) <= 6:  # Only show legend if not too many pairs
+            legend_elements = [plt.Rectangle((0,0),1,1, color=pair_colors[pair], alpha=0.8) 
+                              for pair in unique_pairs]
+            ax.legend(legend_elements, unique_pairs, loc='upper right', fontsize=7)
+    
+    else:
+        ax.text(0.5, 0.5, 'Unsupported neighborhood format', ha='center', va='center')
+        ax.axis('off')
+
+
+def plot_neighborhood_statistics(ax, neighborhoods):
+    """Plot neighborhood size distribution and statistics."""
+    if neighborhoods is None:
+        ax.text(0.5, 0.5, 'No neighborhoods detected', ha='center', va='center')
+        ax.axis('off')
+        return
+    
+    # Handle the new simplified neighborhood format
+    if isinstance(neighborhoods, dict) and 'neighborhoods' in neighborhoods:
+        neighborhood_data = neighborhoods['neighborhoods']
+        n_neighborhoods = neighborhoods.get('n_neighborhoods', 0)
+        coverage = neighborhoods.get('coverage', 0)
+        
+        if n_neighborhoods == 0:
+            ax.text(0.5, 0.5, 'No neighborhoods detected', ha='center', va='center')
+            ax.axis('off')
+            return
+        
+        # Extract neighborhood sizes and blob counts
+        sizes = []
+        blob_counts = []
+        
+        for nid in range(n_neighborhoods):
+            if nid in neighborhood_data:
+                nbhd = neighborhood_data[nid]
+                sizes.append(nbhd['size'])
+                blob_counts.append(nbhd['blob_count'])
+        
+        if not sizes:
+            ax.text(0.5, 0.5, 'No size data', ha='center', va='center')
+            ax.axis('off')
+            return
+        
+        # Create histogram of sizes
+        ax.hist(sizes, bins=min(8, max(2, len(sizes))), color='lightsteelblue', alpha=0.8, edgecolor='black')
+        
+        ax.set_xlabel('Neighborhood Size (pixels)')
+        ax.set_ylabel('Count')
+        ax.set_title('Neighborhood Size Distribution')
+        
+        # Add comprehensive statistics text
+        mean_size = np.mean(sizes)
+        std_size = np.std(sizes)
+        mean_blobs = np.mean(blob_counts) if blob_counts else 0
+        
+        stats_text = f'Neighborhoods: {n_neighborhoods}\nMean size: {mean_size:.0f}±{std_size:.0f} px\nMean blobs: {mean_blobs:.1f}\nCoverage: {coverage:.1%}'
+        ax.text(0.98, 0.98, stats_text, 
+                transform=ax.transAxes, va='top', ha='right', fontsize=8,
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    else:
+        ax.text(0.5, 0.5, 'Unsupported neighborhood format', ha='center', va='center')
+        ax.axis('off')
 

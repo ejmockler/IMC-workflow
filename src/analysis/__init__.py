@@ -19,8 +19,8 @@ from .pipeline import (
     parse_roi_metadata
 )
 
+from src.utils.data_loader import load_roi_data
 from .spatial import (
-    load_roi_data,
     identify_expression_blobs,
     analyze_blob_spatial_relationships
 )

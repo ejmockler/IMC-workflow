@@ -16,7 +16,14 @@ from src.visualization.components import (
     plot_spatial_contact_matrix,
     plot_domain_size_distribution,
     plot_top_domain_contacts,
-    plot_spatial_domains
+    plot_spatial_domains,
+    plot_tissue_neighborhoods,
+    plot_neighborhood_entropy_map,
+    plot_neighborhood_composition,
+    plot_neighborhood_statistics
+)
+from src.visualization.roi_multiscale import (
+    plot_multiscale_neighborhoods_row
 )
 
 
@@ -26,11 +33,24 @@ class ROIVisualizer:
     def __init__(self, config: Config):
         self.config = config
     
-    def create_figure(self, roi_data: Dict) -> plt.Figure:
-        """Create comprehensive ROI visualization."""
-        grid = PlotGrid(3, 3, figsize=(24, 18))  # 3x3 grid
+    def create_figure(self, roi_data: Dict, extended=True) -> plt.Figure:
+        """Create comprehensive ROI visualization.
         
-        # Row 0: All heatmaps
+        Args:
+            roi_data: ROI analysis results
+            extended: If True, use 4x4 grid with multi-scale neighborhoods. If False, use 3x3.
+        """
+        # Check if we have multi-scale data
+        has_multiscale = 'multiscale_neighborhoods' in roi_data and roi_data['multiscale_neighborhoods']
+        
+        if extended and has_multiscale:
+            # Extended 4x4 grid for multi-scale analysis
+            grid = PlotGrid(4, 4, figsize=(32, 24))
+        else:
+            # Standard 3x3 grid
+            grid = PlotGrid(3, 3, figsize=(24, 18))
+        
+        # Row 0: All heatmaps  
         ax = grid.get(0, 0)
         self._plot_domain_signatures(ax, roi_data)
         
@@ -40,29 +60,56 @@ class ROIVisualizer:
         ax = grid.get(0, 2)
         self._plot_colocalization_matrix(ax, roi_data)
         
-        # Row 1: All bar plots
+        # Row 1: Spatial maps (including neighborhoods)
         ax = grid.get(1, 0)
-        plot_domain_size_distribution(ax, roi_data['blob_signatures'],
-                                     roi_data['protein_names'])
-        ax = grid.get(1, 1)
-        plot_top_domain_contacts(ax, roi_data['blob_contacts'],
-                                roi_data['blob_signatures'])
-        ax = grid.get(1, 2)
-        self._plot_organization_scales(ax, roi_data)
-        
-        # Row 2: Spatial map + temporal/group dynamics
-        ax = grid.get(2, 0)
         plot_spatial_domains(ax, roi_data['coords'], 
                            roi_data['blob_labels'],
                            roi_data['blob_signatures'])
-        ax = grid.get(2, 1)
-        self._plot_spatial_autocorrelation(ax, roi_data)
-        ax = grid.get(2, 2)
+        
+        ax = grid.get(1, 1)
+        # Show neighborhoods if enabled, otherwise show spatial autocorrelation
+        if roi_data.get('neighborhoods') is not None:
+            plot_tissue_neighborhoods(ax, roi_data['coords'],
+                                    roi_data.get('neighborhoods'),
+                                    roi_data['blob_signatures'])
+        else:
+            self._plot_spatial_autocorrelation(ax, roi_data)
+        
+        ax = grid.get(1, 2)
         self._plot_functional_groups(ax, roi_data)
+        
+        # Row 2: Distribution plots
+        ax = grid.get(2, 0)
+        plot_domain_size_distribution(ax, roi_data['blob_signatures'],
+                                     roi_data['protein_names'])
+        
+        ax = grid.get(2, 1)
+        plot_top_domain_contacts(ax, roi_data['blob_contacts'],
+                                roi_data['blob_signatures'])
+        
+        ax = grid.get(2, 2)
+        # Show neighborhood composition if enabled, otherwise show organization scales
+        if roi_data.get('neighborhoods') is not None:
+            plot_neighborhood_composition(ax, roi_data.get('neighborhoods'),
+                                         roi_data['blob_signatures'])
+        else:
+            self._plot_organization_scales(ax, roi_data)
+        
+        # Row 3: Multi-scale neighborhood analysis (if extended grid)
+        if extended and has_multiscale:
+            plot_multiscale_neighborhoods_row(grid, roi_data, row=3)
         
         # Title
         meta = roi_data['metadata']
-        title = f"Spatial Tissue Organization: {meta.display_name} — {roi_data['filename']}"
+        # Handle both dict and Metadata object formats
+        if isinstance(meta, dict):
+            condition = meta.get('condition', 'Unknown')
+            day = meta.get('injury_day') or meta.get('timepoint', '?')
+            region = meta.get('tissue_region') or meta.get('region', 'Unknown')
+            display_name = f"{condition} D{day} {region}"
+        else:
+            display_name = meta.display_name
+        title = f"Spatial Tissue Organization: {display_name} — {roi_data['filename']}"
         grid.fig.suptitle(title, fontsize=14, fontweight='bold')
         
         return grid.fig

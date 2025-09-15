@@ -54,7 +54,7 @@ class VisualizationPipeline:
         
         # Only generate replicate variance analysis (12 diverse interactions)
         # Other analyses are handled by kidney_healing/run_full_report.py to avoid duplicates
-        temporal_data = [r for r in results if r['metadata'].get('injury_day') is not None]
+        temporal_data = [r for r in results if hasattr(r['metadata'], 'injury_day') and r['metadata'].injury_day is not None]
         if temporal_data:
             figures['replicate_variance'] = self.create_replicate_variance_figure(results)
         
