@@ -10,7 +10,7 @@ This directory contains experiment-specific scripts for the kidney injury and he
 - **Use case**: Quick visualization of healing progression over Days 1, 3, 7
 
 ### run_full_report.py
-- **Purpose**: Generate comprehensive publication-quality figures
+- **Purpose**: Generate publication-quality figures
 - **Outputs**:
   - `kidney_healing_timeline.png` - Temporal progression
   - `kidney_condition_comparison.png` - Sham vs Injury comparison

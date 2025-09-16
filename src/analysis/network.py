@@ -1,5 +1,5 @@
 """
-Advanced Network Analysis for IMC Spatial Data
+Network Analysis for IMC Spatial Data
 Provides mechanistic discovery through protein colocalization networks
 """
 
@@ -154,7 +154,7 @@ class SpatialCommunicationAnalyzer(NetworkAnalyzer):
         return count
     
     def _calculate_metrics(self, G: nx.Graph, centrality: Dict) -> NetworkMetrics:
-        """Calculate comprehensive network metrics"""
+        """Calculate network metrics"""
         try:
             clustering = nx.average_clustering(G, weight='weight')
         except:
@@ -259,7 +259,7 @@ class TemporalNetworkAnalyzer(NetworkAnalyzer):
 
 
 class NetworkDiscovery:
-    """Main interface for network analysis with robust design patterns"""
+    """Main interface for network analysis"""
     
     def __init__(self, config_path: str = "config.json"):
         self.config_path = config_path

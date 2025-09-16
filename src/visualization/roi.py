@@ -34,7 +34,7 @@ class ROIVisualizer:
         self.config = config
     
     def create_figure(self, roi_data: Dict, extended=True) -> plt.Figure:
-        """Create comprehensive ROI visualization.
+        """Create ROI visualization.
         
         Args:
             roi_data: ROI analysis results

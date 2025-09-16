@@ -98,3 +98,11 @@ class Config:
         output_path = path or self.config_path
         with open(output_path, 'w') as f:
             json.dump(self.raw, f, indent=2)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Return configuration as dictionary.
+        
+        Returns:
+            Complete configuration dictionary
+        """
+        return self.raw.copy()

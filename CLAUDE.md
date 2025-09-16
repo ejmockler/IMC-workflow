@@ -6,10 +6,11 @@
 ```
 src/
 ├── analysis/
-│   ├── roi.py          # BatchAnalyzer - main analysis orchestrator
-│   ├── spatial.py      # Spatial blob detection algorithms
-│   ├── pipeline.py     # Analysis pipeline coordination
-│   └── network.py      # Network analysis and graph theory
+│   ├── roi_main.py           # BatchAnalyzer - main analysis orchestrator  
+│   ├── region_classifier.py  # Region quality classification
+│   ├── dual_pipeline.py      # Nuclear vs bulk analysis pipelines
+│   ├── pipeline.py           # Mixed-resolution analysis coordination
+│   └── network.py            # Network analysis and graph theory
 ├── visualization/
 │   ├── main.py         # VisualizationPipeline - orchestrates all figures
 │   ├── roi.py          # ROIVisualizer - single ROI analysis figures
@@ -32,9 +33,10 @@ src/
 - No hardcoded values in analysis or visualization modules
 
 ### Data Flow Architecture
-1. **Analysis**: `BatchAnalyzer` → processes all ROIs → `analysis_results.json`
-2. **Visualization**: `VisualizationPipeline` → loads results → generates figures
-3. **Integration**: Network analysis conditionally triggered during visualization
+1. **Region Classification**: Classify tissue by segmentation quality
+2. **Dual Analysis**: Nuclear analysis (CLEAR) + Bulk analysis (DENSE) 
+3. **Spatial Relationships**: Border analysis between region types (no data comparison)
+4. **Visualization**: Separate panels for nuclear vs bulk results
 
 ### Extensibility Patterns
 - **Strategy Pattern**: `NetworkAnalyzer` base class for different analysis approaches
