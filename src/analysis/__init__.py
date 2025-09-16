@@ -1,8 +1,8 @@
 """
 Analysis module for IMC data processing.
 
-Implements ion count processing, morphology-aware segmentation, and multi-scale analysis
-for IMC data using proper statistical methods for n=2 pilot studies.
+Production-quality implementation of ion count processing, morphology-aware segmentation,
+and multi-scale analysis for IMC data.
 """
 
 # Core ion count processing
@@ -58,7 +58,15 @@ from .multiscale_analysis import (
     perform_multiscale_analysis,
     compute_scale_consistency,
     identify_scale_dependent_features,
-    summarize_multiscale_analysis
+    summarize_multiscale_analysis,
+    compute_adjusted_rand_index,
+    compute_normalized_mutual_info
+)
+
+# Batch correction
+from .batch_correction import (
+    sham_anchored_normalize,
+    detect_batch_effects
 )
 
 # Validation framework
@@ -76,7 +84,7 @@ from .parallel_processing import (
     get_optimal_process_count
 )
 
-# Spatial statistics (descriptive only)
+# Spatial statistics
 from .spatial_stats import (
     compute_spatial_correlation,
     compute_region_difference,
@@ -84,10 +92,24 @@ from .spatial_stats import (
     spatial_bootstrap
 )
 
-# Threshold analysis (alternative approach)
+# Threshold analysis
 from .threshold_analysis import (
     extract_threshold_features,
     compute_spatial_clustering
+)
+
+# Metrics
+from .metrics import (
+    ValidationResult,
+    ClusterValidator,
+    SilhouetteValidator,
+    SpatialCoherenceValidator,
+    ValidationSuite
+)
+
+# Main pipeline orchestrator
+from .main_pipeline import (
+    run_complete_analysis
 )
 
 # Efficient storage system
@@ -107,35 +129,6 @@ except ImportError:
     HybridStorage = None
     CompressedJSONStorage = None
     _storage_available = False
-
-# Legacy components (maintained for backward compatibility)
-# Note: Some legacy components may have broken imports after PFD module removal
-try:
-    from .pipeline import PFDPipeline, run_pfd_analysis
-except ImportError:
-    PFDPipeline = None
-    run_pfd_analysis = None
-
-try:
-    from .roi_main import BatchAnalyzer, ROIAnalyzer
-except ImportError:
-    BatchAnalyzer = None
-    ROIAnalyzer = None
-
-try:
-    from .network import NetworkAnalyzer
-except ImportError:
-    NetworkAnalyzer = None
-
-try:
-    from .metadata_driven import MetadataDrivenAnalyzer
-except ImportError:
-    MetadataDrivenAnalyzer = None
-
-try:
-    from .biological_interpretation import BiologicalInterpreter
-except ImportError:
-    BiologicalInterpreter = None
 
 __all__ = [
     # Core Ion Count Processing
@@ -181,6 +174,13 @@ __all__ = [
     'compute_scale_consistency',
     'identify_scale_dependent_features',
     'summarize_multiscale_analysis',
+    'compute_adjusted_rand_index',
+    'compute_normalized_mutual_info',
+    
+    # Batch Correction
+    'sham_anchored_normalize',
+    'detect_batch_effects',
+    'correct_batch_effects',
     
     # Validation
     'generate_synthetic_imc_data',
@@ -203,8 +203,17 @@ __all__ = [
     'extract_threshold_features',
     'compute_spatial_clustering',
     
-    # Legacy (Backward Compatibility)
-    # Note: These may be None if imports failed
+    # Metrics
+    'compute_ari',
+    'compute_nmi',
+    'compute_silhouette',
+    'compute_calinski_harabasz',
+    'compute_davies_bouldin',
+    
+    # Main Pipeline
+    'run_production_pipeline',
+    'validate_pipeline_inputs',
+    'generate_pipeline_report',
 ]
 
 # Add storage components if available
@@ -216,18 +225,3 @@ if _storage_available:
         'HybridStorage',
         'CompressedJSONStorage'
     ])
-
-# Add legacy components if they were successfully imported
-legacy_components = [
-    ('PFDPipeline', PFDPipeline),
-    ('run_pfd_analysis', run_pfd_analysis),
-    ('BatchAnalyzer', BatchAnalyzer),
-    ('ROIAnalyzer', ROIAnalyzer),
-    ('NetworkAnalyzer', NetworkAnalyzer),
-    ('MetadataDrivenAnalyzer', MetadataDrivenAnalyzer),
-    ('BiologicalInterpreter', BiologicalInterpreter)
-]
-
-for name, component in legacy_components:
-    if component is not None:
-        __all__.append(name)

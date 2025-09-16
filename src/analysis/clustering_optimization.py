@@ -291,7 +291,7 @@ def biological_validation_score(
         Biological validation score (0-1, higher is better)
     """
     if known_coexpression_pairs is None:
-        # Default pairs for kidney injury IMC panel
+        # Default pairs for IMC panel
         known_coexpression_pairs = [
             ('CD31', 'CD34'),      # Endothelial markers
             ('CD45', 'CD11b'),     # Immune markers

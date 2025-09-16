@@ -18,17 +18,17 @@ from dataclasses import dataclass
 class Metadata:
     """Clean metadata access"""
     condition: str = 'Unknown'
-    injury_day: Optional[int] = None
-    tissue_region: str = 'Unknown'
-    mouse_replicate: str = 'Unknown'
+    timepoint: Optional[int] = None
+    region: str = 'Unknown'
+    replicate_id: str = 'Unknown'
     
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization"""
         return {
             'condition': self.condition,
-            'injury_day': self.injury_day,
-            'tissue_region': self.tissue_region,
-            'mouse_replicate': self.mouse_replicate
+            'timepoint': self.timepoint,
+            'region': self.region,
+            'replicate_id': self.replicate_id
         }
     
     @classmethod
@@ -38,17 +38,17 @@ class Metadata:
         data = lookup.get(key, {})
         return cls(
             condition=data.get('condition', 'Unknown'),
-            injury_day=data.get('injury_day'),
-            tissue_region=data.get('tissue_region', 'Unknown'),
-            mouse_replicate=data.get('mouse_replicate', 'Unknown')
+            timepoint=data.get('timepoint'),
+            region=data.get('region', 'Unknown'),
+            replicate_id=data.get('replicate_id', 'Unknown')
         )
     
     @property
     def display_name(self) -> str:
         """Human readable name"""
-        if self.injury_day is not None:
-            return f"D{self.injury_day} {self.tissue_region}"
-        return f"{self.condition} {self.tissue_region}"
+        if self.timepoint is not None:
+            return f"T{self.timepoint} {self.region}"
+        return f"{self.condition} {self.region}"
 
 # --- PLOTTING UTILITIES ---
 

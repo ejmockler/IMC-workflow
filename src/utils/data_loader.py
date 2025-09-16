@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Tuple, List, Optional, Dict, Any
 from dataclasses import dataclass
+from .helpers import Metadata
 
 
 @dataclass
@@ -217,3 +218,182 @@ def normalize_expression(data: IMCData,
 def load_imc_data(roi_file: Path, config_path: str = 'config.json') -> IMCData:
     """Alias for consistency with pipeline.py"""
     return load_roi_as_imc_data(roi_file, config_path)
+
+
+def load_metadata_from_csv(csv_path: Path, 
+                           config: Dict[str, Any],
+                           roi_files: List[Path]) -> Dict[str, Metadata]:
+    """
+    Load and standardize metadata from CSV using config mapping.
+    
+    This is the single source of truth for metadata loading.
+    Maps user's CSV columns to standardized Metadata objects.
+    
+    Args:
+        csv_path: Path to metadata CSV file
+        config: Configuration dictionary with metadata_tracking section
+        roi_files: List of ROI files to match
+        
+    Returns:
+        Dictionary mapping ROI filename to Metadata object
+    """
+    metadata_map = {}
+    
+    if not csv_path.exists():
+        print(f"Warning: Metadata file {csv_path} not found. Using default metadata for all ROIs.")
+        # Return default metadata for all ROIs
+        for roi_file in roi_files:
+            metadata_map[roi_file.stem] = Metadata()
+        return metadata_map
+    
+    # Load CSV with error handling
+    try:
+        df = pd.read_csv(csv_path)
+        if df.empty:
+            raise ValueError("Metadata CSV file is empty")
+    except Exception as e:
+        raise ValueError(f"Failed to load metadata CSV {csv_path}: {str(e)}. "
+                        f"Please check file format and permissions.")
+    
+    # Get column mappings from config
+    tracking = config.get('metadata_tracking', {})
+    replicate_col = tracking.get('replicate_column', 'Replicate')
+    timepoint_col = tracking.get('timepoint_column', 'Timepoint')
+    condition_col = tracking.get('condition_column', 'Condition') 
+    region_col = tracking.get('region_column', 'Region')
+    filename_col = tracking.get('filename_column', 'File Name')
+    
+    # Validate required columns exist
+    available_columns = list(df.columns)
+    required_columns = [filename_col]  # At minimum, need filename to match ROIs
+    optional_columns = [replicate_col, timepoint_col, condition_col, region_col]
+    
+    missing_required = []
+    missing_optional = []
+    
+    def find_column_variant(col_name, available_cols):
+        """Find column with potential spacing variations."""
+        variants = [col_name, col_name + ' ', ' ' + col_name, col_name.strip()]
+        for variant in variants:
+            if variant in available_cols:
+                return variant
+        return None
+    
+    # Check required columns
+    for col in required_columns:
+        if not find_column_variant(col, available_columns):
+            missing_required.append(col)
+    
+    # Check optional columns
+    for col in optional_columns:
+        if not find_column_variant(col, available_columns):
+            missing_optional.append(col)
+    
+    if missing_required:
+        raise ValueError(f"Required columns missing from metadata CSV: {missing_required}. "
+                        f"Available columns: {available_columns}. "
+                        f"Please check your metadata_tracking configuration in config.json.")
+    
+    if missing_optional:
+        print(f"Warning: Optional metadata columns missing: {missing_optional}. "
+              f"These ROIs will use default values. Available columns: {available_columns}")
+    
+    # Update column names to use found variants
+    filename_col = find_column_variant(filename_col, available_columns)
+    replicate_col = find_column_variant(replicate_col, available_columns)
+    timepoint_col = find_column_variant(timepoint_col, available_columns)
+    condition_col = find_column_variant(condition_col, available_columns)
+    region_col = find_column_variant(region_col, available_columns)
+    
+    # Handle potential trailing spaces in column names
+    # Check both with and without trailing space
+    def get_column_value(row, col_name, default='Unknown'):
+        """Get column value handling potential trailing spaces."""
+        if col_name in row:
+            return row[col_name]
+        elif col_name + ' ' in row:
+            return row[col_name + ' ']
+        elif ' ' + col_name in row:
+            return row[' ' + col_name]
+        return default
+    
+    # Process each ROI file with validation
+    unmatched_rois = []
+    validation_warnings = []
+    
+    for roi_file in roi_files:
+        roi_name = roi_file.stem
+        
+        # Try to find matching row in CSV
+        matched = False
+        for _, row in df.iterrows():
+            file_value = get_column_value(row, filename_col, '')
+            if file_value == roi_name:
+                try:
+                    # Get and validate timepoint (should be numeric if present)
+                    timepoint_raw = get_column_value(row, timepoint_col, None)
+                    timepoint = None
+                    if timepoint_raw is not None and timepoint_raw != 'Unknown':
+                        try:
+                            timepoint = int(float(timepoint_raw))  # Handle both int and float strings
+                        except (ValueError, TypeError):
+                            validation_warnings.append(
+                                f"ROI {roi_name}: Invalid timepoint value '{timepoint_raw}', using None"
+                            )
+                            timepoint = None
+                    
+                    # Create metadata with validated data
+                    metadata_map[roi_name] = Metadata(
+                        replicate_id=str(get_column_value(row, replicate_col, 'Unknown')),
+                        timepoint=timepoint,
+                        condition=str(get_column_value(row, condition_col, 'Unknown')),
+                        region=str(get_column_value(row, region_col, 'Unknown'))
+                    )
+                    matched = True
+                    break
+                    
+                except Exception as e:
+                    validation_warnings.append(
+                        f"ROI {roi_name}: Error processing metadata - {str(e)}. Using defaults."
+                    )
+                    metadata_map[roi_name] = Metadata()
+                    matched = True
+                    break
+        
+        # Use default if no match found
+        if not matched:
+            unmatched_rois.append(roi_name)
+            metadata_map[roi_name] = Metadata()
+    
+    # Report warnings and unmatched ROIs
+    if validation_warnings:
+        print(f"Metadata validation warnings:")
+        for warning in validation_warnings[:5]:  # Limit to first 5 warnings
+            print(f"  - {warning}")
+        if len(validation_warnings) > 5:
+            print(f"  ... and {len(validation_warnings) - 5} more warnings")
+    
+    if unmatched_rois:
+        print(f"Warning: {len(unmatched_rois)} ROIs not found in metadata CSV: {unmatched_rois[:3]}...")
+        print(f"These ROIs will use default metadata values.")
+        
+        # Suggest possible filename issues
+        csv_filenames = set(df[filename_col].astype(str))
+        roi_filenames = set(roi_name for roi_name in [f.stem for f in roi_files])
+        
+        if csv_filenames and roi_filenames:
+            # Check for systematic naming differences
+            csv_sample = list(csv_filenames)[0] if csv_filenames else ""
+            roi_sample = list(roi_filenames)[0] if roi_filenames else ""
+            if csv_sample and roi_sample and csv_sample != roi_sample:
+                print(f"Filename format mismatch detected:")
+                print(f"  CSV format example: '{csv_sample}'")
+                print(f"  ROI format example: '{roi_sample}'")
+                print(f"Consider checking filename column mapping in config.json")
+    
+    # Final validation summary
+    total_rois = len(roi_files)
+    matched_rois = total_rois - len(unmatched_rois)
+    print(f"Metadata loading summary: {matched_rois}/{total_rois} ROIs matched successfully")
+    
+    return metadata_map

@@ -17,23 +17,39 @@ class Config:
         self.config_path = Path(config_path)
         self.raw = self._load_config()
         
-        # Data paths
-        self.data_dir = Path(self.raw.get('data_dir', 'data/241218_IMC_Alun'))
-        self.output_dir = Path(self.raw.get('output_dir', 'results'))
+        # Data configuration
+        self.data = self.raw.get('data', {})
+        self.data_dir = Path(self.data.get('raw_data_dir', 'data/241218_IMC_Alun'))
         
-        # Protein configuration
-        self.proteins = self.raw.get('proteins', [])
-        self.functional_groups = self.raw.get('proteins', {}).get('functional_groups', {})
+        # Channel configuration - CRITICAL FOR PROPER ANALYSIS
+        self.channels = self.raw.get('channels', {})
+        self.channel_groups = self.raw.get('channel_groups', {})
+        
+        # Processing configuration
+        self.processing = self.raw.get('processing', {})
+        
+        # Segmentation configuration  
+        self.segmentation = self.raw.get('segmentation', {})
         
         # Analysis parameters
-        self.contact_radius = self.raw.get('contact_radius', 15.0)
-        self.min_blob_size = self.raw.get('min_blob_size', 50)
-        self.spatial_distances = self.raw.get('spatial_distances', [5, 10, 25, 50])
-        self.max_pixels = self.raw.get('max_pixels', 100000)
+        self.analysis = self.raw.get('analysis', {})
         
-        # Experimental configuration
+        # Quality control
+        self.quality_control = self.raw.get('quality_control', {})
+        
+        # Output configuration
+        self.output = self.raw.get('output', {})
+        self.output_dir = Path(self.output.get('results_dir', 'results'))
+        
+        # Performance settings
+        self.performance = self.raw.get('performance', {})
+        
+        # Metadata tracking
+        self.metadata_tracking = self.raw.get('metadata_tracking', {})
+        
+        # Legacy support (for backwards compatibility)
+        self.proteins = self.channels.get('protein_channels', [])
         self.experimental = self.raw.get('experimental', {})
-        self.metadata_lookup = self.raw.get('metadata_lookup', {})
         
         # Ensure output directory exists
         self.output_dir.mkdir(exist_ok=True, parents=True)

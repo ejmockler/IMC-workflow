@@ -145,7 +145,7 @@ def generate_spatial_coordinates(
         coords = np.vstack(coords)
     
     elif structure == 'gradient':
-        # Create spatial gradient (e.g., cortex to medulla)
+        # Create spatial gradient (e.g., region A to region B)
         coords = np.random.uniform(
             low=[0, 0],
             high=[width_um, height_um],
@@ -184,7 +184,7 @@ def assign_cell_types(
     
     elif spatial_structure == 'gradient':
         # Cell types vary with spatial gradient
-        # Use x-coordinate to define gradient (e.g., cortex to medulla)
+        # Use x-coordinate to define gradient (e.g., region A to region B)
         x_positions = coords[:, 0]
         x_normalized = (x_positions - x_positions.min()) / (x_positions.max() - x_positions.min())
         

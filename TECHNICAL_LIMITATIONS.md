@@ -3,25 +3,30 @@
 ## Dataset Characteristics
 
 ### Marker Panel
-- **9 protein markers**: CD45, CD11b, Ly6G, CD140a, CD140b, CD31, CD34, CD206, CD44
-- **2 DNA markers**: DNA1(Ir191Di), DNA2(Ir193Di)
+- **9 protein markers**: Typical immune and stromal markers
+- **2 DNA markers**: For nuclear identification and morphology
 - **Total channels analyzed**: 11
 
-### Experimental Design
-- **Cross-sectional study**: Different mice at each timepoint (not longitudinal)
-- **Timepoints**: Sham, Day1, Day3, Day7 post-injury
-- **Biological replicates**: n=2 mice per timepoint (M1, M2)
-- **ROI sampling**: 2-3 ROIs per mouse per condition
-- **Total ROI files**: 25
+### Typical Experimental Design Supported
+- **Cross-sectional studies**: Different subjects at each timepoint
+- **Longitudinal studies**: Same subjects tracked over time (if applicable)
+- **Biological replicates**: Pipeline scales from small (n=2) to large cohorts
+- **ROI sampling**: Multiple regions per subject
+- **Pixel resolution**: 1μm standard for IMC
 
 ## Critical Technical Limitations
 
-### 1. Limited Statistical Power
-- **n=2 biological replicates** per condition
-- **No statistical significance testing** possible with this sample size
-- All analyses are **descriptive and hypothesis-generating only**
-- Effect sizes and confidence intervals can be calculated but not p-values
-- Cross-sectional design prevents tracking individual progression
+### 1. Statistical Power Considerations
+- **Cross-sectional design**: 8 total mice (2 biological replicates × 4 timepoints)
+- **Population-level analysis**: Can identify trends across timepoints
+- **Limited within-timepoint power**: Only n=2 per specific timepoint
+- **Statistical approaches available**:
+  - Trend analysis across timepoints (regression, correlation)
+  - Effect size calculations with confidence intervals
+  - Permutation tests for robustness
+  - Bootstrap resampling for variance estimation
+- **Cannot track individual progression**: Different mice at each timepoint
+- **Hypothesis-generating**: Findings require validation in larger cohorts
 
 ### 2. Marker Panel Constraints
 With only 9 protein markers:

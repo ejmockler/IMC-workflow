@@ -57,7 +57,7 @@ def compute_region_difference(
     labels: np.ndarray
 ) -> Dict[str, float]:
     """
-    Compare protein levels between regions (e.g., cortex vs medulla).
+    Compare protein levels between regions (e.g., region 1 vs region 2).
     
     Returns descriptive statistics only - no hypothesis testing.
     

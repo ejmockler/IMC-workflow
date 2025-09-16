@@ -4,12 +4,12 @@
 
 Production-quality analysis framework for Imaging Mass Cytometry (IMC) data, implementing proper ion count statistics, multi-scale analysis, and comprehensive validation. Addresses all technical critiques through scientific rigor and engineering best practices.
 
-## Dataset Characteristics
+## Supported Data Types
 
-- **9 protein markers**: CD45, CD11b, Ly6G, CD140a, CD140b, CD31, CD34, CD206, CD44
-- **2 DNA markers**: DNA1(Ir191Di), DNA2(Ir193Di)  
-- **Experimental design**: Cross-sectional study, n=2 biological replicates per timepoint
-- **25 ROI files**: Multiple regions per condition
+- **Protein markers**: Any IMC panel (typically 20-50 markers)
+- **DNA markers**: For nuclear identification and morphology
+- **Study designs**: Cross-sectional, longitudinal, or case-control
+- **Scale**: From small pilot studies to large cohorts
 
 ## Key Features
 
@@ -46,15 +46,11 @@ Production-quality analysis framework for Imaging Mass Cytometry (IMC) data, imp
 
 ## Technical Limitations (See TECHNICAL_LIMITATIONS.md)
 
-### Statistical Constraints
-- **n=2 biological replicates** - no significance testing possible
-- **Cross-sectional design** - cannot track individual progression
-- **Descriptive analysis only** - all findings are hypothesis-generating
-
-### Marker Panel Constraints
-- **9 proteins insufficient** for comprehensive cell type identification
-- **No membrane markers** - cannot perform true single-cell segmentation
-- **Analysis limited to marker expression patterns**, not validated cell types
+### Common Constraints in IMC Studies
+- **Limited marker panels** - Cell type identification depends on panel comprehensiveness
+- **No membrane markers** - Prevents true single-cell segmentation in some datasets
+- **Pixel-level analysis** - Not equivalent to single-cell resolution
+- **Statistical power** - Depends on study design and sample size
 
 ### Spatial Resolution
 - **1μm pixel resolution** with ~4μm tissue thickness
@@ -100,11 +96,13 @@ All parameters are in `config.json`:
 
 ## Architecture
 
-### Core Pipeline
+### Core Pipeline (Analysis-Only Focus)
 ```
 Ion Count Data → Arcsinh Transform → Feature Standardization → 
 Clustering Optimization → Multi-Scale Analysis → Validation → Storage
 ```
+
+**Visualization is handled separately in Jupyter notebooks** - see `VISUALIZATION_GUIDE.md`
 
 ### Key Components
 
@@ -115,6 +113,7 @@ Clustering Optimization → Multi-Scale Analysis → Validation → Storage
 - `multiscale_analysis.py` - Multi-scale spatial analysis
 - `slic_segmentation.py` - Morphology-aware tissue segmentation
 - `validation.py` - Enhanced validation with realistic noise models
+- `batch_correction.py` - Quantile normalization for batch effects
 
 #### Storage & Processing (`src/analysis/`)
 - `efficient_storage.py` - HDF5/Parquet scalable storage
@@ -127,6 +126,10 @@ Clustering Optimization → Multi-Scale Analysis → Validation → Storage
 - `threshold_analysis.py` - Alternative analysis approaches
 - `metrics.py` - Performance and validation metrics
 
+#### Visualization Utilities (`src/viz_utils/`)
+- `plotting.py` - Lightweight, stateless plotting functions
+- `loaders.py` - Data loading helpers for notebooks
+
 ## Output Structure
 
 ```
@@ -137,13 +140,13 @@ results/production_analysis/
 └── plots/               # Visualization outputs
 ```
 
-## Validation Requirements
+## Validation Best Practices
 
-**This system requires external validation for any biological claims:**
-1. **Orthogonal methods**: Flow cytometry, bulk RNA-seq, qPCR
-2. **Independent cohorts**: Replication in larger studies (n≥5 per group)  
-3. **Functional validation**: Perturbation experiments, histology
-4. **Expert review**: Pathologist validation of tissue patterns
+**For robust biological conclusions:**
+1. **Orthogonal methods**: Validate findings with complementary techniques (Flow cytometry, IHC, RNA-seq)
+2. **Adequate sample size**: Power analysis to determine appropriate n
+3. **Technical replication**: Multiple ROIs per sample
+4. **Biological replication**: Multiple subjects per condition
 
 ## Key Improvements Over Previous Systems
 
@@ -162,12 +165,19 @@ results/production_analysis/
 - `run_parallel_analysis.py` - Parallel processing wrapper
 
 ### Configuration  
-- `config.json` - All analysis parameters
-- `config_optimized.json` - Production-optimized settings
+- `config.json` - All analysis parameters (single configuration file)
 
 ### Documentation
+- `ARCHITECTURE.md` - Clean module structure and data flow
 - `TECHNICAL_LIMITATIONS.md` - Detailed technical constraints
+- `VISUALIZATION_GUIDE.md` - Guide for creating visualizations in notebooks
+- `PROJECT_SUMMARY.md` - Honest assessment of capabilities
+- `PUBLICATION_STRATEGY.md` - Path to publication as methods paper
 - `CLAUDE.md` - Development guidelines
+
+### Notebooks
+- `notebooks/templates/` - Starter notebooks for common analyses
+- `notebooks/examples/` - Example analyses for specific experiments
 
 ## Contributing
 
@@ -179,8 +189,7 @@ See `CLAUDE.md` for development guidelines. Key principles:
 
 ## Citation
 
-If you use this pipeline, please acknowledge:
-- The n=2 limitation requiring external validation
-- The cross-sectional design preventing temporal inference  
-- The marker panel constraints limiting cell type resolution
-- The hypothesis-generating (not confirmatory) nature of all findings
+If you use this pipeline, please cite:
+- The multi-scale analysis approach for IMC data
+- The SLIC-based morphology-aware segmentation method
+- Appropriate statistical considerations for your study design

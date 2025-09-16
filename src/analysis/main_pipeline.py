@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Dict, List, Tuple, Optional
 import warnings
 
 from .ion_count_processing import ion_count_pipeline
@@ -19,7 +19,6 @@ from .validation import run_validation_experiment, summarize_validation_results
 from .parallel_processing import create_roi_batch_processor
 from .config_management import IMCAnalysisConfig, ConfigurationManager
 from .efficient_storage import create_storage_backend
-from ..config import Config
 
 
 class IMCAnalysisPipeline:
@@ -34,47 +33,19 @@ class IMCAnalysisPipeline:
     - Simple parallelization for ROI-level processing
     """
     
-    def __init__(self, config: Union[Config, IMCAnalysisConfig]):
-        if isinstance(config, IMCAnalysisConfig):
-            self.analysis_config = config
-            self.legacy_config = None
-        else:
-            self.legacy_config = config
-            # Create analysis config from legacy config for backward compatibility
-            self.analysis_config = self._convert_legacy_config(config)
-        
+    def __init__(self, config: IMCAnalysisConfig):
+        """Initialize IMC analysis pipeline with clean configuration."""
+        self.analysis_config = config
         self.results = {}
         self.validation_results = {}
-    
-    def _convert_legacy_config(self, legacy_config: Config) -> IMCAnalysisConfig:
-        """Convert legacy Config to new IMCAnalysisConfig."""
-        analysis_config = IMCAnalysisConfig()
         
-        # Try to extract relevant parameters from legacy config
-        if hasattr(legacy_config, 'raw'):
-            raw_config = legacy_config.raw
-            
-            # Memory settings
-            if 'performance' in raw_config:
-                perf = raw_config['performance']
-                analysis_config.memory.memory_limit_gb = perf.get('memory_limit_gb', 4.0)
-                analysis_config.parallel.n_processes = perf.get('parallel_processes', None)
-            
-            # Storage settings
-            if 'output' in raw_config:
-                output = raw_config['output']
-                analysis_config.storage.results_dir = output.get('results_dir', 'results')
-                analysis_config.storage.format = 'hdf5' if output.get('data_format') == 'json' else 'json'
-        
-        analysis_config.description = "Converted from legacy configuration"
-        return analysis_config
-        
-    def load_roi_data(self, roi_file_path: str) -> Dict:
+    def load_roi_data(self, roi_file_path: str, protein_names: List[str]) -> Dict:
         """
         Load single ROI data from IMC text file.
         
         Args:
             roi_file_path: Path to ROI data file
+            protein_names: List of protein markers to extract
             
         Returns:
             Dictionary with coordinates and protein data
@@ -87,7 +58,6 @@ class IMCAnalysisPipeline:
             coords = df[['X', 'Y']].values
             
             # Extract protein channels
-            protein_names = self.config.proteins.immune_activation_panel
             ion_counts = {}
             
             for protein_name in protein_names:
@@ -172,18 +142,22 @@ class IMCAnalysisPipeline:
     def run_batch_analysis(
         self, 
         roi_file_paths: List[str],
+        protein_names: List[str],
         output_dir: str,
         n_processes: Optional[int] = None,
-        scales_um: List[float] = [10.0, 20.0, 40.0]
+        scales_um: List[float] = [10.0, 20.0, 40.0],
+        analysis_params: Optional[Dict] = None
     ) -> Tuple[Dict, List[str]]:
         """
         Run analysis on multiple ROIs in parallel.
         
         Args:
             roi_file_paths: List of ROI file paths
+            protein_names: List of protein markers to analyze
             output_dir: Output directory for results
             n_processes: Number of parallel processes
             scales_um: Spatial scales to analyze
+            analysis_params: Optional analysis parameters (n_clusters, use_slic, etc.)
             
         Returns:
             Tuple of (results_dict, error_messages)
@@ -194,7 +168,7 @@ class IMCAnalysisPipeline:
         for roi_path in roi_file_paths:
             try:
                 roi_id = Path(roi_path).stem
-                roi_data = self.load_roi_data(roi_path)
+                roi_data = self.load_roi_data(roi_path, protein_names)
                 roi_data_dict[roi_id] = roi_data
             except Exception as e:
                 warnings.warn(f"Failed to load ROI {roi_path}: {str(e)}")
@@ -217,17 +191,22 @@ class IMCAnalysisPipeline:
             storage_backend=storage_backend
         )
         
-        # Analysis parameters
-        analysis_params = {
+        # Analysis parameters with defaults
+        if analysis_params is None:
+            analysis_params = {}
+        
+        # Set defaults for missing parameters
+        final_analysis_params = {
             'scales_um': scales_um,
             'use_slic': True,
-            'n_clusters': 8
+            'n_clusters': 8,
+            **analysis_params  # Override defaults with provided params
         }
         
         # Run batch analysis
         results, errors = batch_processor(
             roi_data_dict=roi_data_dict,
-            analysis_params=analysis_params,
+            analysis_params=final_analysis_params,
             show_progress=True
         )
         

@@ -1,196 +1,139 @@
 {
-  "analysis": {
-    "max_pixels_per_roi": 5000,
-    "correlation_threshold": 0.5,
-    "min_observations_per_pair": 3,
-    "fold_change_threshold": 1.5,
-    "validation": {
-      "enabled": true,
-      "validators": [
-        "consistency",
-        "spatial_coherence"
-      ],
-      "consistency_runs": 2,
-      "quality_threshold": 0.7,
-      "report_format": "summary"
-    }
-  },
-  "network_analysis": {
-    "colocalization_threshold": 0.25,
-    "hub_centrality_threshold": 0.1,
-    "max_nodes_per_plot": 15,
-    "edge_weight_scaling": 4.0,
-    "node_size_scaling": 1000,
-    "layout_algorithm": "spring",
-    "community_detection": "greedy_modularity"
-  },
-  "ion_count_processing": {
-    "bin_sizes_um": [10.0, 20.0, 40.0],
-    "n_clusters": 8,
-    "arcsinh_cofactor": 1.0,
-    "use_slic_segmentation": true,
-    "slic_params": {
-      "target_bin_size_um": 20.0,
-      "resolution_um": 1.0,
-      "sigma_um": 2.0,
-      "compactness": 10.0
-    },
-    "clustering_params": {
-      "random_state": 42,
-      "n_init": 10
-    }
-  },
-  "multiscale_analysis": {
-    "scales_um": [10.0, 20.0, 40.0],
-    "consistency_metrics": ["ari", "nmi", "cluster_stability"],
-    "scale_dependent_analysis": true
-  },
-  "validation": {
-    "enabled": true,
-    "n_experiments": 10,
-    "synthetic_data_params": {
-      "n_cells": 1000,
-      "n_clusters": 5,
-      "spatial_structure": "clustered"
-    }
-  },
-  "metadata": {
-    "path": "data/241218_IMC_Alun/Metadata-Table 1.csv",
-    "design_columns": ["Injury Day", "Details"],
-    "replicate_column": "Mouse",
-    "roi_path_pattern": "data/241218_IMC_Alun/{File Name}.txt"
-  },
-  "visualization": {
-    "figure_size": [
-      32,
-      14
-    ],
-    "grid_layout": [
-      2,
-      4
-    ],
-    "color_palette": "viridis",
-    "font_size": 8,
-    "save_format": "png",
-    "dpi": 300,
-    "extended_plots": true,
-    "replicate_aware": true,
-    "top_interactions_count": 8,
-    "replicate_interactions_count": 12
-  },
-  "proteins": {
-    "immune_activation_panel": [
-      "CD45",
-      "CD11b",
-      "CD206",
-      "CD44",
-      "CD140b",
-      "CD31",
-      "CD34"
-    ],
-    "channels": [
-      "CD45(Y89Di)",
-      "CD11b(Nd143Di)",
-      "CD206(Tm169Di)",
-      "CD44(Yb171Di)",
-      "CD140b(Eu151Di)",
-      "CD31(Sm154Di)",
-      "CD34(Er166Di)"
-    ],
-    "functional_groups": {
-      "kidney_inflammation": [
-        "CD45",
-        "CD11b",
-        "Ly6G"
-      ],
-      "kidney_repair": [
-        "CD206",
-        "CD44"
-      ],
-      "kidney_vasculature": [
-        "CD31",
-        "CD34",
-        "CD140a",
-        "CD140b"
-      ],
-      "structural_controls": [
-        "DNA1",
-        "DNA2"
-      ]
-    },
-    "annotations": {
-      "CD45": "Pan-leukocyte marker - tracks immune infiltration into injured kidney",
-      "CD11b": "Myeloid cells - neutrophils/macrophages mediating kidney inflammation",
-      "CD206": "M2 macrophages - tissue repair and injury resolution in kidney",
-      "Ly6G": "Neutrophils - early inflammatory responders in acute kidney injury",
-      "CD31": "Endothelial cells - kidney vascular integrity and repair",
-      "CD34": "Progenitor cells - regenerative potential in kidney recovery",
-      "CD140a": "PDGFRA+ mesenchymal cells - kidney interstitial remodeling",
-      "CD140b": "Pericytes - kidney vascular stability and repair",
-      "CD44": "ECM receptor - matrix remodeling during kidney healing"
-    },
-    "background_channels": [
-      "80ArAr(ArAr80Di)",
-      "190BCKG(BCKG190Di)"
-    ],
-    "control_channels": [
-      "130Ba(Ba130Di)",
-      "131Xe(Xe131Di)"
-    ],
-    "dna_channels": [
-      "DNA1(Ir191Di)",
-      "DNA2(Ir193Di)"
-    ]
-  },
-  "experimental": {
-    "timepoints": [
-      0,
-      1,
-      3,
-      7
-    ],
-    "timepoint_labels": [
-      "Sham",
-      "Day1",
-      "Day3",
-      "Day7"
-    ],
-    "regions": [
-      "Cortex",
-      "Medulla"
-    ],
-    "replicates": [
-      "MS1",
-      "MS2"
-    ],
+  "project_name": "imc_analysis",
+  "project_id": "kidney_healing_2024",
+  "project_version": "1.0",
+  "data": {
+    "raw_data_dir": "data/241218_IMC_Alun",
     "metadata_file": "data/241218_IMC_Alun/Metadata-Table 1.csv",
-    "filename_patterns": [
-      {
-        "pattern": "ROI_(?P<condition>\\w+\\d*)_(?P<replicate>\\w+)_(?P<roi>\\d+)_(?P<id>\\d+)",
-        "priority": 1
+    "file_pattern": "*.txt"
+  },
+  "channels": {
+    "protein_channels": [
+      "CD45", "CD11b", "Ly6G", "CD140a", "CD140b", 
+      "CD31", "CD34", "CD206", "CD44"
+    ],
+    "dna_channels": ["DNA1", "DNA2"],
+    "background_channel": "190BCKG",
+    "calibration_channels": ["130Ba", "131Xe"],
+    "carrier_gas_channel": "80ArAr",
+    "excluded_channels": [
+      "Start_push", "End_push", "Pushes_duration", "Z"
+    ],
+    "coordinate_channels": ["X", "Y"]
+  },
+  "channel_groups": {
+    "immune_markers": {
+      "pan_leukocyte": ["CD45"],
+      "myeloid": ["CD11b", "Ly6G", "CD206"]
+    },
+    "stromal_markers": {
+      "fibroblasts": ["CD140a", "CD140b"]
+    },
+    "vascular_markers": {
+      "endothelial": ["CD31", "CD34"]
+    },
+    "adhesion_markers": ["CD44"]
+  },
+  "processing": {
+    "background_correction": {
+      "enabled": true,
+      "method": "pixel_subtraction",
+      "clip_negative": true
+    },
+    "arcsinh_transform": {
+      "cofactor": 1.0,
+      "auto_optimize": false
+    },
+    "normalization": {
+      "method": "standardize",
+      "per_channel": true
+    }
+  },
+  "segmentation": {
+    "method": "slic",
+    "slic_input_channels": ["DNA1", "DNA2"],
+    "slic_params": {
+      "n_segments_per_mm2": 2500,
+      "compactness": 10.0,
+      "sigma": 2.0
+    },
+    "scales_um": [10.0, 20.0, 40.0]
+  },
+  "analysis": {
+    "analyze_regions_separately": true,
+    "anatomical_regions": ["Cortex", "Medulla"],
+    "clustering": {
+      "n_clusters": 8,
+      "optimization_method": "comprehensive",
+      "k_range": [2, 12],
+      "random_state": 42
+    },
+    "batch_correction": {
+      "enabled": true,
+      "method": "sham_anchored",
+      "sham_condition": "Sham",
+      "sham_timepoint": 0,
+      "group_by": ["timepoint", "replicate_id"]
+    }
+  },
+  "quality_control": {
+    "monitor_calibration": true,
+    "calibration_cv_threshold": 0.2,
+    "monitor_carrier_gas": true,
+    "min_carrier_gas_signal": 100,
+    "generate_qc_plots": true,
+    "thresholds": {
+      "total_ion_counts": {
+        "min_tic_percentile": 10,
+        "max_low_tic_pixels_percent": 20,
+        "description": "TIC monitoring - flags ROIs with acquisition issues"
+      },
+      "calibration_drift": {
+        "max_drift_percent": 5,
+        "max_cv_across_rois": 0.3,
+        "description": "Calibration stability across entire acquisition run"
+      },
+      "segmentation_quality": {
+        "min_dna_signal": 1.0,
+        "min_tissue_coverage_percent": 10,
+        "dna_threshold_std_multiplier": 2.0,
+        "description": "DNA signal quality for SLIC segmentation feasibility"
+      },
+      "signal_to_background": {
+        "min_snr": 3.0,
+        "description": "Minimum signal-to-background ratio for protein channels"
+      },
+      "spatial_artifacts": {
+        "edge_distance_fraction": 0.1,
+        "significance_threshold": 0.01,
+        "fold_change_threshold": 2.0,
+        "description": "Detection of edge effects and spatial artifacts"
       }
-    ]
+    }
   },
   "output": {
-    "results_dir": "results/production_analysis",
-    "plots_dir": "plots/production_analysis",
+    "results_dir": "results/analysis",
     "roi_results_dir": "roi_results",
-    "validation_dir": "validation",
-    "summary_file": "analysis_summary.json",
-    "data_format": "json",
-    "generate_plots": true,
-    "save_compression": true
+    "qc_dir": "quality_control",
+    "save_intermediate": false,
+    "save_format": "hdf5",
+    "compression": true
   },
   "performance": {
-    "batch_mode": true,
-    "parallel_processes": 8,
-    "memory_limit_gb": 4,
-    "enable_caching": true
+    "parallel_processes": null,
+    "memory_limit_gb": 4.0,
+    "chunk_size": "auto"
   },
-  "network_visualization": {
-    "edge_label_min_weight": 0.2,
-    "max_edge_labels": 8,
-    "min_edge_weight_to_draw": 0.1,
-    "repulsion_scale": 3.5
-  },
+  "metadata_tracking": {
+    "preserve_fields": [
+      "Condition", "Injury Day", "Mouse", 
+      "ROI", "Details", "File Name"
+    ],
+    "batch_definition": ["Timepoint", "Replicate"],
+    "stratification_fields": ["Details"],
+    "replicate_column": "Mouse",
+    "timepoint_column": "Injury Day",
+    "condition_column": "Condition",
+    "region_column": "Details"
+  }
 }
