@@ -29,8 +29,7 @@ class TestDNAComposite:
         
         composite, bounds = prepare_dna_composite(
             coords, dna1, dna2,
-            resolution_um=1.0,
-            sigma_um=2.0
+            resolution_um=1.0
         )
         
         assert composite.ndim == 2
@@ -240,7 +239,6 @@ class TestSLICPipeline:
             coords, ion_counts, dna1, dna2,
             target_bin_size_um=20.0,
             resolution_um=2.0,
-            sigma_um=3.0,
             compactness=10.0
         )
         

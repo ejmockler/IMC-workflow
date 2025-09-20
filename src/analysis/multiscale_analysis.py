@@ -6,10 +6,13 @@ Implements 10μm, 20μm, and 40μm scale analysis with consistency metrics.
 """
 
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, TYPE_CHECKING
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from .ion_count_processing import ion_count_pipeline
 from .slic_segmentation import slic_pipeline
+
+if TYPE_CHECKING:
+    from ..config import Config
 
 
 def perform_multiscale_analysis(
@@ -20,7 +23,8 @@ def perform_multiscale_analysis(
     scales_um: List[float] = [10.0, 20.0, 40.0],
     n_clusters: int = 8,
     use_slic: bool = True,
-    memory_limit_gb: float = 12.0
+    memory_limit_gb: float = 12.0,
+    config: Optional['Config'] = None
 ) -> Dict[float, Dict]:
     """
     Perform analysis at multiple spatial scales.
@@ -44,20 +48,55 @@ def perform_multiscale_analysis(
             # Use SLIC-based morphology-aware analysis
             scale_result = slic_pipeline(
                 coords, ion_counts, dna1_intensities, dna2_intensities,
-                target_bin_size_um=scale_um
+                target_bin_size_um=scale_um, config=config
             )
             
-            # Apply ion count processing to tissue compartment-aggregated data
+            # Apply clustering directly to superpixel-aggregated data
             if scale_result['superpixel_counts']:
-                ion_result = ion_count_pipeline(
-                    scale_result['superpixel_coords'],
+                # Skip re-binning - work directly with superpixel data
+                from .ion_count_processing import apply_arcsinh_transform, standardize_features
+                from .ion_count_processing import create_feature_matrix, perform_clustering
+                from .ion_count_processing import compute_cluster_centroids
+                
+                # Step 1: Transform superpixel data directly 
+                transformed_arrays, cofactors_used = apply_arcsinh_transform(
                     scale_result['superpixel_counts'],
-                    bin_size_um=scale_um,  # This won't be used since data is pre-aggregated
-                    n_clusters=n_clusters
+                    optimization_method="percentile", 
+                    percentile_threshold=5.0
                 )
                 
-                # Merge results
-                scale_result.update(ion_result)
+                # Step 2: Create mask (all superpixels are valid)
+                first_protein = next(iter(transformed_arrays.keys()))
+                n_superpixels = len(transformed_arrays[first_protein])
+                mask = np.ones(n_superpixels, dtype=bool)  # All superpixels valid
+                
+                # Step 3: Standardize
+                standardized_arrays, scalers = standardize_features(transformed_arrays, mask)
+                
+                # Step 4: Create feature matrix  
+                feature_matrix, protein_names, valid_indices = create_feature_matrix(standardized_arrays, mask)
+                
+                # Step 5: Cluster
+                cluster_labels, kmeans_model, optimization_results = perform_clustering(
+                    feature_matrix, protein_names, n_clusters=n_clusters, random_state=42
+                )
+                
+                # Step 6: Compute centroids
+                cluster_centroids = compute_cluster_centroids(feature_matrix, cluster_labels, protein_names)
+                
+                # Update scale_result with clustering results
+                scale_result.update({
+                    'transformed_arrays': transformed_arrays,
+                    'cofactors_used': cofactors_used,
+                    'standardized_arrays': standardized_arrays,
+                    'scalers': scalers,
+                    'feature_matrix': feature_matrix,
+                    'protein_names': protein_names,
+                    'cluster_labels': cluster_labels,
+                    'kmeans_model': kmeans_model,
+                    'cluster_centroids': cluster_centroids,
+                    'optimization_results': optimization_results
+                })
         
         else:
             # Use square binning approach

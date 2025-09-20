@@ -13,59 +13,9 @@ from typing import Dict, List, Optional, Tuple, Union
 import seaborn as sns
 from skimage.segmentation import mark_boundaries
 import warnings
+import logging
+from ..analysis.spatial_utils import prepare_spatial_arrays_for_plotting, validate_plot_data
 
-
-def validate_plot_data(data: np.ndarray, data_name: str = "data") -> np.ndarray:
-    """
-    Validate and clean plotting data to prevent NaN/Inf visualization issues.
-    
-    Args:
-        data: Input data array
-        data_name: Name for error reporting
-        
-    Returns:
-        Cleaned data array
-        
-    Raises:
-        ValueError: If data is invalid after cleaning
-    """
-    if data is None:
-        raise ValueError(f"{data_name} cannot be None")
-        
-    data = np.asarray(data)
-    
-    if data.size == 0:
-        raise ValueError(f"{data_name} cannot be empty")
-    
-    # Check for NaN/Inf values
-    n_nan = np.sum(np.isnan(data))
-    n_inf = np.sum(np.isinf(data))
-    
-    if n_nan > 0 or n_inf > 0:
-        warnings.warn(
-            f"{data_name} contains {n_nan} NaN and {n_inf} Inf values. "
-            f"These will be filtered out, which may indicate upstream data corruption."
-        )
-        
-        # Replace NaN/Inf with finite values or filter them out
-        if data.ndim > 1:
-            # For 2D+ arrays, replace with median
-            finite_mask = np.isfinite(data)
-            if np.any(finite_mask):
-                median_val = np.median(data[finite_mask])
-                data = np.where(np.isfinite(data), data, median_val)
-            else:
-                # All values are invalid
-                raise ValueError(f"{data_name} contains only NaN/Inf values")
-        else:
-            # For 1D arrays, filter out invalid values
-            finite_mask = np.isfinite(data)
-            if np.any(finite_mask):
-                data = data[finite_mask]
-            else:
-                raise ValueError(f"{data_name} contains only NaN/Inf values")
-    
-    return data
 
 
 def validate_coordinate_data(coords: np.ndarray, values: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -151,70 +101,7 @@ def plot_roi_overview(
     return fig if return_fig else ax
 
 
-def plot_spatial_heatmap(
-    coords: np.ndarray,
-    values: np.ndarray,
-    bin_size: float = 20.0,
-    title: str = "Spatial Heatmap",
-    cmap: str = "hot",
-    figsize: Tuple[int, int] = (10, 8),
-    ax: Optional[plt.Axes] = None
-) -> Union[plt.Figure, plt.Axes]:
-    """
-    Create a binned heatmap of spatial data.
-    
-    Args:
-        coords: (N, 2) array of coordinates
-        values: (N,) array of values
-        bin_size: Size of spatial bins in micrometers
-        title: Plot title
-        cmap: Colormap
-        figsize: Figure size
-        ax: Existing axes
-        
-    Returns:
-        Figure or Axes object
-    """
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-        return_fig = True
-    else:
-        return_fig = False
-    
-    # Create bins
-    x_edges = np.arange(coords[:, 0].min(), coords[:, 0].max() + bin_size, bin_size)
-    y_edges = np.arange(coords[:, 1].min(), coords[:, 1].max() + bin_size, bin_size)
-    
-    # Compute 2D histogram
-    H, xedges, yedges = np.histogram2d(
-        coords[:, 0], coords[:, 1], 
-        bins=[x_edges, y_edges],
-        weights=values
-    )
-    
-    # Count pixels per bin for averaging
-    counts, _, _ = np.histogram2d(
-        coords[:, 0], coords[:, 1],
-        bins=[x_edges, y_edges]
-    )
-    
-    # Average values per bin
-    H = np.divide(H, counts, where=counts > 0)
-    
-    # Plot
-    im = ax.imshow(
-        H.T, origin='lower', cmap=cmap,
-        extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
-        aspect='equal'
-    )
-    
-    ax.set_title(title)
-    ax.set_xlabel("X (μm)")
-    ax.set_ylabel("Y (μm)")
-    
-    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    
-    return fig if return_fig else ax
+# Legacy square binning visualization removed - now using SLIC superpixel visualization
 
 
 def plot_protein_expression(
@@ -465,59 +352,258 @@ def plot_correlation_heatmap(
     return fig if return_fig else ax
 
 
+
 def plot_segmentation_overlay(
     image: np.ndarray,
     labels: np.ndarray,
     bounds: Tuple[float, float, float, float],
-    title: str = "Segmentation Overlay",
-    figsize: Tuple[int, int] = (8, 8),
+    transformed_arrays: Dict[str, np.ndarray],
+    cofactors_used: Dict[str, float],
+    config: 'Config',
+    superpixel_coords: Optional[np.ndarray] = None,
+    title: str = "Multi-Channel Validation",
     ax: Optional[plt.Axes] = None
-) -> Union[plt.Figure, plt.Axes]:
+) -> plt.Figure:
     """
-    Overlays segmentation boundaries on an image for visual validation.
+    Create comprehensive multi-channel validation plot showing all protein markers.
     
-    Critical for assessing whether superpixels align with biological structures.
-    Low inter-scale ARI is EXPECTED - different scales capture different biology.
+    Displays DNA composite, key biological channels, and segmentation overlay
+    with arcsinh coefficients and proper biological grouping from config.
     
     Args:
-        image: The 2D image to display (e.g., DNA channel)
+        image: The 2D DNA composite image (DNA1+DNA2)
         labels: The 2D integer array of segmentation labels
         bounds: Tuple of (x_min, x_max, y_min, y_max) for axis scaling
-        title: Plot title
-        figsize: Figure size if creating a new figure
-        ax: Existing axes to plot on
+        transformed_arrays: Dictionary of protein_name -> transformed values (1D superpixel data)
+        cofactors_used: Dictionary of protein_name -> arcsinh coefficient
+        config: Configuration object containing channel groups and visualization settings
+        superpixel_coords: Optional superpixel coordinates for spatial mapping
+        title: Main figure title
+        ax: Ignored (creates custom multi-subplot layout)
         
     Returns:
-        Figure or Axes object
+        Figure object with config-driven biological validation layout
     """
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-        return_fig = True
-    else:
-        return_fig = False
+    # Validate inputs
+    image = validate_plot_data(image, "DNA composite image")
     
-    # Normalize image for display if needed
-    if image.size > 0:
-        img_normalized = (image - np.min(image)) / (np.max(image) - np.min(image) + 1e-10)
-    else:
-        img_normalized = image
+    # Convert to spatial arrays using smart detection and validation
+    logger = logging.getLogger('Visualization')
+    try:
+        spatial_protein_arrays = prepare_spatial_arrays_for_plotting(
+            transformed_arrays=transformed_arrays,
+            superpixel_labels=labels,
+            superpixel_coords=superpixel_coords,
+            bounds=bounds
+        )
+        logger.debug(f"Successfully prepared {len(spatial_protein_arrays)} spatial arrays for plotting")
+    except Exception as e:
+        logger.error(f"Failed to prepare spatial arrays: {e}")
+        raise ValueError(f"Cannot prepare spatial arrays for plotting: {e}")
     
-    # Create the boundary image using yellow lines for visibility
-    overlay_img = mark_boundaries(img_normalized, labels, color=(1, 1, 0), mode='thick')
+    # Get visualization configuration
+    viz_config = config.visualization.get('validation_plots', {})
+    layout_config = viz_config.get('layout', {})
+    figsize = tuple(layout_config.get('figsize', [20, 12]))
     
-    # Display the image with correct spatial extent
+    # Get channel groups from config
+    channel_groups = config.channel_groups
+    primary_markers = viz_config.get('primary_markers', {})
+    colormaps = viz_config.get('colormaps', {})
+    max_additional = viz_config.get('max_additional_channels', 5)
+    
+    # Create figure with custom subplot layout
+    fig = plt.figure(figsize=figsize)
+    
+    # Define equal-sized subplot positions with proper spacing
+    panel_width = 0.16    # Slightly smaller to allow more spacing
+    panel_height = 0.32   # Slightly smaller height for better proportions
+    h_spacing = 0.04      # Horizontal spacing between panels
+    
+    # Calculate positions with consistent spacing
+    left_margin = 0.03
+    top_y = 0.52      # Moved down to reduce gap
+    bottom_y = 0.12   # Keep bottom row position
+    v_spacing = top_y - bottom_y - panel_height  # Vertical spacing between rows
+    
+    # Top row: DNA composite and segmentation side by side, then 2 primary proteins
+    top_positions = []
+    for i in range(5):
+        x_pos = left_margin + i * (panel_width + h_spacing)
+        top_positions.append((x_pos, top_y, panel_width, panel_height))
+    
+    # Bottom row: Additional protein channels, all equal size and spacing
+    bottom_positions = []
+    for i in range(5):
+        x_pos = left_margin + i * (panel_width + h_spacing)
+        bottom_positions.append((x_pos, bottom_y, panel_width, panel_height))
+    
+    # Get spatial extent
     x_min, x_max, y_min, y_max = bounds
-    ax.imshow(overlay_img, extent=[x_min, x_max, y_min, y_max], origin='lower')
+    extent = [x_min, x_max, y_min, y_max]
     
-    ax.set_title(title)
-    ax.set_xlabel("X (μm)")
-    ax.set_ylabel("Y (μm)")
-    ax.set_aspect('equal')
+    # Apply proper transformation to DNA composite for visualization
+    from src.analysis.slic_segmentation import prepare_dna_for_visualization
+    img_normalized = prepare_dna_for_visualization(image)
     
-    # Add scale information
-    n_segments = len(np.unique(labels))
-    ax.text(0.02, 0.98, f"Segments: {n_segments}", 
-            transform=ax.transAxes, va='top', ha='left',
-            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    # Helper function to format cofactor text
+    def format_cofactor(protein_name: str) -> str:
+        cofactor = cofactors_used.get(protein_name, 'N/A')
+        return f"arcsinh(x/{cofactor:.1f})" if isinstance(cofactor, (int, float)) else f"arcsinh(x/{cofactor})"
     
-    return fig if return_fig else ax
+    # Helper function to get group description for a protein
+    def get_group_description(protein_name: str) -> str:
+        for group_name, group_data in channel_groups.items():
+            if isinstance(group_data, dict):
+                # Handle nested structure like immune_markers.pan_leukocyte
+                for subgroup_name, proteins in group_data.items():
+                    if protein_name in proteins:
+                        return subgroup_name.replace('_', ' ').title()
+            elif isinstance(group_data, list) and protein_name in group_data:
+                # Handle flat list structure
+                return group_name.replace('_', ' ').title()
+        return protein_name
+    
+    # Helper function to get colormap for a protein from config
+    def get_marker_colormap(protein_name: str, config: 'Config') -> str:
+        # Try to find group for this protein and get its colormap
+        for group_name, group_data in channel_groups.items():
+            protein_found = False
+            if isinstance(group_data, dict):
+                # Handle nested structure like immune_markers.pan_leukocyte
+                for subgroup_name, proteins in group_data.items():
+                    if protein_name in proteins:
+                        protein_found = True
+                        break
+            elif isinstance(group_data, list) and protein_name in group_data:
+                protein_found = True
+            
+            if protein_found:
+                return colormaps.get(group_name, colormaps.get('default', 'viridis'))
+        
+        # Default fallback
+        return colormaps.get('default', 'viridis')
+    
+    # TOP ROW - Reference channels
+    
+    # Panel 1: DNA Composite
+    ax1 = fig.add_axes(top_positions[0])
+    im1 = ax1.imshow(img_normalized, extent=extent, origin='lower', cmap='gray')
+    ax1.set_title("DNA Composite", fontsize=11, fontweight='bold')
+    ax1.set_xlabel("X (μm)", fontsize=9)
+    ax1.set_ylabel("Y (μm)", fontsize=9) 
+    ax1.set_aspect('equal')
+    
+    # Panel 2: Segmentation overlay (next to DNA composite)
+    ax2 = fig.add_axes(top_positions[1])
+    # Create thinner segmentation boundaries by dilating the labels minimally
+    from scipy.ndimage import binary_dilation
+    from skimage.segmentation import find_boundaries
+    
+    # Find boundaries and make them thinner
+    boundaries = find_boundaries(labels, mode='inner')
+    # Create minimal dilation for 0.5px effect (thinnest possible)
+    thin_boundaries = binary_dilation(boundaries, structure=np.ones((1,1)))
+    
+    # Create overlay with custom thin yellow lines
+    overlay_img = img_normalized.copy()
+    if len(overlay_img.shape) == 2:
+        # Convert grayscale to RGB for colored overlay
+        overlay_img = np.stack([overlay_img, overlay_img, overlay_img], axis=-1)
+    overlay_img[thin_boundaries] = [1, 1, 0]  # Yellow boundaries
+    
+    ax2.imshow(overlay_img, extent=extent, origin='lower')
+    ax2.set_title("SLIC Segmentation", fontsize=11, fontweight='bold')
+    ax2.set_xlabel("X (μm)", fontsize=9)
+    ax2.set_yticklabels([])  # Remove y-axis labels since DNA composite already has them
+    ax2.set_aspect('equal')
+    
+    # Add segment count
+    n_segments = len(np.unique(labels[labels >= 0]))
+    ax2.text(0.02, 0.98, f"Segments: {n_segments}", transform=ax2.transAxes, 
+             fontsize=9, fontweight='bold', bbox=dict(boxstyle="round,pad=0.3", 
+             facecolor="white", alpha=0.8))
+    
+    # Dynamically select primary markers from config
+    primary_panels = []
+    for group_name, primary_marker in primary_markers.items():
+        if primary_marker in spatial_protein_arrays:
+            primary_panels.append((primary_marker, group_name))
+    
+    # Panel 3 & 4: Primary markers (up to 2) 
+    protein_start_idx = 2  # Start after DNA and segmentation
+    for panel_idx, (marker, group_name) in enumerate(primary_panels[:2]):
+        ax = fig.add_axes(top_positions[protein_start_idx + panel_idx])
+        
+        marker_data = spatial_protein_arrays[marker]
+        cmap = colormaps.get(group_name, 'viridis')
+        
+        im = ax.imshow(marker_data, extent=extent, origin='lower', cmap=cmap)
+        # Smaller colorbar with better positioning to avoid overlap
+        plt.colorbar(im, ax=ax, fraction=0.035, pad=0.02, shrink=0.8)
+        
+        description = get_group_description(marker)
+        cofactor_text = format_cofactor(marker)
+        
+        ax.set_title(f"{marker}\n{cofactor_text}", fontsize=10, fontweight='bold')
+        ax.set_xlabel("X (μm)", fontsize=8)
+        
+        # Only show y-axis labels on leftmost plots
+        if protein_start_idx + panel_idx == 2:  # First protein panel
+            ax.set_ylabel("Y (μm)", fontsize=8)
+        else:
+            ax.set_yticklabels([])
+            
+        ax.set_aspect('equal')
+    
+    # Fill empty primary panel slots if needed
+    for panel_idx in range(len(primary_panels), 2):
+        if protein_start_idx + panel_idx < len(top_positions):
+            ax = fig.add_axes(top_positions[protein_start_idx + panel_idx])
+            ax.text(0.5, 0.5, 'Marker\nN/A', ha='center', va='center',
+                    transform=ax.transAxes, fontsize=10)
+            ax.set_title("N/A", fontsize=10, fontweight='bold')
+            ax.set_xlabel("X (μm)", fontsize=8)
+            ax.set_aspect('equal')
+    
+    
+    # BOTTOM ROW - Additional available protein channels
+    # Get primary markers that were already shown
+    shown_markers = set(marker for marker, _ in primary_panels[:2])
+    
+    # Select remaining available proteins, excluding those already shown
+    available_proteins = [p for p in spatial_protein_arrays.keys() if p not in shown_markers]
+    max_panels = config.visualization.get('validation_plots', {}).get('max_additional_channels', 5)
+    
+    for i, protein in enumerate(available_proteins[:max_panels]):
+        if i >= len(bottom_positions):
+            break
+            
+        ax = fig.add_axes(bottom_positions[i])
+        protein_data = spatial_protein_arrays[protein]
+        
+        # Determine colormap from config using helper function
+        cmap = get_marker_colormap(protein, config)
+        
+        im = ax.imshow(protein_data, extent=extent, origin='lower', cmap=cmap)
+        # Smaller colorbar with better positioning to avoid overlap
+        plt.colorbar(im, ax=ax, fraction=0.035, pad=0.02, shrink=0.8)
+        
+        cofactor_text = format_cofactor(protein)
+        ax.set_title(f"{protein}\n{cofactor_text}", fontsize=10, fontweight='bold')
+        ax.set_xlabel("X (μm)", fontsize=8)
+        
+        # Only show y-axis labels on leftmost plot
+        if i == 0:
+            ax.set_ylabel("Y (μm)", fontsize=8)
+        else:
+            ax.set_yticklabels([])
+            
+        ax.set_aspect('equal')
+    
+    # Simplified main title
+    roi_name = title.split(' - ')[1] if ' - ' in title else title
+    scale_text = title.split(' - ')[-1] if ' - ' in title else ""
+    fig.suptitle(f"{roi_name} {scale_text}", fontsize=12, fontweight='bold', y=0.95)
+    
+    return fig

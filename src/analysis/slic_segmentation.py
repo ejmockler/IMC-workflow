@@ -10,10 +10,13 @@ Results should be interpreted with appropriate statistical caution given n=2 pil
 """
 
 import numpy as np
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, Tuple, Optional, List, TYPE_CHECKING
 from skimage.segmentation import slic
 from skimage.measure import regionprops
 from scipy import ndimage
+
+if TYPE_CHECKING:
+    from ..config import Config
 
 
 def prepare_dna_composite(
@@ -21,19 +24,18 @@ def prepare_dna_composite(
     dna1_intensities: np.ndarray,
     dna2_intensities: np.ndarray,
     resolution_um: float = 1.0,
-    sigma_um: float = 2.0
+    config: Optional['Config'] = None
 ) -> Tuple[np.ndarray, Tuple[float, float, float, float]]:
     """
     Create composite DNA image for SLIC segmentation.
     
-    Uses both DNA channels to create high-resolution morphology map.
+    Uses both DNA channels to create morphology map at native IMC resolution.
     
     Args:
         coords: Nx2 coordinate array in micrometers
         dna1_intensities: DNA1 channel intensities
         dna2_intensities: DNA2 channel intensities
         resolution_um: Output resolution in micrometers
-        sigma_um: Gaussian smoothing sigma
         
     Returns:
         Tuple of (composite_dna_image, bounds)
@@ -41,14 +43,10 @@ def prepare_dna_composite(
     if len(coords) == 0:
         return np.array([[]]), (0, 0, 0, 0)
     
-    # Determine spatial bounds with buffer
+    
+    # Determine spatial bounds (no artificial buffer)
     x_min, x_max = coords[:, 0].min(), coords[:, 0].max()
     y_min, y_max = coords[:, 1].min(), coords[:, 1].max()
-    buffer = 10 * resolution_um
-    x_min -= buffer
-    x_max += buffer
-    y_min -= buffer
-    y_max += buffer
     
     # Create output grid
     x_grid = np.arange(x_min, x_max + resolution_um, resolution_um)
@@ -69,19 +67,84 @@ def prepare_dna_composite(
         dna1_field[y_bins[i], x_bins[i]] += dna1_intensities[i]
         dna2_field[y_bins[i], x_bins[i]] += dna2_intensities[i]
     
-    # Apply Gaussian smoothing
-    sigma_pixels = sigma_um / resolution_um
-    dna1_smooth = ndimage.gaussian_filter(dna1_field, sigma=sigma_pixels)
-    dna2_smooth = ndimage.gaussian_filter(dna2_field, sigma=sigma_pixels)
+    # No smoothing for IMC data - preserve native resolution
+    # IMC already provides cellular-level detail at ~1μm resolution
+    # Smoothing only degrades the precise spatial information
     
-    # Create composite: sum of both channels
-    composite_dna = dna1_smooth + dna2_smooth
+    # Create composite: direct sum of both channels
+    composite_dna = dna1_field + dna2_field
     
-    # Normalize to 0-1 range for SLIC
-    if composite_dna.max() > 0:
-        composite_dna = composite_dna / composite_dna.max()
+    # Apply simplified transformation for SLIC segmentation
+    if composite_dna.size > 0 and composite_dna.max() > 0:
+        # Get configuration or use defaults
+        if config is not None and hasattr(config, 'dna_processing'):
+            dna_config = config.dna_processing
+            arcsinh_config = dna_config.get('arcsinh_transform', {})
+        else:
+            # Fallback defaults - more conservative values
+            arcsinh_config = {'noise_floor_percentile': 10, 'cofactor_multiplier': 3}
+        
+        # Apply ArcSinh transformation for dynamic range handling
+        if arcsinh_config.get('enabled', True):
+            # Get ALL values including zeros for proper noise floor
+            all_vals = composite_dna.flatten()
+            
+            if len(all_vals) > 0:
+                # Calculate noise floor from ALL data (including zeros)
+                # This gives us the true background level
+                noise_percentile = arcsinh_config.get('noise_floor_percentile', 10)
+                noise_floor = np.percentile(all_vals, noise_percentile)
+                
+                # Avoid division by zero
+                if noise_floor <= 0:
+                    # If noise floor is zero, use a small fraction of the median
+                    non_zero = all_vals[all_vals > 0]
+                    if len(non_zero) > 0:
+                        noise_floor = np.median(non_zero) * 0.01
+                    else:
+                        noise_floor = 1.0  # Fallback
+                
+                # Conservative multiplier to preserve gradients
+                multiplier = arcsinh_config.get('cofactor_multiplier', 3)
+                cofactor = noise_floor * multiplier
+                
+                # Apply ArcSinh - this handles the full dynamic range
+                # No additional scaling - let SLIC work with transformed values
+                composite_dna = np.arcsinh(composite_dna / cofactor)
     
     return composite_dna, (x_min, x_max, y_min, y_max)
+
+
+def prepare_dna_for_visualization(composite_dna: np.ndarray) -> np.ndarray:
+    """
+    Prepare DNA composite for visualization.
+    
+    Note: DNA composite from prepare_dna_composite() already has ArcSinh transformation
+    applied. This function optimizes the display range for visualization.
+    
+    Args:
+        composite_dna: DNA composite image (ArcSinh transformed)
+        
+    Returns:
+        DNA image optimized for visualization
+    """
+    if composite_dna.size == 0:
+        return composite_dna
+    
+    # The data is already ArcSinh transformed from prepare_dna_composite()
+    # Just apply percentile clipping for optimal contrast
+    # Use 2nd and 98th percentiles to handle outliers
+    p2 = np.percentile(composite_dna, 2)
+    p98 = np.percentile(composite_dna, 98)
+    
+    if p98 > p2:
+        # Clip and scale to 0-1 for display
+        viz_dna = np.clip((composite_dna - p2) / (p98 - p2), 0, 1)
+    else:
+        # If no variation, just normalize
+        viz_dna = composite_dna / (np.max(composite_dna) + 1e-10)
+    
+    return viz_dna
 
 
 def perform_slic_segmentation(
@@ -89,7 +152,8 @@ def perform_slic_segmentation(
     target_bin_size_um: float = 20.0,
     resolution_um: float = 1.0,
     compactness: float = 10.0,
-    sigma: float = 1.0
+    sigma: float = 1.5,  # Restored to midpoint between original 2.0 and 1.0
+    config: Optional['Config'] = None
 ) -> np.ndarray:
     """
     Perform SLIC superpixel segmentation on DNA composite image.
@@ -107,10 +171,32 @@ def perform_slic_segmentation(
     if composite_image.size == 0:
         return np.array([])
     
-    # Calculate number of superpixels based on target size
-    image_area_um2 = composite_image.size * (resolution_um ** 2)
+    # Create tissue mask based on DNA signal presence
+    # After ArcSinh transform, background should be near 0
+    # Use a threshold to identify tissue regions
+    if config is not None and hasattr(config, 'dna_processing'):
+        tissue_threshold = config.dna_processing.get('tissue_threshold', 0.1)
+    else:
+        tissue_threshold = 0.1  # Default threshold for transformed values
+    tissue_mask = composite_image > tissue_threshold
+    
+    # Apply morphological operations to clean up the mask
+    from scipy.ndimage import binary_opening, binary_closing, binary_erosion
+    tissue_mask = binary_closing(binary_opening(tissue_mask, iterations=2), iterations=2)
+    
+    # Create an eroded mask to avoid edge artifacts
+    # Erode by a few pixels to exclude the very edge of tissue
+    tissue_mask_eroded = binary_erosion(tissue_mask, iterations=3)
+    
+    # If erosion removed everything, use original mask
+    if not np.any(tissue_mask_eroded):
+        tissue_mask_eroded = tissue_mask
+    
+    # Calculate number of superpixels based on tissue area (not total image area)
+    tissue_area_pixels = np.sum(tissue_mask_eroded)
+    tissue_area_um2 = tissue_area_pixels * (resolution_um ** 2)
     target_superpixel_area_um2 = target_bin_size_um ** 2
-    n_segments = max(1, int(image_area_um2 / target_superpixel_area_um2))
+    n_segments = max(1, int(tissue_area_um2 / target_superpixel_area_um2))
     
     # Perform SLIC segmentation
     # Convert to 3-channel for SLIC (grayscale -> RGB)
@@ -120,14 +206,44 @@ def perform_slic_segmentation(
     else:
         rgb_image = composite_image
     
-    # Run SLIC
+    # Simplified SLIC parameters - no complex adjustments
+    # Let the properly transformed DNA data guide the segmentation
+    # Only apply minimal configuration-based adjustment if specified
+    if config is not None and hasattr(config, 'dna_processing'):
+        slic_config = config.dna_processing.get('slic_adjustments', {})
+        # Default to no adjustment (multiplier = 1.0)
+        compactness_mult = slic_config.get('compactness_multiplier', 1.0)
+        sigma_mult = slic_config.get('sigma_multiplier', 1.0)
+    else:
+        compactness_mult = 1.0
+        sigma_mult = 1.0
+    
+    # Run SLIC with simplified parameters
+    # Don't pass mask to SLIC - let it segment naturally then post-process
     superpixel_labels = slic(
         rgb_image,
         n_segments=n_segments,
-        compactness=compactness,
-        sigma=sigma,
-        start_label=0
+        compactness=compactness * compactness_mult,
+        sigma=sigma * sigma_mult,
+        start_label=0,
+        channel_axis=-1 if len(rgb_image.shape) > 2 else None
     )
+    
+    # Post-process: only keep superpixels that have significant overlap with tissue
+    # This avoids edge artifacts and border-following superpixels
+    unique_labels = np.unique(superpixel_labels)
+    for label in unique_labels:
+        label_mask = superpixel_labels == label
+        # Check overlap with eroded tissue mask (avoiding edges)
+        tissue_overlap = np.sum(label_mask & tissue_mask_eroded)
+        total_pixels = np.sum(label_mask)
+        
+        # If less than 50% overlap with tissue core, mark as background
+        if tissue_overlap < 0.5 * total_pixels:
+            superpixel_labels[label_mask] = -1
+    
+    # Also set regions completely outside tissue to -1
+    superpixel_labels[~tissue_mask] = -1
     
     return superpixel_labels
 
@@ -250,8 +366,8 @@ def slic_pipeline(
     dna2_intensities: np.ndarray,
     target_bin_size_um: float = 20.0,
     resolution_um: float = 1.0,
-    sigma_um: float = 2.0,
-    compactness: float = 10.0
+    compactness: float = 10.0,
+    config: Optional['Config'] = None
 ) -> Dict:
     """
     Complete SLIC-based morphology-aware aggregation pipeline.
@@ -262,8 +378,7 @@ def slic_pipeline(
         dna1_intensities: DNA1 channel data
         dna2_intensities: DNA2 channel data
         target_bin_size_um: Target superpixel size
-        resolution_um: Working resolution
-        sigma_um: Smoothing for DNA composite
+        resolution_um: Working resolution (default 1.0μm for IMC)
         compactness: SLIC compactness parameter
         
     Returns:
@@ -279,14 +394,14 @@ def slic_pipeline(
             'bounds': (0, 0, 0, 0)
         }
     
-    # Step 1: Create composite DNA image
+    # Step 1: Create composite DNA image at native resolution
     composite_dna, bounds = prepare_dna_composite(
-        coords, dna1_intensities, dna2_intensities, resolution_um, sigma_um
+        coords, dna1_intensities, dna2_intensities, resolution_um, config
     )
     
     # Step 2: Perform SLIC segmentation
     superpixel_labels = perform_slic_segmentation(
-        composite_dna, target_bin_size_um, resolution_um, compactness
+        composite_dna, target_bin_size_um, resolution_um, compactness, 1.0, config
     )
     
     # Step 3: Aggregate ion counts to superpixels

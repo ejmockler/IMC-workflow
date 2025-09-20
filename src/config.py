@@ -27,6 +27,7 @@ class Config:
         
         # Processing configuration
         self.processing = self.raw.get('processing', {})
+        self.dna_processing = self.processing.get('dna_processing', {})
         
         # Segmentation configuration  
         self.segmentation = self.raw.get('segmentation', {})
@@ -47,12 +48,18 @@ class Config:
         # Metadata tracking
         self.metadata_tracking = self.raw.get('metadata_tracking', {})
         
+        # Visualization configuration
+        self.visualization = self.raw.get('visualization', {})
+        
         # Legacy support (for backwards compatibility)
         self.proteins = self.channels.get('protein_channels', [])
         self.experimental = self.raw.get('experimental', {})
         
         # Ensure output directory exists
         self.output_dir.mkdir(exist_ok=True, parents=True)
+        
+        # Validate channel consistency
+        self.validate_channel_consistency()
     
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from JSON file.
@@ -122,3 +129,31 @@ class Config:
             Complete configuration dictionary
         """
         return self.raw.copy()
+    
+    def validate_channel_consistency(self) -> None:
+        """Validate that visualization config references valid channels.
+        
+        Raises:
+            ValueError: If primary_markers reference non-existent protein channels
+        """
+        protein_channels = set(self.channels.get('protein_channels', []))
+        primary_markers = self.visualization.get('validation_plots', {}).get('primary_markers', {})
+        
+        for group_name, marker in primary_markers.items():
+            if marker not in protein_channels:
+                print(f"Warning: Primary marker '{marker}' for group '{group_name}' not found in protein_channels")
+        
+        # Validate that channel_groups reference valid protein channels
+        channel_groups = self.channel_groups
+        for group_name, group_data in channel_groups.items():
+            if isinstance(group_data, dict):
+                # Handle nested structure like immune_markers.pan_leukocyte
+                for subgroup_name, proteins in group_data.items():
+                    if isinstance(proteins, list):
+                        for protein in proteins:
+                            if protein not in protein_channels:
+                                print(f"Warning: Channel '{protein}' in group '{group_name}.{subgroup_name}' not found in protein_channels")
+            elif isinstance(group_data, list):
+                for protein in group_data:
+                    if protein not in protein_channels:
+                        print(f"Warning: Channel '{protein}' in group '{group_name}' not found in protein_channels")

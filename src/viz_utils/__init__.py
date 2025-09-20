@@ -7,7 +7,6 @@ from standardized analysis outputs (HDF5, Parquet, JSON).
 
 from .plotting import (
     plot_roi_overview,
-    plot_spatial_heatmap,
     plot_protein_expression,
     plot_cluster_map,
     plot_scale_comparison
@@ -21,7 +20,6 @@ from .loaders import (
 
 __all__ = [
     'plot_roi_overview',
-    'plot_spatial_heatmap', 
     'plot_protein_expression',
     'plot_cluster_map',
     'plot_scale_comparison',

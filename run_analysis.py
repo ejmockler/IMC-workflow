@@ -273,29 +273,51 @@ def analyze_roi_with_multiscale(roi_data: Dict[str, Any], config: Config, plots_
         scales_um=scales_um,
         n_clusters=n_clusters,
         use_slic=use_slic,
-        memory_limit_gb=memory_limit_gb
+        memory_limit_gb=memory_limit_gb,
+        config=config
     )
     
     # Generate visual validation plots if output directory provided
     if plots_dir:
         roi_name = roi_data['filename'].replace('.txt', '')
         for scale, result in multiscale_results.items():
-            if 'superpixel_labels' in result and 'composite_dna' in result and result['composite_dna'].size > 0:
+            if ('superpixel_labels' in result and 'composite_dna' in result and 
+                result['composite_dna'].size > 0 and 'transformed_arrays' in result and 
+                'cofactors_used' in result):
                 try:
-                    fig, ax = plt.subplots(figsize=(10, 10))
-                    plot_segmentation_overlay(
+                    # Log data structures for debugging
+                    logger.debug(f"Creating plot for {roi_name} at {scale}μm scale:")
+                    logger.debug(f"  - composite_dna shape: {result['composite_dna'].shape}")
+                    logger.debug(f"  - superpixel_labels shape: {result['superpixel_labels'].shape}")
+                    logger.debug(f"  - transformed_arrays keys: {list(result['transformed_arrays'].keys())}")
+                    
+                    first_protein = next(iter(result['transformed_arrays'].keys()))
+                    first_array = result['transformed_arrays'][first_protein]
+                    logger.debug(f"  - first protein '{first_protein}' array shape: {first_array.shape}")
+                    logger.debug(f"  - superpixel_coords provided: {result.get('superpixel_coords') is not None}")
+                    
+                    # Create comprehensive multi-channel validation plot
+                    fig = plot_segmentation_overlay(
                         image=result['composite_dna'],
                         labels=result['superpixel_labels'],
                         bounds=result['bounds'],
-                        title=f"SLIC Segmentation - {roi_name} - {scale}μm",
-                        ax=ax
+                        transformed_arrays=result['transformed_arrays'],
+                        cofactors_used=result['cofactors_used'],
+                        config=config,
+                        superpixel_coords=result.get('superpixel_coords'),
+                        title=f"Multi-Channel Validation - {roi_name} - {scale}μm Scale"
                     )
-                    plot_filename = plots_dir / f"{roi_name}_scale_{scale}_segmentation.png"
-                    fig.savefig(plot_filename, dpi=150, bbox_inches='tight')
+                    plot_filename = plots_dir / f"{roi_name}_scale_{scale}_multichannel_validation.png"
+                    fig.savefig(plot_filename, dpi=150, bbox_inches='tight', facecolor='white')
                     plt.close(fig)
-                    logger.debug(f"Generated validation plot: {plot_filename}")
+                    logger.debug(f"Generated multi-channel validation plot: {plot_filename}")
                 except Exception as e:
-                    logger.warning(f"Could not generate plot for {roi_name} at scale {scale}: {e}")
+                    logger.warning(f"Could not generate multi-channel plot for {roi_name} at scale {scale}: {e}")
+                    logger.debug(f"Available keys in result: {list(result.keys())}")
+                    if 'transformed_arrays' in result:
+                        logger.debug(f"Available proteins: {list(result['transformed_arrays'].keys())}")
+                    else:
+                        logger.debug("No transformed_arrays found in result")
     
     # NOTE: NOT computing scale consistency anymore - low ARI between scales is expected!
     # Different scales capture different biological features, they shouldn't agree

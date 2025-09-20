@@ -53,7 +53,6 @@ class SLICConfig:
     """Configuration for SLIC superpixel segmentation."""
     target_bin_size_um: float = 20.0
     resolution_um: float = 1.0
-    sigma_um: float = 2.0
     compactness: float = 10.0
     use_slic: bool = True
 
