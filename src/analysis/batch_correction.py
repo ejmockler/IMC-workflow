@@ -128,13 +128,24 @@ def sham_anchored_normalize(
                 sham_mean = sham_stats[protein_name]['mean']
                 sham_std = sham_stats[protein_name]['std']
                 
-                # Avoid division by zero
-                if sham_std > 0:
+                # Handle zero standard deviation case properly
+                if sham_std > 1e-10:  # Use small epsilon for numerical stability
                     normalized_counts = (ion_counts - sham_mean) / sham_std
                 else:
-                    logger.warning(f"Zero standard deviation for {protein_name} in sham controls. "
-                                  f"Applying mean centering only.")
-                    normalized_counts = ion_counts - sham_mean
+                    # When sham controls have no variation, check if data is constant
+                    data_std = np.std(ion_counts)
+                    if data_std < 1e-10:
+                        # Both sham and data are constant - set to 0 (no signal)
+                        logger.info(f"Protein {protein_name}: Both sham and sample data are constant. "
+                                   f"Setting normalized values to 0 (no biological signal).")
+                        normalized_counts = np.zeros_like(ion_counts)
+                    else:
+                        # Sham is constant but data varies - preserve as z-score relative to data
+                        data_mean = np.mean(ion_counts)
+                        logger.warning(f"Protein {protein_name}: Sham controls are constant (std={sham_std:.2e}) "
+                                      f"but sample data varies (std={data_std:.3f}). "
+                                      f"Using sample-based z-score normalization.")
+                        normalized_counts = (ion_counts - data_mean) / data_std
                 
                 normalized_batch[protein_name] = normalized_counts
                 

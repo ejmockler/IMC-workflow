@@ -12,6 +12,93 @@ from matplotlib.patches import Rectangle
 from typing import Dict, List, Optional, Tuple, Union
 import seaborn as sns
 from skimage.segmentation import mark_boundaries
+import warnings
+
+
+def validate_plot_data(data: np.ndarray, data_name: str = "data") -> np.ndarray:
+    """
+    Validate and clean plotting data to prevent NaN/Inf visualization issues.
+    
+    Args:
+        data: Input data array
+        data_name: Name for error reporting
+        
+    Returns:
+        Cleaned data array
+        
+    Raises:
+        ValueError: If data is invalid after cleaning
+    """
+    if data is None:
+        raise ValueError(f"{data_name} cannot be None")
+        
+    data = np.asarray(data)
+    
+    if data.size == 0:
+        raise ValueError(f"{data_name} cannot be empty")
+    
+    # Check for NaN/Inf values
+    n_nan = np.sum(np.isnan(data))
+    n_inf = np.sum(np.isinf(data))
+    
+    if n_nan > 0 or n_inf > 0:
+        warnings.warn(
+            f"{data_name} contains {n_nan} NaN and {n_inf} Inf values. "
+            f"These will be filtered out, which may indicate upstream data corruption."
+        )
+        
+        # Replace NaN/Inf with finite values or filter them out
+        if data.ndim > 1:
+            # For 2D+ arrays, replace with median
+            finite_mask = np.isfinite(data)
+            if np.any(finite_mask):
+                median_val = np.median(data[finite_mask])
+                data = np.where(np.isfinite(data), data, median_val)
+            else:
+                # All values are invalid
+                raise ValueError(f"{data_name} contains only NaN/Inf values")
+        else:
+            # For 1D arrays, filter out invalid values
+            finite_mask = np.isfinite(data)
+            if np.any(finite_mask):
+                data = data[finite_mask]
+            else:
+                raise ValueError(f"{data_name} contains only NaN/Inf values")
+    
+    return data
+
+
+def validate_coordinate_data(coords: np.ndarray, values: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Validate coordinate and value data together, ensuring consistency.
+    
+    Args:
+        coords: Coordinate array (N, 2)
+        values: Value array (N,)
+        
+    Returns:
+        Tuple of cleaned (coords, values)
+    """
+    coords = validate_plot_data(coords, "coordinates")
+    values = validate_plot_data(values, "values")
+    
+    if coords.ndim != 2 or coords.shape[1] != 2:
+        raise ValueError("Coordinates must be (N, 2) array")
+    
+    if values.ndim != 1:
+        raise ValueError("Values must be 1D array")
+    
+    # Ensure consistent length after cleaning
+    min_len = min(len(coords), len(values))
+    if len(coords) != len(values):
+        warnings.warn(
+            f"Coordinate and value arrays have different lengths after cleaning: "
+            f"{len(coords)} vs {len(values)}. Truncating to {min_len}."
+        )
+        coords = coords[:min_len]
+        values = values[:min_len]
+    
+    return coords, values
 
 
 def plot_roi_overview(
@@ -39,6 +126,9 @@ def plot_roi_overview(
     Returns:
         Figure or Axes object
     """
+    # Validate and clean input data
+    coords, values = validate_coordinate_data(coords, values)
+    
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
         return_fig = True
@@ -271,6 +361,12 @@ def plot_scale_comparison(
     Returns:
         Figure object
     """
+    # Validate input data
+    coords = validate_plot_data(coords, "coordinates")
+    
+    if not multiscale_results:
+        raise ValueError("multiscale_results cannot be empty")
+    
     if scales_to_plot is None:
         scales_to_plot = sorted(multiscale_results.keys())
     
@@ -287,6 +383,7 @@ def plot_scale_comparison(
         if 'cluster_map' in scale_result:
             # Plot cluster map for this scale
             cluster_map = scale_result['cluster_map']
+            cluster_map = validate_plot_data(cluster_map, f"cluster_map_scale_{scale}")
             im = ax.imshow(cluster_map, cmap='tab20', origin='lower')
             ax.set_title(f"Scale: {scale}μm")
             ax.set_xlabel("X bins")
@@ -295,6 +392,9 @@ def plot_scale_comparison(
             # Plot superpixel clusters
             sp_coords = scale_result['superpixel_coords']
             labels = scale_result['cluster_labels']
+            # Validate superpixel data
+            sp_coords = validate_plot_data(sp_coords, f"superpixel_coords_scale_{scale}")
+            labels = validate_plot_data(labels, f"cluster_labels_scale_{scale}")
             plot_cluster_map(sp_coords, labels, ax=ax, show_legend=False)
             ax.set_title(f"Scale: {scale}μm")
     
@@ -327,6 +427,15 @@ def plot_correlation_heatmap(
     Returns:
         Figure or Axes object
     """
+    # Validate correlation matrix
+    correlation_matrix = validate_plot_data(correlation_matrix, "correlation_matrix")
+    
+    if correlation_matrix.ndim != 2 or correlation_matrix.shape[0] != correlation_matrix.shape[1]:
+        raise ValueError("Correlation matrix must be square")
+    
+    if len(labels) != correlation_matrix.shape[0]:
+        raise ValueError(f"Number of labels ({len(labels)}) must match matrix size ({correlation_matrix.shape[0]})")
+    
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
         return_fig = True

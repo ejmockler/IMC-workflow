@@ -84,8 +84,8 @@ class StorageConfig:
     """Configuration for data storage."""
     format: str = "hdf5"  # hdf5, parquet, json
     compression: bool = True
-    results_dir: str = "results/production_analysis"
-    plots_dir: str = "plots/production_analysis"
+    results_dir: str = "results"
+    plots_dir: str = "results"  # Plots go with results, not separate
     validation_dir: str = "validation"
     backup_enabled: bool = True
 

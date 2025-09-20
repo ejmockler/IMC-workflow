@@ -147,7 +147,7 @@ Single configuration file: `config.json`
 
 ```
 results/
-├── production_analysis/
+├── results/
 │   ├── analysis_summary.json      # Main results
 │   ├── roi_results/               # Per-ROI data
 │   │   ├── roi_001.h5

@@ -25,7 +25,7 @@ python run_analysis.py --config config.json
 python run_parallel_analysis.py --processes 8
 ```
 
-This creates standardized outputs in `results/production_analysis/`:
+This creates standardized outputs in `results/`:
 - `analysis_results.json` - Complete analysis results
 - `roi_results/` - Per-ROI detailed data
 - `validation/` - Validation outputs

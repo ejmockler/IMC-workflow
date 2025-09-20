@@ -595,8 +595,8 @@ def save_results(analysis_results: List[Dict[str, Any]],
     
     # Create output directories
     output_config = config.raw.get('output', {})
-    results_dir = Path(output_config.get('results_dir', 'results/production_analysis'))
-    plots_dir = Path(output_config.get('plots_dir', 'plots/production_analysis'))
+    results_dir = Path(output_config.get('results_dir', 'results'))
+    plots_dir = results_dir  # Plots go in the same results directory, not a separate plots folder
     
     results_dir.mkdir(parents=True, exist_ok=True)
     plots_dir.mkdir(parents=True, exist_ok=True)

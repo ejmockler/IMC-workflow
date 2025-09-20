@@ -137,8 +137,13 @@ class KidneyIMCValidator:
                     for sp_id in unique_superpixels:
                         mask = superpixel_labels == sp_id
                         if np.sum(mask) > 0:
-                            mean_intensity = np.mean(protein_data[marker][mask])
-                            superpixel_means.append(mean_intensity)
+                            marker_values = protein_data[marker][mask]
+                            # Filter out NaN and Inf values from corrupted normalization
+                            valid_values = marker_values[np.isfinite(marker_values)]
+                            if len(valid_values) > 0:
+                                mean_intensity = np.mean(valid_values)
+                                if np.isfinite(mean_intensity):
+                                    superpixel_means.append(mean_intensity)
                     
                     if len(superpixel_means) > 1:
                         cv = np.std(superpixel_means) / (np.mean(superpixel_means) + 1e-10)
@@ -337,8 +342,13 @@ class KidneyIMCValidator:
         for sp_id in unique_superpixels:
             mask = superpixel_labels == sp_id
             if np.sum(mask) > 0:
-                mean_intensity = np.mean(intensity[mask])
-                superpixel_means.append(mean_intensity)
+                intensity_values = intensity[mask]
+                # Filter out NaN and Inf values
+                valid_values = intensity_values[np.isfinite(intensity_values)]
+                if len(valid_values) > 0:
+                    mean_intensity = np.mean(valid_values)
+                    if np.isfinite(mean_intensity):
+                        superpixel_means.append(mean_intensity)
         
         if len(superpixel_means) <= 1:
             return 0.0

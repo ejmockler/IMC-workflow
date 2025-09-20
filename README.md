@@ -133,7 +133,7 @@ Clustering Optimization → Multi-Scale Analysis → Validation → Storage
 ## Output Structure
 
 ```
-results/production_analysis/
+results/
 ├── roi_results/           # Per-ROI detailed results
 ├── validation/           # Validation study outputs  
 ├── analysis_summary.json # Comprehensive summary

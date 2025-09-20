@@ -423,6 +423,6 @@ if __name__ == "__main__":
     summary = run_complete_analysis(
         config_path="config.json",
         roi_directory="data/241218_IMC_Alun",
-        output_directory="results/production_analysis",
+        output_directory="results",  # Simple, direct results directory
         run_validation=True
     )
