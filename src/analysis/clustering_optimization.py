@@ -272,7 +272,7 @@ def consensus_optimal_clusters(
     return consensus_k
 
 
-def biological_validation_score(
+def spatial_coherence_score(
     feature_matrix: np.ndarray,
     cluster_labels: np.ndarray,
     protein_names: List[str],
@@ -348,7 +348,7 @@ def optimize_clustering_parameters(
     protein_names: List[str],
     k_range: Tuple[int, int] = (2, 15),
     validation_weights: Optional[Dict[str, float]] = None,
-    use_biological_validation: bool = True,
+    use_morphology_validation: bool = True,
     random_state: int = 42
 ) -> Dict:
     """
@@ -361,7 +361,7 @@ def optimize_clustering_parameters(
         protein_names: Names of proteins (columns)
         k_range: Range of k values to test
         validation_weights: Weights for different validation metrics
-        use_biological_validation: Whether to include biological validation
+        use_morphology_validation: Whether to include biological validation
         random_state: Random seed for reproducibility
         
     Returns:
@@ -385,12 +385,12 @@ def optimize_clustering_parameters(
     
     # Biological validation for different k values
     biological_scores = {}
-    if use_biological_validation:
+    if use_morphology_validation:
         for k in range(k_range[0], k_range[1] + 1):
             kmeans = KMeans(n_clusters=k, random_state=random_state, n_init=10)
             labels = kmeans.fit_predict(feature_matrix)
             
-            bio_score = biological_validation_score(
+            bio_score = spatial_coherence_score(
                 feature_matrix, labels, protein_names
             )
             biological_scores[k] = bio_score
@@ -404,7 +404,7 @@ def optimize_clustering_parameters(
         # If biological validation strongly favors a different k, consider it
         if best_bio_score > 0.5 and abs(best_bio_k - consensus_k) <= 2:
             optimal_k = best_bio_k
-            recommendation = 'biological_validation_adjusted'
+            recommendation = 'morphology_validation_adjusted'
         else:
             optimal_k = consensus_k
             recommendation = 'consensus_statistical_metrics'

@@ -16,11 +16,9 @@ import warnings
 
 @dataclass
 class ArcSinhConfig:
-    """Configuration for arcsinh transformation."""
-    optimization_method: str = "percentile"
-    percentile_threshold: float = 5.0
-    default_cofactor: float = 1.0
-    custom_cofactors: Dict[str, float] = field(default_factory=dict)
+    """Configuration for automatic arcsinh transformation."""
+    optimization_method: str = "percentile"  # 'percentile', 'mad', or 'variance'
+    percentile_threshold: float = 5.0  # For percentile method (5th percentile default)
 
 
 @dataclass
@@ -28,7 +26,7 @@ class ClusteringConfig:
     """Configuration for clustering optimization."""
     optimization_method: str = "comprehensive"  # comprehensive, silhouette, gap, elbow
     k_range: List[int] = field(default_factory=lambda: [2, 15])
-    use_biological_validation: bool = True
+    use_morphology_validation: bool = True
     validation_weights: Dict[str, float] = field(default_factory=lambda: {
         'elbow': 0.15,
         'silhouette': 0.30,
@@ -265,7 +263,7 @@ class ConfigurationManager:
         
         # Adjust for pilot study constraints
         config.clustering.k_range = [2, 8]  # Smaller range for limited data
-        config.clustering.use_biological_validation = True
+        config.clustering.use_morphology_validation = True
         config.memory.memory_limit_gb = 2.0  # Conservative for small datasets
         config.validation.n_experiments = 5  # Fewer experiments for speed
         config.multiscale.scales_um = [15.0, 30.0]  # Two scales sufficient

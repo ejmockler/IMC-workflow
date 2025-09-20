@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """
-Production IMC Analysis Pipeline
+Kidney Injury IMC Analysis Pipeline - Hypothesis Generation Study
 
-Main entry point for the production-quality IMC analysis system.
-Implements proper ion count statistics, multi-scale analysis, and batch correction.
+Main entry point for superpixel-based spatial analysis of kidney injury.
+Implements morphology-aware superpixel segmentation for hypothesis generation
+in kidney injury spatial proteomics.
+
+IMPORTANT: This is a pilot study with n=2 mice per timepoint.
+All results are for hypothesis generation only and require validation
+in larger studies before drawing biological conclusions.
 """
 
 import sys
@@ -13,17 +18,29 @@ from typing import List, Dict, Any
 import json
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import Config
 from src.analysis.ion_count_processing import ion_count_pipeline
-from src.analysis.multiscale_analysis import perform_multiscale_analysis, compute_scale_consistency
+from src.analysis.multiscale_analysis import perform_multiscale_analysis
 from src.analysis.batch_correction import sham_anchored_normalize, detect_batch_effects
-from src.analysis.validation import generate_synthetic_imc_data
+# Use new pure validation framework
+from src.validation.core import SegmentationValidator, ValidationFactory
+from src.validation.adapter import validate_segmentation_quality  # Legacy compatibility
+
+# Framework configuration can be loaded separately
+try:
+    import yaml
+    with open('config/framework.yaml', 'r') as f:
+        FRAMEWORK_CONFIG = yaml.safe_load(f)
+except (FileNotFoundError, ImportError):
+    FRAMEWORK_CONFIG = {}
 from src.utils.data_loader import load_metadata_from_csv
 from src.utils.helpers import Metadata
+from src.viz_utils.plotting import plot_segmentation_overlay
 
 
 def setup_logging():
@@ -176,11 +193,23 @@ def run_batch_correction(batch_data: Dict[str, Dict[str, Any]], config: Config) 
             for protein, count_list in aggregated_counts.items()
         }
         
-        # Extract batch metadata
+        # Extract batch metadata - need to get condition and timepoint from first ROI
+        # Since all ROIs in a batch share the same timepoint and condition
+        first_roi_name = list(roi_data.keys())[0]
+        # Parse batch_id to extract timepoint (format is T{timepoint}_{replicate})
+        timepoint = int(batch_id.split('_')[0][1:]) if batch_id.startswith('T') else None
+        
+        # Determine condition based on timepoint
+        condition = 'Sham' if timepoint == 0 else 'Injury'
+        
         batch_metadata[batch_id] = {
             'n_rois': len(roi_data),
             'total_pixels': sum(data['n_pixels'] for data in roi_data.values()),
-            'roi_names': list(roi_data.keys())
+            'roi_names': list(roi_data.keys()),
+            'Condition': condition,
+            'Injury Day': timepoint,
+            'timepoint': timepoint,
+            'condition': condition
         }
     
     logger.info(f"Prepared {len(batch_ion_counts)} batches for correction")
@@ -205,8 +234,13 @@ def run_batch_correction(batch_data: Dict[str, Dict[str, Any]], config: Config) 
         return batch_ion_counts, {'error': str(e)}
 
 
-def analyze_roi_with_multiscale(roi_data: Dict[str, Any], config: Config) -> Dict[str, Any]:
-    """Analyze single ROI with multi-scale approach."""
+def analyze_roi_with_multiscale(roi_data: Dict[str, Any], config: Config, plots_dir: Path = None) -> Dict[str, Any]:
+    """Analyze single ROI with multi-scale approach and generate visual validation.
+    
+    NOTE: Low inter-scale ARI is EXPECTED - different scales capture different biology.
+    10μm captures cells, 40μm captures tissue domains - they shouldn't agree!
+    """
+    logger = logging.getLogger('Analysis')
     
     coords = roi_data['coords']
     ion_counts = roi_data['ion_counts']
@@ -232,17 +266,35 @@ def analyze_roi_with_multiscale(roi_data: Dict[str, Any], config: Config) -> Dic
         use_slic=use_slic
     )
     
-    # Compute scale consistency
-    consistency_results = compute_scale_consistency(
-        multiscale_results,
-        consistency_metrics=['ari', 'nmi', 'cluster_stability']
-    )
+    # Generate visual validation plots if output directory provided
+    if plots_dir:
+        roi_name = roi_data['filename'].replace('.txt', '')
+        for scale, result in multiscale_results.items():
+            if 'superpixel_labels' in result and 'composite_dna' in result and result['composite_dna'].size > 0:
+                try:
+                    fig, ax = plt.subplots(figsize=(10, 10))
+                    plot_segmentation_overlay(
+                        image=result['composite_dna'],
+                        labels=result['superpixel_labels'],
+                        bounds=result['bounds'],
+                        title=f"SLIC Segmentation - {roi_name} - {scale}μm",
+                        ax=ax
+                    )
+                    plot_filename = plots_dir / f"{roi_name}_scale_{scale}_segmentation.png"
+                    fig.savefig(plot_filename, dpi=150, bbox_inches='tight')
+                    plt.close(fig)
+                    logger.debug(f"Generated validation plot: {plot_filename}")
+                except Exception as e:
+                    logger.warning(f"Could not generate plot for {roi_name} at scale {scale}: {e}")
+    
+    # NOTE: NOT computing scale consistency anymore - low ARI between scales is expected!
+    # Different scales capture different biological features, they shouldn't agree
     
     # Include metadata in results
     metadata = roi_data['metadata']
     return {
         'multiscale_results': multiscale_results,
-        'consistency_results': consistency_results,
+        # Removed 'consistency_results' - low inter-scale ARI is biologically meaningful
         'roi_metadata': {
             'n_pixels': len(coords),
             'n_proteins': len(ion_counts),
@@ -256,31 +308,73 @@ def analyze_roi_with_multiscale(roi_data: Dict[str, Any], config: Config) -> Dic
 
 
 def run_validation(analysis_results: List[Dict[str, Any]], config: Config) -> Dict[str, Any]:
-    """Run validation suite on analysis results."""
+    """Run segmentation quality validation on analysis results.
+    
+    Validates the SLIC-on-DNA segmentation method through morphological metrics
+    and biological correspondence, without synthetic data generation.
+    """
     logger = logging.getLogger('Validation')
     
     if not analysis_results:
         return {'error': 'No analysis results for validation'}
     
     try:
-        # Basic validation using synthetic data generation
-        validation_config = config.raw.get('validation', {})
-        n_cells = validation_config.get('n_cells', 1000)
-        
-        # Generate synthetic data for comparison
-        synthetic_data = generate_synthetic_imc_data(
-            n_cells=n_cells,
-            n_clusters=5,
-            spatial_structure='clustered'
-        )
-        
         validation_results = {
-            'synthetic_data_generated': True,
-            'n_cells': n_cells,
-            'validation_method': 'synthetic_comparison'
+            'validation_method': 'segmentation_quality',
+            'n_rois_validated': len(analysis_results),
+            'roi_validations': []
         }
         
-        logger.info(f"Validation complete: synthetic data generated for {n_cells} cells")
+        # Validate each ROI's segmentation quality
+        for result in analysis_results:
+            roi_name = result.get('roi_metadata', {}).get('filename', 'unknown')
+            multiscale_results = result.get('multiscale_results', {})
+            
+            roi_validation = {'roi': roi_name, 'scale_validations': {}}
+            
+            # Validate each scale
+            for scale, scale_result in multiscale_results.items():
+                if 'superpixel_labels' in scale_result:
+                    # Get reference channels (DNA)
+                    reference_channels = {}
+                    if 'composite_dna' in scale_result:
+                        reference_channels['DNA_composite'] = scale_result['composite_dna']
+                    
+                    # Compute segmentation quality metrics using new pure validation
+                    if reference_channels and 'superpixel_labels' in scale_result:
+                        # Use new framework for validation
+                        validator = ValidationFactory.create_validator(
+                            FRAMEWORK_CONFIG.get('validation', {})
+                        )
+                        
+                        # Run validation
+                        results = validator.validate(
+                            segmentation=scale_result['superpixel_labels'],
+                            context=reference_channels
+                        )
+                        
+                        # Summarize for backward compatibility
+                        quality_metrics = validator.summarize(results)
+                        quality_metrics['scale_um'] = scale
+                        roi_validation['scale_validations'][f'{scale}um'] = quality_metrics
+            
+            validation_results['roi_validations'].append(roi_validation)
+        
+        # Compute summary statistics
+        all_metrics = {}
+        for roi_val in validation_results['roi_validations']:
+            for scale, metrics in roi_val['scale_validations'].items():
+                for metric_name, value in metrics.items():
+                    if metric_name not in all_metrics:
+                        all_metrics[metric_name] = []
+                    all_metrics[metric_name].append(value)
+        
+        validation_results['summary'] = {
+            metric: {'mean': np.mean(values), 'std': np.std(values)}
+            for metric, values in all_metrics.items() if values
+        }
+        
+        logger.info(f"Validation complete: {len(analysis_results)} ROIs validated")
         
         return validation_results
         
@@ -316,12 +410,12 @@ def save_results(analysis_results: List[Dict[str, Any]],
         'roi_summaries': []
     }
     
-    # Add ROI-level summaries
+    # Add ROI-level summaries (without misleading consistency metrics)
     for result in analysis_results:
         roi_summary = {
             'roi_metadata': result['roi_metadata'],
-            'multiscale_summary': result.get('multiscale_results', {}),
-            'consistency_metrics': result.get('consistency_results', {})
+            'multiscale_summary': result.get('multiscale_results', {})
+            # Removed consistency_metrics - low inter-scale ARI is expected and meaningful!
         }
         summary['roi_summaries'].append(roi_summary)
     
@@ -383,13 +477,22 @@ def main():
         corrected_data, correction_stats = run_batch_correction(batch_data, config)
         
         if 'error' not in correction_stats:
-            improvement = correction_stats['improvement_metrics']['improvement_ratio']
-            print(f"✅ Batch correction complete: {improvement:.1%} improvement")
+            if 'improvement_metrics' in correction_stats:
+                improvement = correction_stats['improvement_metrics']['improvement_ratio']
+                print(f"✅ Batch correction complete: {improvement:.1%} improvement")
+            else:
+                print(f"✅ Batch correction complete using {len(correction_stats.get('sham_batches', []))} sham batches")
         else:
             print(f"⚠️  Proceeding without batch correction: {correction_stats['error']}")
         
-        # Multi-scale analysis for each ROI
-        print("\n🔬 Running multi-scale analysis...")
+        # Create plots directory
+        output_config = config.raw.get('output', {})
+        plots_dir = Path(output_config.get('plots_dir', 'plots/validation'))
+        plots_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Plots will be saved to: {plots_dir.resolve()}")
+        
+        # Multi-scale analysis for each ROI with visual validation
+        print("\n🔬 Running multi-scale analysis with visual validation...")
         analysis_results = []
         
         roi_count = 0
@@ -402,14 +505,14 @@ def main():
                       f"({roi_data['n_pixels']:,} pixels, {len(roi_data['ion_counts'])} proteins)")
                 
                 try:
-                    result = analyze_roi_with_multiscale(roi_data, config)
+                    result = analyze_roi_with_multiscale(roi_data, config, plots_dir)
                     result['batch_id'] = batch_id
                     analysis_results.append(result)
                     
-                    # Log scale consistency
-                    consistency = result['consistency_results'].get('overall', {})
-                    if 'mean_ari' in consistency:
-                        print(f"      Scale consistency: ARI={consistency['mean_ari']:.3f}")
+                    # Visual validation plots generated instead of misleading ARI metrics
+                    n_scales = len(result.get('multiscale_results', {}))
+                    if n_scales > 0:
+                        print(f"      ✅ Generated {n_scales} scale validation plots")
                     
                 except Exception as e:
                     logger.error(f"Failed to analyze {roi_name}: {e}")
@@ -421,13 +524,16 @@ def main():
         
         print(f"\n✅ Analyzed {len(analysis_results)} ROIs successfully")
         
-        # Validation
-        print("\n🔍 Running enhanced validation...")
+        # Segmentation Quality Validation
+        print("\n🔍 Running segmentation quality validation...")
         validation_results = run_validation(analysis_results, config)
         
         if 'error' not in validation_results:
-            overall_score = validation_results.get('summary', {}).get('overall_score', 0)
-            print(f"✅ Validation complete: Overall score {overall_score:.3f}")
+            summary = validation_results.get('summary', {})
+            if 'compactness' in summary:
+                print(f"✅ Validation complete: Compactness {summary['compactness']['mean']:.3f}±{summary['compactness']['std']:.3f}")
+            else:
+                print(f"✅ Validation complete: {len(validation_results.get('roi_validations', []))} ROIs validated")
         else:
             print(f"⚠️  Validation limited: {validation_results['error']}")
         
@@ -450,27 +556,31 @@ def main():
         print(f"   • 9 protein markers + 2 DNA channels")
         
         # Batch correction results
-        if 'error' not in correction_stats:
+        if 'error' not in correction_stats and 'improvement_metrics' in correction_stats:
             before_severity = correction_stats['improvement_metrics']['severity_before']
             after_severity = correction_stats['improvement_metrics']['severity_after']
+            improvement = correction_stats['improvement_metrics']['improvement_ratio']
             print(f"\n🔧 Batch Correction:")
             print(f"   • Before: {before_severity:.3f} batch effect severity")
             print(f"   • After: {after_severity:.3f} batch effect severity")
             print(f"   • Improvement: {improvement:.1%}")
+        elif 'error' not in correction_stats:
+            print(f"\n🔧 Batch Correction:")
+            print(f"   • Applied sham-anchored normalization")
+            print(f"   • Reference: {len(correction_stats.get('sham_batches', []))} sham batches")
+            print(f"   • Normalized: {len(correction_stats.get('per_batch_stats', {}))} total batches")
         
-        # Multi-scale analysis summary
-        scales_analyzed = config.raw.get('multiscale_analysis', {}).get('scales_um', [10, 20, 40])
-        print(f"\n🔬 Multi-scale Analysis:")
+        # Multi-scale analysis summary with visual validation
+        scales_analyzed = config.segmentation.get('scales_um', [10, 20, 40])
+        print(f"\n🔬 Multi-scale Analysis with Visual Validation:")
         print(f"   • Scales: {scales_analyzed} μm")
+        print(f"   • Visual validation plots: {plots_dir.resolve()}")
+        print(f"   • Note: Low inter-scale ARI is EXPECTED - scales capture different biology!")
         
-        consistency_scores = []
-        for result in analysis_results:
-            consistency = result['consistency_results'].get('overall', {})
-            if 'mean_ari' in consistency:
-                consistency_scores.append(consistency['mean_ari'])
-        
-        if consistency_scores:
-            print(f"   • Average scale consistency (ARI): {np.mean(consistency_scores):.3f}")
+        # Report scale-specific information instead of misleading consistency
+        print(f"   • 10μm scale: Captures cellular/subcellular features")
+        print(f"   • 20μm scale: Captures local microenvironments")
+        print(f"   • 40μm scale: Captures tissue domain organization")
         
         # Validation summary
         if 'error' not in validation_results:

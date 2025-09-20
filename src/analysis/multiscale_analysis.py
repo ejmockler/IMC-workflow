@@ -46,7 +46,7 @@ def perform_multiscale_analysis(
                 target_bin_size_um=scale_um
             )
             
-            # Apply ion count processing to superpixel-aggregated data
+            # Apply ion count processing to tissue compartment-aggregated data
             if scale_result['superpixel_counts']:
                 ion_result = ion_count_pipeline(
                     scale_result['superpixel_coords'],

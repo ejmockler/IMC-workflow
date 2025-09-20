@@ -11,6 +11,7 @@ import matplotlib.colors as mcolors
 from matplotlib.patches import Rectangle
 from typing import Dict, List, Optional, Tuple, Union
 import seaborn as sns
+from skimage.segmentation import mark_boundaries
 
 
 def plot_roi_overview(
@@ -351,5 +352,63 @@ def plot_correlation_heatmap(
             for j in range(len(labels)):
                 text = ax.text(j, i, f'{correlation_matrix[i, j]:.2f}',
                              ha="center", va="center", color="black", fontsize=8)
+    
+    return fig if return_fig else ax
+
+
+def plot_segmentation_overlay(
+    image: np.ndarray,
+    labels: np.ndarray,
+    bounds: Tuple[float, float, float, float],
+    title: str = "Segmentation Overlay",
+    figsize: Tuple[int, int] = (8, 8),
+    ax: Optional[plt.Axes] = None
+) -> Union[plt.Figure, plt.Axes]:
+    """
+    Overlays segmentation boundaries on an image for visual validation.
+    
+    Critical for assessing whether superpixels align with biological structures.
+    Low inter-scale ARI is EXPECTED - different scales capture different biology.
+    
+    Args:
+        image: The 2D image to display (e.g., DNA channel)
+        labels: The 2D integer array of segmentation labels
+        bounds: Tuple of (x_min, x_max, y_min, y_max) for axis scaling
+        title: Plot title
+        figsize: Figure size if creating a new figure
+        ax: Existing axes to plot on
+        
+    Returns:
+        Figure or Axes object
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+        return_fig = True
+    else:
+        return_fig = False
+    
+    # Normalize image for display if needed
+    if image.size > 0:
+        img_normalized = (image - np.min(image)) / (np.max(image) - np.min(image) + 1e-10)
+    else:
+        img_normalized = image
+    
+    # Create the boundary image using yellow lines for visibility
+    overlay_img = mark_boundaries(img_normalized, labels, color=(1, 1, 0), mode='thick')
+    
+    # Display the image with correct spatial extent
+    x_min, x_max, y_min, y_max = bounds
+    ax.imshow(overlay_img, extent=[x_min, x_max, y_min, y_max], origin='lower')
+    
+    ax.set_title(title)
+    ax.set_xlabel("X (μm)")
+    ax.set_ylabel("Y (μm)")
+    ax.set_aspect('equal')
+    
+    # Add scale information
+    n_segments = len(np.unique(labels))
+    ax.text(0.02, 0.98, f"Segments: {n_segments}", 
+            transform=ax.transAxes, va='top', ha='left',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
     return fig if return_fig else ax

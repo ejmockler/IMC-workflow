@@ -15,7 +15,8 @@ import warnings
 from .ion_count_processing import ion_count_pipeline
 from .slic_segmentation import slic_pipeline
 from .multiscale_analysis import perform_multiscale_analysis, compute_scale_consistency
-from .validation import run_validation_experiment, summarize_validation_results
+# Validation moved to src/validation/core
+from ..validation.adapter import validate_segmentation_quality
 from .parallel_processing import create_roi_batch_processor
 from .config_management import IMCAnalysisConfig, ConfigurationManager
 from .efficient_storage import create_storage_backend
@@ -214,43 +215,48 @@ class IMCAnalysisPipeline:
     
     def run_validation_study(
         self,
-        n_experiments: int = 10,
+        analysis_results: List[Dict],
         output_dir: str = "validation_results"
     ) -> Dict:
         """
-        Run validation study using synthetic data.
+        Run segmentation quality validation on analysis results.
+        
+        Validates SLIC-on-DNA segmentation through morphological metrics
+        and biological correspondence, without synthetic data generation.
         
         Args:
-            n_experiments: Number of validation experiments
+            analysis_results: List of analyzed ROI results
             output_dir: Output directory for validation results
             
         Returns:
             Validation results summary
         """
-        # Define analysis pipeline for validation
-        def validation_pipeline(coords, ion_counts, dna1, dna2):
-            return self.analyze_single_roi({
-                'coords': coords,
-                'ion_counts': ion_counts,
-                'dna1_intensities': dna1,
-                'dna2_intensities': dna2,
-                'protein_names': list(ion_counts.keys()),
-                'n_measurements': len(coords)
-            })
+        validation_summary = {
+            'method': 'segmentation_quality',
+            'n_rois': len(analysis_results),
+            'scale_validations': {}
+        }
         
-        # Run validation experiments
-        validation_results = run_validation_experiment(
-            analysis_pipeline=validation_pipeline,
-            n_experiments=n_experiments,
-            experiment_params={
-                'n_cells': 1000,
-                'n_clusters': 5,
-                'spatial_structure': 'clustered'
-            }
-        )
-        
-        # Summarize results
-        validation_summary = summarize_validation_results(validation_results)
+        # Validate segmentation quality for each ROI
+        for result in analysis_results:
+            multiscale_results = result.get('multiscale_results', {})
+            
+            for scale, scale_result in multiscale_results.items():
+                if scale not in validation_summary['scale_validations']:
+                    validation_summary['scale_validations'][scale] = []
+                
+                # Get reference channels and segments
+                if 'superpixel_labels' in scale_result and 'composite_dna' in scale_result:
+                    reference_channels = {'DNA_composite': scale_result['composite_dna']}
+                    
+                    # Compute segmentation quality metrics
+                    quality_metrics = validate_segmentation_quality(
+                        segments=scale_result['superpixel_labels'],
+                        reference_channels=reference_channels,
+                        scale_um=scale
+                    )
+                    
+                    validation_summary['scale_validations'][scale].append(quality_metrics)
         
         # Save validation results using efficient storage
         Path(output_dir).mkdir(parents=True, exist_ok=True)

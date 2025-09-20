@@ -1,8 +1,12 @@
 """
 SLIC Superpixel Segmentation for IMC Data
 
-Morphology-aware spatial binning using DNA channel information.
-Replaces arbitrary square binning with tissue-structure-aware segmentation.
+Morphology-aware spatial analysis using DNA channel information.
+Creates superpixels for hypothesis generation in spatial proteomics.
+Enables multi-scale analysis of tissue organization patterns.
+
+Note: This is a methods development study for hypothesis generation.
+Results should be interpreted with appropriate statistical caution given n=2 pilot data.
 """
 
 import numpy as np

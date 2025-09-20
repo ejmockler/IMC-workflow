@@ -1,0 +1,109 @@
+# Framework Configuration
+# This file contains ONLY framework mechanics - HOW the system operates
+# No biological knowledge or experiment-specific details
+
+validation:
+  # Core metrics to compute (domain-agnostic)
+  metrics:
+    - compactness
+    - size_uniformity
+    - boundary_regularity
+    - spatial_autocorrelation
+  
+  # Metrics that require auxiliary data
+  context_aware_metrics:
+    - type: signal_adherence
+      params:
+        use_all_channels: false  # Use only reference channels
+  
+  # Statistical parameters
+  statistics:
+    bootstrap_iterations: 1000
+    confidence_level: 0.95
+    multiple_testing_correction: benjamini_hochberg
+  
+  # Computational parameters
+  performance:
+    parallel: true
+    max_workers: null  # Auto-detect
+    memory_limit_gb: 8.0
+    cache_results: true
+
+segmentation:
+  # Method parameters (not biological)
+  slic:
+    compactness_range: [5.0, 15.0]
+    sigma_range: [1.0, 3.0]
+    iterations: 10
+  
+  # Quality control
+  quality_thresholds:
+    min_segments: 10
+    max_segments: 10000
+    min_segment_size: 5  # pixels
+
+benchmarking:
+  # Methods to compare (algorithmic, not biological)
+  methods:
+    - slic
+    - kmeans
+    - watershed
+    - square_binning
+  
+  # Comparison metrics
+  metrics:
+    - computational_time
+    - memory_usage
+    - segmentation_quality
+    - parameter_sensitivity
+  
+  # Statistical testing
+  comparison:
+    n_bootstrap: 1000
+    test_type: wilcoxon  # Non-parametric
+
+robustness:
+  # Parameter stability testing
+  parameter_variation:
+    n_iterations: 20
+    variation_range: 0.2  # ±20% of nominal
+  
+  # Noise testing
+  noise_levels: [0.0, 0.05, 0.1, 0.15, 0.2]
+  noise_types: [gaussian, poisson]
+  
+  # Edge case testing
+  test_cases:
+    - empty_image
+    - uniform_image
+    - high_gradient
+    - sparse_signal
+
+output:
+  # Output configuration (framework mechanics)
+  format: hdf5
+  compression: true
+  include_metadata: true
+  
+  # Visualization
+  figures:
+    format: png
+    dpi: 300
+    colormap: viridis
+  
+  # Reporting
+  reports:
+    summary: true
+    detailed: false
+    include_statistics: true
+
+logging:
+  level: INFO
+  file: validation.log
+  console: true
+  
+system:
+  # System configuration
+  random_seed: 42
+  numpy_threads: null  # Auto
+  temp_directory: /tmp/imc_validation

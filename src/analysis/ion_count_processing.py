@@ -149,40 +149,39 @@ def optimize_cofactors_for_dataset(
 
 def apply_arcsinh_transform(
     ion_count_arrays: Dict[str, np.ndarray],
-    cofactors: Optional[Dict[str, float]] = None,
-    default_cofactor: float = 1.0,
-    optimization_method: str = "percentile"
+    optimization_method: str = "percentile",
+    percentile_threshold: float = 5.0
 ) -> Tuple[Dict[str, np.ndarray], Dict[str, float]]:
     """
-    Apply arcsinh transformation with proper cofactor optimization.
+    Apply arcsinh transformation with automatic marker-specific cofactor optimization.
     
-    CRITICAL FIX: Replaces hardcoded cofactor=1.0 with marker-specific optimization.
+    Uses data-driven optimization to find optimal cofactor for each protein marker,
+    ensuring proper variance stabilization across the dynamic range.
     
     Args:
         ion_count_arrays: Dictionary of protein name -> 2D ion count array
-        cofactors: Pre-computed cofactors (if None, will optimize)
-        default_cofactor: Fallback cofactor for optimization failures
-        optimization_method: Method for cofactor optimization
+        optimization_method: Method for cofactor optimization ('percentile', 'mad', 'variance')
+        percentile_threshold: Percentile threshold for percentile method (default: 5th percentile)
         
     Returns:
         Tuple of (transformed_arrays, cofactors_used)
     """
-    if cofactors is None:
-        # Optimize cofactors for this dataset
-        cofactors = optimize_cofactors_for_dataset(
-            ion_count_arrays, method=optimization_method
+    # Always optimize cofactors for this dataset
+    cofactors = {}
+    for protein_name, counts in ion_count_arrays.items():
+        cofactors[protein_name] = estimate_optimal_cofactor(
+            counts.ravel(), 
+            method=optimization_method,
+            percentile_threshold=percentile_threshold
         )
     
     transformed = {}
     cofactors_used = {}
     
     for protein_name, counts in ion_count_arrays.items():
-        # Get cofactor for this protein
-        cofactor = cofactors.get(protein_name, default_cofactor)
-        
         # Apply arcsinh transformation: arcsinh(x/cofactor)
-        transformed[protein_name] = np.arcsinh(counts / cofactor)
-        cofactors_used[protein_name] = cofactor
+        transformed[protein_name] = np.arcsinh(counts / cofactors[protein_name])
+        cofactors_used[protein_name] = cofactors[protein_name]
     
     return transformed, cofactors_used
 
@@ -424,7 +423,6 @@ def ion_count_pipeline(
     ion_counts: Dict[str, np.ndarray],
     bin_size_um: float = 20.0,
     n_clusters: Optional[int] = None,
-    cofactor: float = 1.0,
     mask: Optional[np.ndarray] = None,
     memory_limit_gb: float = 4.0,
     use_memory_optimization: bool = True
@@ -433,7 +431,7 @@ def ion_count_pipeline(
     Complete ion count processing pipeline with memory management.
     
     CRITICAL FIXES:
-    - Marker-specific arcsinh cofactor optimization
+    - Automatic marker-specific arcsinh cofactor optimization
     - Data-driven clustering parameter selection
     - Memory-efficient processing for large datasets
     
@@ -442,7 +440,6 @@ def ion_count_pipeline(
         ion_counts: Dictionary of protein ion counts
         bin_size_um: Spatial binning size in micrometers
         n_clusters: Number of clusters (optimized if None)
-        cofactor: Fallback arcsinh cofactor (will be optimized)
         mask: Optional spatial mask for valid regions
         memory_limit_gb: Memory limit for processing
         use_memory_optimization: Whether to use memory-efficient processing
@@ -505,11 +502,11 @@ def ion_count_pipeline(
     # Step 1: Aggregate ion counts
     aggregated_counts = aggregate_ion_counts(coords, ion_counts, bin_edges_x, bin_edges_y)
     
-    # Step 2: Apply arcsinh transformation with optimization
+    # Step 2: Apply arcsinh transformation with automatic optimization
     transformed_arrays, cofactors_used = apply_arcsinh_transform(
         aggregated_counts, 
-        cofactors=None,  # Auto-optimize
-        optimization_method="percentile"
+        optimization_method="percentile",
+        percentile_threshold=5.0
     )
     
     # Step 3: Standardize features

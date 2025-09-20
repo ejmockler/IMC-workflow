@@ -41,8 +41,8 @@
       "clip_negative": true
     },
     "arcsinh_transform": {
-      "cofactor": 1.0,
-      "auto_optimize": false
+      "optimization_method": "percentile",
+      "percentile_threshold": 5.0
     },
     "normalization": {
       "method": "standardize",
@@ -51,13 +51,64 @@
   },
   "segmentation": {
     "method": "slic",
+    "methods_to_compare": ["slic", "square"],
     "slic_input_channels": ["DNA1", "DNA2"],
     "slic_params": {
       "n_segments_per_mm2": 2500,
       "compactness": 10.0,
       "sigma": 2.0
     },
-    "scales_um": [10.0, 20.0, 40.0]
+    "square_params": {
+      "bin_sizes_um": [10.0, 20.0, 40.0]
+    },
+    "scales_um": [10.0, 20.0, 40.0],
+    "enable_comparison": false
+  },
+  "kidney_experiment": {
+    "superpixel_scales": {
+      "capillary": {
+        "target_size_um": 10,
+        "description": "Capillary network resolution - peritubular capillaries",
+        "biological_features": ["CD31+ endothelial networks", "immune cell interactions"]
+      },
+      "tubular": {
+        "target_size_um": 75,
+        "description": "Tubular cross-sections and microenvironments", 
+        "biological_features": ["tubular-interstitial interface", "local immune infiltration"]
+      },
+      "architectural": {
+        "target_size_um": 200,
+        "description": "Glomerular and cortical architectural units",
+        "biological_features": ["glomerular tufts", "cortical organization"]
+      }
+    },
+    "anatomical_validation": {
+      "cortex_signatures": {
+        "expected_high": ["CD31", "CD34"],
+        "expected_pattern": "glomerular_enrichment"
+      },
+      "medulla_signatures": {
+        "expected_high": ["CD140a"],
+        "expected_pattern": "interstitial_distribution"
+      }
+    },
+    "temporal_expectations": {
+      "day_1": {
+        "primary_response": "neutrophil_recruitment",
+        "key_markers": ["Ly6G", "CD11b"],
+        "spatial_pattern": "focal_infiltration"
+      },
+      "day_3": {
+        "primary_response": "macrophage_activation", 
+        "key_markers": ["CD206", "CD11b"],
+        "spatial_pattern": "expanding_inflammation"
+      },
+      "day_7": {
+        "primary_response": "resolution_or_fibrosis",
+        "key_markers": ["CD140a", "CD140b", "CD206"],
+        "spatial_pattern": "organized_repair"
+      }
+    }
   },
   "analysis": {
     "analyze_regions_separately": true,
@@ -66,14 +117,36 @@
       "n_clusters": 8,
       "optimization_method": "comprehensive",
       "k_range": [2, 12],
-      "random_state": 42
+      "random_state": 42,
+      "stability_testing": {
+        "enabled": true,
+        "subsample_ratios": [0.8, 0.9, 1.0],
+        "n_iterations": 50
+      },
+      "morphology_validation": {
+        "enabled": false,
+        "known_markers": {
+          "immune": ["CD45", "CD11b", "Ly6G", "CD206"],
+          "stromal": ["CD140a", "CD140b"],
+          "vascular": ["CD31", "CD34"]
+        }
+      }
     },
     "batch_correction": {
       "enabled": true,
       "method": "sham_anchored",
       "sham_condition": "Sham",
       "sham_timepoint": 0,
-      "group_by": ["timepoint", "replicate_id"]
+      "group_by": ["timepoint", "replicate_id"],
+      "bootstrap_confidence": {
+        "enabled": true,
+        "n_iterations": 10000,
+        "confidence_level": 0.95
+      },
+      "validation": {
+        "detect_batch_effects": true,
+        "compute_improvement_metrics": true
+      }
     }
   },
   "quality_control": {
@@ -112,17 +185,51 @@
     }
   },
   "output": {
-    "results_dir": "results/analysis",
+    "results_dir": "results/methods_validation",
     "roi_results_dir": "roi_results",
     "qc_dir": "quality_control",
-    "save_intermediate": false,
+    "save_intermediate": true,
     "save_format": "hdf5",
-    "compression": true
+    "compression": true,
+    "include_provenance": true,
+    "figures": {
+      "generate_comparison_plots": false,
+      "multi_scale_visualization": true,
+      "batch_effect_plots": true,
+      "clustering_validation_plots": true
+    },
+    "reports": {
+      "methods_summary": true,
+      "parameter_sensitivity": false,
+      "computational_performance": true
+    }
   },
   "performance": {
     "parallel_processes": null,
-    "memory_limit_gb": 4.0,
-    "chunk_size": "auto"
+    "memory_limit_gb": 8.0,
+    "chunk_size": "auto",
+    "enable_profiling": false,
+    "cache_intermediate": true
+  },
+  "validation": {
+    "method": "comprehensive",
+    "reference_channels": ["DNA1", "DNA2"],
+    "quality_metrics": [
+      "compactness",
+      "boundary_adherence", 
+      "spatial_coherence",
+      "size_consistency"
+    ],
+    "biological_correspondence": {
+      "enabled": true,
+      "metrics": ["enrichment", "colocalization"]
+    },
+    "visual_validation": {
+      "enabled": true,
+      "generate_plots": true,
+      "plot_formats": ["png"],
+      "dpi": 150
+    }
   },
   "metadata_tracking": {
     "preserve_fields": [

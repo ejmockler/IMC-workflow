@@ -23,7 +23,7 @@ from .clustering_optimization import (
     elbow_method,
     silhouette_analysis,
     gap_statistic,
-    biological_validation_score
+    spatial_coherence_score
 )
 
 # Memory management
@@ -69,13 +69,7 @@ from .batch_correction import (
     detect_batch_effects
 )
 
-# Validation framework
-from .validation import (
-    generate_synthetic_imc_data,
-    validate_clustering_performance,
-    run_validation_experiment,
-    summarize_validation_results
-)
+# Note: Validation moved to src/validation/core for clean separation
 
 # Parallel processing
 from .parallel_processing import (
@@ -146,7 +140,7 @@ __all__ = [
     'elbow_method',
     'silhouette_analysis',
     'gap_statistic',
-    'biological_validation_score',
+    'spatial_coherence_score',
     
     # Memory Management
     'MemoryEfficientPipeline',
@@ -182,11 +176,6 @@ __all__ = [
     'detect_batch_effects',
     'correct_batch_effects',
     
-    # Validation
-    'generate_synthetic_imc_data',
-    'validate_clustering_performance',
-    'run_validation_experiment',
-    'summarize_validation_results',
     
     # Parallel Processing
     'parallel_roi_analysis',
