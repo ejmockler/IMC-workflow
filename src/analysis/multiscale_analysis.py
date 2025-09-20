@@ -19,7 +19,8 @@ def perform_multiscale_analysis(
     dna2_intensities: np.ndarray,
     scales_um: List[float] = [10.0, 20.0, 40.0],
     n_clusters: int = 8,
-    use_slic: bool = True
+    use_slic: bool = True,
+    memory_limit_gb: float = 12.0
 ) -> Dict[float, Dict]:
     """
     Perform analysis at multiple spatial scales.
@@ -63,7 +64,8 @@ def perform_multiscale_analysis(
             ion_result = ion_count_pipeline(
                 coords, ion_counts,
                 bin_size_um=scale_um,
-                n_clusters=n_clusters
+                n_clusters=n_clusters,
+                memory_limit_gb=memory_limit_gb
             )
             scale_result = ion_result
         

@@ -18,6 +18,7 @@ from typing import List, Dict, Any
 import json
 import numpy as np
 import pandas as pd
+import gc  # For garbage collection
 import matplotlib.pyplot as plt
 
 # Add src to path for imports
@@ -37,7 +38,13 @@ try:
     with open('config/framework.yaml', 'r') as f:
         FRAMEWORK_CONFIG = yaml.safe_load(f)
 except (FileNotFoundError, ImportError):
-    FRAMEWORK_CONFIG = {}
+    # Fallback configuration
+    FRAMEWORK_CONFIG = {
+        'validation': {
+            'type': 'segmentation',
+            'metrics': ['compactness', 'boundary_adherence']
+        }
+    }
 from src.utils.data_loader import load_metadata_from_csv
 from src.utils.helpers import Metadata
 from src.viz_utils.plotting import plot_segmentation_overlay
@@ -254,6 +261,7 @@ def analyze_roi_with_multiscale(roi_data: Dict[str, Any], config: Config, plots_
     scales_um = config.segmentation.get('scales_um', [10.0, 20.0, 40.0])
     n_clusters = config.analysis['clustering']['n_clusters']
     use_slic = config.segmentation['method'] == 'slic'
+    memory_limit_gb = config.performance.get('memory_limit_gb', 12.0)
     
     # Perform multi-scale analysis
     multiscale_results = perform_multiscale_analysis(
@@ -263,7 +271,8 @@ def analyze_roi_with_multiscale(roi_data: Dict[str, Any], config: Config, plots_
         dna2_intensities=dna2_intensities,
         scales_um=scales_um,
         n_clusters=n_clusters,
-        use_slic=use_slic
+        use_slic=use_slic,
+        memory_limit_gb=memory_limit_gb
     )
     
     # Generate visual validation plots if output directory provided
@@ -307,11 +316,66 @@ def analyze_roi_with_multiscale(roi_data: Dict[str, Any], config: Config, plots_
     }
 
 
+def validate_roi_chunk(labels_chunk: np.ndarray, composite_chunk: np.ndarray, 
+                       chunk_id: str) -> Dict[str, Any]:
+    """Validate a single spatial chunk with memory constraints."""
+    if labels_chunk.size == 0 or labels_chunk.ndim != 2:
+        return {'chunk_id': chunk_id, 'status': 'invalid_input'}
+    
+    try:
+        # Simple, memory-efficient metrics for chunks
+        unique_labels = np.unique(labels_chunk)
+        unique_labels = unique_labels[unique_labels >= 0]
+        
+        if len(unique_labels) == 0:
+            return {'chunk_id': chunk_id, 'status': 'no_segments'}
+        
+        # Basic chunk metrics
+        n_segments = len(unique_labels)
+        chunk_area = labels_chunk.size
+        
+        # Compute compactness efficiently
+        compactness_values = []
+        for seg_id in unique_labels:
+            mask = labels_chunk == seg_id
+            area = np.sum(mask)
+            if area > 2:  # Need minimum area for perimeter calculation
+                # Simplified perimeter using boundary pixels
+                boundary = mask & ~ndimage.binary_erosion(mask)
+                perimeter = np.sum(boundary)
+                if perimeter > 0:
+                    compactness = (4 * np.pi * area) / (perimeter ** 2)
+                    compactness_values.append(min(compactness, 1.0))
+        
+        # DNA signal metrics if available
+        dna_metrics = {}
+        if composite_chunk.size > 0 and composite_chunk.ndim == 2:
+            dna_metrics = {
+                'mean_intensity': float(composite_chunk.mean()),
+                'std_intensity': float(composite_chunk.std()),
+                'min_intensity': float(composite_chunk.min()),
+                'max_intensity': float(composite_chunk.max())
+            }
+        
+        return {
+            'chunk_id': chunk_id,
+            'status': 'success',
+            'n_segments': n_segments,
+            'segment_density': n_segments / chunk_area,
+            'compactness_mean': float(np.mean(compactness_values)) if compactness_values else 0.0,
+            'compactness_std': float(np.std(compactness_values)) if compactness_values else 0.0,
+            'dna_metrics': dna_metrics
+        }
+        
+    except Exception as e:
+        return {'chunk_id': chunk_id, 'status': 'error', 'error': str(e)}
+
+
 def run_validation(analysis_results: List[Dict[str, Any]], config: Config) -> Dict[str, Any]:
-    """Run segmentation quality validation on analysis results.
+    """Run segmentation quality validation using lightweight data and disk-based full results.
     
     Validates the SLIC-on-DNA segmentation method through morphological metrics
-    and biological correspondence, without synthetic data generation.
+    and biological correspondence, reading full data from disk as needed.
     """
     logger = logging.getLogger('Validation')
     
@@ -325,40 +389,99 @@ def run_validation(analysis_results: List[Dict[str, Any]], config: Config) -> Di
             'roi_validations': []
         }
         
-        # Validate each ROI's segmentation quality
-        for result in analysis_results:
-            roi_name = result.get('roi_metadata', {}).get('filename', 'unknown')
-            multiscale_results = result.get('multiscale_results', {})
+        # Get paths for reading full results from disk
+        output_config = config.raw.get('output', {})
+        results_dir = Path(output_config.get('results_dir', 'results/cross_sectional_kidney_injury'))
+        roi_results_dir = results_dir / output_config.get('roi_results_dir', 'roi_results')
+        
+        # Validate each ROI using chunked processing and NPZ data
+        for i, validation_data in enumerate(analysis_results):
+            roi_name = validation_data.get('roi_metadata', {}).get('filename', 'unknown')
+            roi_filename = roi_name.replace('.txt', '') if roi_name.endswith('.txt') else roi_name
             
             roi_validation = {'roi': roi_name, 'scale_validations': {}}
             
-            # Validate each scale
-            for scale, scale_result in multiscale_results.items():
-                if 'superpixel_labels' in scale_result:
-                    # Get reference channels (DNA)
-                    reference_channels = {}
-                    if 'composite_dna' in scale_result:
-                        reference_channels['DNA_composite'] = scale_result['composite_dna']
+            # Load arrays from NPZ format (much more memory efficient)
+            npz_file = roi_results_dir / f"{roi_filename}_arrays.npz"
+            metadata_file = roi_results_dir / f"{roi_filename}_metadata.json"
+            
+            if npz_file.exists() and metadata_file.exists():
+                try:
+                    # Load metadata to get scale information
+                    with open(metadata_file, 'r') as f:
+                        metadata = json.load(f)
                     
-                    # Compute segmentation quality metrics using new pure validation
-                    if reference_channels and 'superpixel_labels' in scale_result:
-                        # Use new framework for validation
-                        validator = ValidationFactory.create_validator(
-                            FRAMEWORK_CONFIG.get('validation', {})
-                        )
+                    # Process each scale with chunked validation
+                    for scale_key, scale_metadata in metadata.get('multiscale_metadata', {}).items():
+                        scale = scale_key.replace('scale_', '')
                         
-                        # Run validation
-                        results = validator.validate(
-                            segmentation=scale_result['superpixel_labels'],
-                            context=reference_channels
-                        )
-                        
-                        # Summarize for backward compatibility
-                        quality_metrics = validator.summarize(results)
-                        quality_metrics['scale_um'] = scale
-                        roi_validation['scale_validations'][f'{scale}um'] = quality_metrics
+                        # Load arrays for this scale from NPZ
+                        with np.load(npz_file) as arrays:
+                            labels_key = f'scale_{scale}_superpixel_labels'
+                            composite_key = f'scale_{scale}_composite_dna'
+                            
+                            if labels_key in arrays:
+                                labels = arrays[labels_key]
+                                composite = arrays.get(composite_key, np.array([]))
+                                
+                                # Validate in 50x50 chunks to manage memory
+                                chunk_size = 50
+                                height, width = labels.shape
+                                chunk_results = []
+                                
+                                for y in range(0, height, chunk_size):
+                                    for x in range(0, width, chunk_size):
+                                        y_end = min(y + chunk_size, height)
+                                        x_end = min(x + chunk_size, width)
+                                        
+                                        labels_chunk = labels[y:y_end, x:x_end]
+                                        composite_chunk = composite[y:y_end, x:x_end] if composite.size > 0 else np.array([])
+                                        
+                                        chunk_id = f"{roi_filename}_scale_{scale}_chunk_{y}_{x}"
+                                        chunk_result = validate_roi_chunk(labels_chunk, composite_chunk, chunk_id)
+                                        
+                                        if chunk_result['status'] == 'success':
+                                            chunk_results.append(chunk_result)
+                                        
+                                        # Free chunk memory immediately
+                                        del labels_chunk
+                                        if composite_chunk.size > 0:
+                                            del composite_chunk
+                                
+                                # Aggregate chunk results into scale-level metrics
+                                if chunk_results:
+                                    successful_chunks = [r for r in chunk_results if r['status'] == 'success']
+                                    if successful_chunks:
+                                        aggregated_metrics = {
+                                            'scale_um': scale,
+                                            'n_chunks_validated': len(successful_chunks),
+                                            'total_segments': sum(r['n_segments'] for r in successful_chunks),
+                                            'mean_segment_density': np.mean([r['segment_density'] for r in successful_chunks]),
+                                            'mean_compactness': np.mean([r['compactness_mean'] for r in successful_chunks if r['compactness_mean'] > 0]),
+                                            'compactness_variation': np.std([r['compactness_mean'] for r in successful_chunks if r['compactness_mean'] > 0])
+                                        }
+                                        
+                                        # Aggregate DNA metrics
+                                        dna_means = [r['dna_metrics']['mean_intensity'] for r in successful_chunks if r['dna_metrics']]
+                                        if dna_means:
+                                            aggregated_metrics['dna_mean_intensity'] = np.mean(dna_means)
+                                            aggregated_metrics['dna_intensity_variation'] = np.std(dna_means)
+                                        
+                                        roi_validation['scale_validations'][f'{scale}um'] = aggregated_metrics
+                                
+                                # Clean up scale arrays
+                                del labels
+                                if composite.size > 0:
+                                    del composite
+                    
+                except Exception as e:
+                    logger.warning(f"Chunked validation failed for {roi_name}: {e}")
+                    roi_validation['validation_error'] = str(e)
             
             validation_results['roi_validations'].append(roi_validation)
+            
+            # Aggressive garbage collection after each ROI
+            gc.collect()
         
         # Compute summary statistics
         all_metrics = {}
@@ -381,6 +504,76 @@ def run_validation(analysis_results: List[Dict[str, Any]], config: Config) -> Di
     except Exception as e:
         logger.error(f"Validation failed: {e}")
         return {'error': str(e)}
+
+
+def numpy_to_list(obj):
+    """Convert numpy arrays to lists for JSON serialization."""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return str(obj)
+
+def save_single_roi_result(result: Dict[str, Any], roi_filename: str, config: Config) -> None:
+    """Save a single ROI result using memory-efficient NPZ format."""
+    output_config = config.raw.get('output', {})
+    results_dir = Path(output_config.get('results_dir', 'results/cross_sectional_kidney_injury'))
+    roi_results_dir = results_dir / output_config.get('roi_results_dir', 'roi_results')
+    
+    # Create directories
+    roi_results_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Separate arrays from metadata for efficient storage
+    arrays_to_save = {}
+    metadata_only = {}
+    
+    # Extract arrays from multiscale results
+    multiscale_results = result.get('multiscale_results', {})
+    for scale, scale_result in multiscale_results.items():
+        for key, value in scale_result.items():
+            if isinstance(value, np.ndarray):
+                arrays_to_save[f'scale_{scale}_{key}'] = value
+            else:
+                # Keep non-array data in metadata
+                if f'scale_{scale}' not in metadata_only:
+                    metadata_only[f'scale_{scale}'] = {}
+                metadata_only[f'scale_{scale}'][key] = value
+    
+    # Save arrays in compressed NPZ format
+    npz_file = roi_results_dir / f"{roi_filename}_arrays.npz"
+    if arrays_to_save:
+        np.savez_compressed(npz_file, **arrays_to_save)
+    
+    # Save lightweight metadata as JSON
+    metadata_result = {
+        'roi_metadata': result.get('roi_metadata', {}),
+        'batch_id': result.get('batch_id'),
+        'multiscale_metadata': metadata_only
+    }
+    
+    json_file = roi_results_dir / f"{roi_filename}_metadata.json"
+    with open(json_file, 'w') as f:
+        json.dump(metadata_result, f, indent=2, default=str)
+
+
+def extract_validation_data(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract only validation-relevant data from full result to save memory."""
+    validation_data = {
+        'roi_metadata': result.get('roi_metadata', {}),
+        'batch_id': result.get('batch_id'),
+        'validation_metrics': {}
+    }
+    
+    # Extract only segmentation labels and reference data for validation
+    multiscale_results = result.get('multiscale_results', {})
+    for scale, scale_result in multiscale_results.items():
+        if 'superpixel_labels' in scale_result:
+            validation_data['validation_metrics'][scale] = {
+                'has_segmentation': True,
+                'n_superpixels': len(np.unique(scale_result['superpixel_labels'])),
+                'has_dna_composite': 'composite_dna' in scale_result,
+                'image_shape': scale_result.get('superpixel_labels', np.array([])).shape
+            }
+    
+    return validation_data
 
 
 def save_results(analysis_results: List[Dict[str, Any]], 
@@ -410,12 +603,13 @@ def save_results(analysis_results: List[Dict[str, Any]],
         'roi_summaries': []
     }
     
-    # Add ROI-level summaries (without misleading consistency metrics)
-    for result in analysis_results:
+    # Add ROI-level summaries from lightweight validation data
+    for validation_data in analysis_results:
         roi_summary = {
-            'roi_metadata': result['roi_metadata'],
-            'multiscale_summary': result.get('multiscale_results', {})
-            # Removed consistency_metrics - low inter-scale ARI is expected and meaningful!
+            'roi_metadata': validation_data.get('roi_metadata', {}),
+            'batch_id': validation_data.get('batch_id'),
+            'validation_metrics': validation_data.get('validation_metrics', {})
+            # Full results are saved separately in roi_results/ directory
         }
         summary['roi_summaries'].append(roi_summary)
     
@@ -425,19 +619,7 @@ def save_results(analysis_results: List[Dict[str, Any]],
         json.dump(summary, f, indent=2, default=str)
     
     logger.info(f"Saved analysis summary to {summary_file}")
-    
-    # Save detailed results per ROI
-    roi_results_dir = results_dir / output_config.get('roi_results_dir', 'roi_results')
-    roi_results_dir.mkdir(exist_ok=True)
-    
-    for result in analysis_results:
-        roi_name = result['roi_metadata']['filename'].replace('.txt', '')
-        roi_file = roi_results_dir / f"{roi_name}_results.json"
-        
-        with open(roi_file, 'w') as f:
-            json.dump(result, f, indent=2, default=str)
-    
-    logger.info(f"Saved {len(analysis_results)} detailed ROI results to {roi_results_dir}")
+    logger.info(f"Individual ROI results already saved to {results_dir / 'roi_results'}")
 
 
 def main():
@@ -507,12 +689,24 @@ def main():
                 try:
                     result = analyze_roi_with_multiscale(roi_data, config, plots_dir)
                     result['batch_id'] = batch_id
-                    analysis_results.append(result)
+                    
+                    # Save result immediately to disk to avoid memory accumulation
+                    roi_filename = roi_data['filename'].replace('.txt', '')
+                    save_single_roi_result(result, roi_filename, config)
+                    
+                    # Keep only validation-relevant data in memory
+                    validation_data = extract_validation_data(result)
+                    analysis_results.append(validation_data)
                     
                     # Visual validation plots generated instead of misleading ARI metrics
                     n_scales = len(result.get('multiscale_results', {}))
                     if n_scales > 0:
                         print(f"      ✅ Generated {n_scales} scale validation plots")
+                    
+                    # Free up memory after each ROI
+                    del result
+                    del roi_data
+                    gc.collect()
                     
                 except Exception as e:
                     logger.error(f"Failed to analyze {roi_name}: {e}")
@@ -524,18 +718,9 @@ def main():
         
         print(f"\n✅ Analyzed {len(analysis_results)} ROIs successfully")
         
-        # Segmentation Quality Validation
+        # Run validation with memory management
         print("\n🔍 Running segmentation quality validation...")
         validation_results = run_validation(analysis_results, config)
-        
-        if 'error' not in validation_results:
-            summary = validation_results.get('summary', {})
-            if 'compactness' in summary:
-                print(f"✅ Validation complete: Compactness {summary['compactness']['mean']:.3f}±{summary['compactness']['std']:.3f}")
-            else:
-                print(f"✅ Validation complete: {len(validation_results.get('roi_validations', []))} ROIs validated")
-        else:
-            print(f"⚠️  Validation limited: {validation_results['error']}")
         
         # Save results
         print("\n💾 Saving results...")
@@ -583,9 +768,17 @@ def main():
         print(f"   • 40μm scale: Captures tissue domain organization")
         
         # Validation summary
-        if 'error' not in validation_results:
+        if 'error' not in validation_results and 'summary' in validation_results:
+            n_validated = validation_results.get('n_rois_validated', 0)
             print(f"\n🔍 Validation:")
-            print(f"   • Overall score: {overall_score:.3f}")
+            print(f"   • {n_validated} ROIs validated with chunked processing")
+            if validation_results.get('summary'):
+                summary_metrics = validation_results['summary']
+                for metric, stats in summary_metrics.items():
+                    if isinstance(stats, dict) and 'mean' in stats:
+                        print(f"   • {metric}: {stats['mean']:.3f} ± {stats['std']:.3f}")
+        elif 'error' in validation_results:
+            print(f"\n❌ Validation failed: {validation_results['error']}")
         
         print("\n" + "=" * 80)
         print("CRITICAL STUDY LIMITATIONS")
