@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 import gc  # For garbage collection
 import matplotlib.pyplot as plt
+from scipy import ndimage  # For morphological operations in validation
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -412,7 +413,9 @@ def run_validation(analysis_results: List[Dict[str, Any]], config: Config) -> Di
                         metadata = json.load(f)
                     
                     # Process each scale with chunked validation
-                    for scale_key, scale_metadata in metadata.get('multiscale_metadata', {}).items():
+                    multiscale_metadata = metadata.get('multiscale_metadata', {})
+                    
+                    for scale_key, scale_metadata in multiscale_metadata.items():
                         scale = scale_key.replace('scale_', '')
                         
                         # Load arrays for this scale from NPZ
@@ -451,6 +454,7 @@ def run_validation(analysis_results: List[Dict[str, Any]], config: Config) -> Di
                                 # Aggregate chunk results into scale-level metrics
                                 if chunk_results:
                                     successful_chunks = [r for r in chunk_results if r['status'] == 'success']
+                                    
                                     if successful_chunks:
                                         aggregated_metrics = {
                                             'scale_um': scale,
@@ -477,7 +481,6 @@ def run_validation(analysis_results: List[Dict[str, Any]], config: Config) -> Di
                 except Exception as e:
                     logger.warning(f"Chunked validation failed for {roi_name}: {e}")
                     roi_validation['validation_error'] = str(e)
-            
             validation_results['roi_validations'].append(roi_validation)
             
             # Aggressive garbage collection after each ROI
@@ -492,10 +495,17 @@ def run_validation(analysis_results: List[Dict[str, Any]], config: Config) -> Di
                         all_metrics[metric_name] = []
                     all_metrics[metric_name].append(value)
         
-        validation_results['summary'] = {
-            metric: {'mean': np.mean(values), 'std': np.std(values)}
-            for metric, values in all_metrics.items() if values
-        }
+        # Compute summary statistics only for numeric metrics
+        validation_results['summary'] = {}
+        for metric, values in all_metrics.items():
+            if values and isinstance(values[0], (int, float, np.number)):
+                try:
+                    validation_results['summary'][metric] = {
+                        'mean': float(np.mean(values)), 
+                        'std': float(np.std(values))
+                    }
+                except Exception:
+                    continue
         
         logger.info(f"Validation complete: {len(analysis_results)} ROIs validated")
         
