@@ -15,7 +15,7 @@ from src.analysis.main_pipeline import (
     IMCAnalysisPipeline,
     run_complete_analysis
 )
-from src.analysis.config_management import IMCAnalysisConfig
+from types import SimpleNamespace
 
 
 class TestIMCAnalysisPipeline:
@@ -23,31 +23,39 @@ class TestIMCAnalysisPipeline:
     
     @pytest.fixture
     def mock_config(self):
-        """Create a minimal test configuration."""
-        config_dict = {
-            "multiscale": {
-                "scales_um": [10.0, 20.0, 40.0],
-                "enable_scale_analysis": True
-            },
-            "slic": {
-                "use_slic": True,
-                "compactness": 10.0,
-                "sigma": 2.0
-            },
-            "clustering": {
-                "optimization_method": "comprehensive",
-                "k_range": [2, 8]
-            },
-            "storage": {
-                "format": "hdf5",
-                "compression": True
-            },
-            "normalization": {
-                "method": "arcsinh",
-                "cofactor": 1.0
+        """Create a minimal test configuration using SimpleNamespace."""
+        # Create nested config structure that matches what pipeline expects
+        return SimpleNamespace(
+            multiscale=SimpleNamespace(
+                scales_um=[10.0, 20.0, 40.0],
+                enable_scale_analysis=True
+            ),
+            slic=SimpleNamespace(
+                use_slic=True,
+                compactness=10.0,
+                sigma=2.0
+            ),
+            clustering=SimpleNamespace(
+                optimization_method="comprehensive",
+                k_range=[2, 8]
+            ),
+            storage=SimpleNamespace(
+                format="hdf5",
+                compression=True
+            ),
+            normalization=SimpleNamespace(
+                method="arcsinh",
+                cofactor=1.0
+            ),
+            # Add to_dict method for compatibility
+            to_dict=lambda: {
+                "multiscale": {"scales_um": [10.0, 20.0, 40.0], "enable_scale_analysis": True},
+                "slic": {"use_slic": True, "compactness": 10.0, "sigma": 2.0},
+                "clustering": {"optimization_method": "comprehensive", "k_range": [2, 8]},
+                "storage": {"format": "hdf5", "compression": True},
+                "normalization": {"method": "arcsinh", "cofactor": 1.0}
             }
-        }
-        return IMCAnalysisConfig.from_dict(config_dict)
+        )
     
     @pytest.fixture
     def sample_roi_data(self):

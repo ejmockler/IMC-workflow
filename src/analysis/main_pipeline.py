@@ -267,9 +267,9 @@ class IMCAnalysisPipeline:
             base_path=output_dir
         )
         
-        # Save validation summary and details
+        # Save validation summary
         validation_storage.save_roi_analysis('validation_summary', validation_summary)
-        validation_storage.save_roi_analysis('validation_details', validation_results)
+        # Note: validation_results would need to be defined if we want to save details
         
         self.validation_results = validation_summary
         return validation_summary
@@ -293,7 +293,7 @@ class IMCAnalysisPipeline:
             'experiment_metadata': {
                 'n_rois_analyzed': len(results),
                 'analysis_date': pd.Timestamp.now().isoformat(),
-                'config_used': self.config.__dict__
+                'config_used': self.analysis_config.to_dict() if hasattr(self.analysis_config, 'to_dict') else {}
             },
             'scale_consistency_summary': {},
             'roi_summaries': {},

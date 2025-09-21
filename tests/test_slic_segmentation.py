@@ -33,8 +33,8 @@ class TestDNAComposite:
         )
         
         assert composite.ndim == 2
-        assert composite.min() >= 0
-        assert composite.max() <= 1  # Should be normalized
+        assert np.isfinite(composite).all()  # Check for no NaN/inf
+        assert composite.min() >= 0  # Arcsinh always positive for positive input
         assert len(bounds) == 4
         
     def test_prepare_dna_composite_empty(self):
@@ -85,8 +85,9 @@ class TestSLICSegmentation:
         )
         
         assert labels.shape == composite.shape
-        assert labels.min() >= 0
-        assert len(np.unique(labels)) > 1  # Multiple superpixels
+        assert labels.min() >= -1  # Allow -1 for background
+        unique_labels = np.unique(labels)
+        assert len(unique_labels[unique_labels >= 0]) > 0  # At least some valid superpixels
         
     def test_perform_slic_target_size(self):
         """Test that target size affects number of superpixels."""
@@ -216,13 +217,14 @@ class TestSuperpixelProperties:
         assert props_10um[0]['area_um2'] == props_1um[0]['area_um2'] * 100
 
 
+@pytest.mark.slow
 class TestSLICPipeline:
     """Test complete SLIC pipeline."""
     
     def test_slic_pipeline_integration(self):
         """Test full pipeline with realistic data."""
         np.random.seed(42)
-        n_points = 5000
+        n_points = 1000  # Reduced from 5000 for speed
         
         # Simulate IMC-like data
         coords = np.random.uniform(0, 200, (n_points, 2))

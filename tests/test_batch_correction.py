@@ -146,21 +146,23 @@ class TestShamAnchoredNormalization:
         with pytest.raises(ValueError, match="No sham control batches found"):
             sham_anchored_normalize(no_sham_data, no_sham_metadata)
     
-    def test_zero_variance_handling(self):
+    def test_zero_variance_handling(self, caplog):
         """Test handling of markers with zero variance in sham controls."""
         # Create data where one marker has zero variance in shams
         modified_data = self.batch_data.copy()
         modified_data['sham_ms1']['CD45'] = np.full(1000, 42.0)  # Constant
         modified_data['sham_ms2']['CD45'] = np.full(1000, 42.0)  # Constant
         
-        with warnings.catch_warnings(record=True) as w:
+        # Capture log messages since code uses logger.warning not warnings.warn
+        import logging
+        with caplog.at_level(logging.WARNING):
             normalized_data, _ = sham_anchored_normalize(
                 modified_data, self.batch_metadata
             )
             
-            # Should warn about zero std
-            warning_messages = [str(warning.message) for warning in w]
-            assert any("Zero standard deviation" in msg for msg in warning_messages)
+            # Should log warning about constant sham controls
+            assert any("constant" in record.message.lower() or "std=" in record.message 
+                      for record in caplog.records)
         
         # Should still process other markers
         assert 'CD11b' in normalized_data['d1_ms1']
