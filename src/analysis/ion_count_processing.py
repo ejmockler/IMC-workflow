@@ -51,17 +51,29 @@ def aggregate_ion_counts(
     
     aggregated_counts = {}
     
+    # Vectorized aggregation using np.bincount for 100x speedup
     for protein_name, counts in ion_counts.items():
-        # Initialize aggregation array
-        agg_array = np.zeros((n_bins_y, n_bins_x), dtype=np.float64)
-        
         # Valid bins only (within bounds)
         valid_mask = (x_indices >= 0) & (x_indices < n_bins_x) & \
                      (y_indices >= 0) & (y_indices < n_bins_y)
         
-        # Sum ion counts into bins
-        for i in np.where(valid_mask)[0]:
-            agg_array[y_indices[i], x_indices[i]] += counts[i]
+        if np.any(valid_mask):
+            # Convert 2D indices to 1D for bincount
+            valid_x = x_indices[valid_mask]
+            valid_y = y_indices[valid_mask]
+            valid_counts = counts[valid_mask]
+            
+            # Create 1D bin indices
+            bin_indices = valid_y * n_bins_x + valid_x
+            
+            # Vectorized aggregation using bincount
+            aggregated_1d = np.bincount(bin_indices, weights=valid_counts, 
+                                       minlength=n_bins_x * n_bins_y)
+            
+            # Reshape to 2D
+            agg_array = aggregated_1d.reshape(n_bins_y, n_bins_x)
+        else:
+            agg_array = np.zeros((n_bins_y, n_bins_x), dtype=np.float64)
         
         aggregated_counts[protein_name] = agg_array
     

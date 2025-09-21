@@ -18,17 +18,110 @@ from functools import partial
 import psutil
 
 
-def get_optimal_process_count(max_memory_gb: float = 4.0) -> int:
+class MemoryAwareScheduler:
+    """
+    Dynamic memory-aware worker scheduling for parallel processing.
+    Monitors system resources and adjusts worker count in real-time.
+    """
+    
+    def __init__(self, 
+                 target_memory_percent: float = 70.0,
+                 min_workers: int = 1,
+                 max_workers: int = 8):
+        """
+        Initialize memory-aware scheduler.
+        
+        Args:
+            target_memory_percent: Target memory usage (0-100)
+            min_workers: Minimum number of workers
+            max_workers: Maximum number of workers
+        """
+        self.target_memory_percent = target_memory_percent
+        self.min_workers = min_workers
+        self.max_workers = max_workers
+        self.current_workers = min_workers
+        self._memory_history = []
+        
+    def get_current_memory_usage(self) -> float:
+        """Get current system memory usage percentage."""
+        return psutil.virtual_memory().percent
+    
+    def estimate_roi_memory(self, roi_file_path: str = None) -> float:
+        """Estimate memory requirement for processing an ROI file."""
+        if roi_file_path and os.path.exists(roi_file_path):
+            # Estimate based on file size (rough heuristic: 10x file size in memory)
+            file_size_gb = os.path.getsize(roi_file_path) / (1024**3)
+            return file_size_gb * 10
+        else:
+            # Default estimate: 500MB per ROI
+            return 0.5
+    
+    def adjust_worker_count(self) -> int:
+        """
+        Dynamically adjust worker count based on memory usage.
+        
+        Returns:
+            Updated number of workers to use
+        """
+        current_memory = self.get_current_memory_usage()
+        self._memory_history.append(current_memory)
+        
+        # Keep only recent history (last 10 measurements)
+        if len(self._memory_history) > 10:
+            self._memory_history.pop(0)
+        
+        # Calculate trend
+        avg_memory = sum(self._memory_history) / len(self._memory_history)
+        
+        if avg_memory > self.target_memory_percent:
+            # Reduce workers if memory pressure is high
+            self.current_workers = max(self.min_workers, self.current_workers - 1)
+        elif avg_memory < self.target_memory_percent - 20:
+            # Increase workers if we have headroom
+            n_cpu = mp.cpu_count()
+            self.current_workers = min(
+                self.max_workers,
+                n_cpu - 1,
+                self.current_workers + 1
+            )
+        
+        return self.current_workers
+    
+    def wait_for_memory(self, threshold_percent: float = 80.0, timeout: int = 60):
+        """
+        Wait for memory to become available.
+        
+        Args:
+            threshold_percent: Wait until memory usage is below this
+            timeout: Maximum seconds to wait
+        """
+        import time
+        start_time = time.time()
+        
+        while self.get_current_memory_usage() > threshold_percent:
+            if time.time() - start_time > timeout:
+                warnings.warn(f"Memory threshold {threshold_percent}% not reached after {timeout}s")
+                break
+            time.sleep(1)
+
+
+def get_optimal_process_count(max_memory_gb: float = 4.0, 
+                            use_dynamic: bool = False) -> int:
     """
     Determine optimal number of processes based on system resources.
     
     Args:
         max_memory_gb: Maximum memory to use in GB
+        use_dynamic: Use dynamic memory-aware scheduling
         
     Returns:
         Number of processes to use
     """
-    # Get system info
+    if use_dynamic:
+        scheduler = MemoryAwareScheduler(target_memory_percent=70.0)
+        return scheduler.adjust_worker_count()
+    
+    # Static calculation (original implementation)
     n_cpu = mp.cpu_count()
     available_memory_gb = psutil.virtual_memory().available / (1024**3)
     
@@ -70,6 +163,125 @@ def process_single_roi(
         return roi_id, {}, error_msg
 
 
+def parallel_roi_analysis_files(
+    roi_files: List[Tuple[str, str]],  # List of (roi_id, file_path)
+    analysis_function: Callable,
+    analysis_params: Dict = None,
+    n_processes: Optional[int] = None,
+    batch_size: Optional[int] = None,
+    progress_callback: Optional[Callable] = None,
+    output_dir: Optional[str] = None,
+    use_memory_scheduler: bool = True
+) -> Tuple[List[str], List[str]]:
+    """
+    Process multiple ROIs in parallel using file paths (memory-efficient).
+    
+    Args:
+        roi_files: List of (roi_id, file_path) tuples
+        analysis_function: Function that takes file_path and saves results
+        analysis_params: Parameters for analysis function
+        n_processes: Number of processes (auto-detected if None)
+        batch_size: Batch size for processing (auto-calculated if None)
+        progress_callback: Optional function to call with progress updates
+        output_dir: Directory to save results
+        
+    Returns:
+        Tuple of (result_files, error_messages)
+    """
+    if analysis_params is None:
+        analysis_params = {}
+    
+    # Initialize memory scheduler if requested
+    scheduler = None
+    if use_memory_scheduler:
+        scheduler = MemoryAwareScheduler(
+            target_memory_percent=70.0,
+            min_workers=1,
+            max_workers=n_processes or 8
+        )
+        if n_processes is None:
+            n_processes = scheduler.adjust_worker_count()
+    elif n_processes is None:
+        n_processes = get_optimal_process_count()
+    
+    n_rois = len(roi_files)
+    if batch_size is None:
+        batch_size = max(1, n_rois // n_processes)
+    
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        analysis_params['output_dir'] = output_dir
+    
+    result_files = []
+    errors = []
+    
+    # Process in batches to manage memory
+    n_batches = (n_rois + batch_size - 1) // batch_size
+    
+    for batch_idx in range(n_batches):
+        # Dynamically adjust workers if using scheduler
+        if scheduler:
+            scheduler.wait_for_memory(threshold_percent=80.0)
+            n_processes = scheduler.adjust_worker_count()
+        
+        start_idx = batch_idx * batch_size
+        end_idx = min((batch_idx + 1) * batch_size, n_rois)
+        batch_items = roi_files[start_idx:end_idx]
+        
+        # Create partial function with fixed parameters
+        process_func = partial(
+            process_single_roi_file,
+            analysis_function=analysis_function,
+            analysis_params=analysis_params
+        )
+        
+        # Process batch in parallel with current worker count
+        with Pool(processes=n_processes) as pool:
+            batch_results = pool.map(process_func, batch_items)
+        
+        # Collect results
+        for result_file, error in batch_results:
+            if error is None:
+                result_files.append(result_file)
+            else:
+                errors.append(error)
+        
+        # Progress callback
+        if progress_callback:
+            progress = (batch_idx + 1) / n_batches
+            progress_callback(progress, f"Processed batch {batch_idx + 1}/{n_batches}")
+    
+    return result_files, errors
+
+
+def process_single_roi_file(
+    roi_file_info: Tuple[str, str],
+    analysis_function: Callable,
+    analysis_params: Dict
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Process a single ROI file with error handling.
+    
+    Args:
+        roi_file_info: Tuple of (roi_id, file_path)
+        analysis_function: Function to apply to ROI file
+        analysis_params: Parameters for analysis function
+        
+    Returns:
+        Tuple of (result_file_path, error_message)
+    """
+    roi_id, file_path = roi_file_info
+    
+    try:
+        # Analysis function should load data, process, and save results
+        result_file = analysis_function(file_path, roi_id=roi_id, **analysis_params)
+        return result_file, None
+        
+    except Exception as e:
+        error_msg = f"ROI {roi_id} failed: {str(e)}\n{traceback.format_exc()}"
+        return None, error_msg
+
+
 def parallel_roi_analysis(
     roi_data_dict: Dict[str, Dict],
     analysis_function: Callable,
@@ -79,6 +291,7 @@ def parallel_roi_analysis(
     progress_callback: Optional[Callable] = None
 ) -> Tuple[Dict[str, Dict], List[str]]:
     """
+    [DEPRECATED - Use parallel_roi_analysis_files instead for memory efficiency]
     Process multiple ROIs in parallel.
     
     Args:
@@ -92,6 +305,12 @@ def parallel_roi_analysis(
     Returns:
         Tuple of (results_dict, error_messages)
     """
+    warnings.warn(
+        "parallel_roi_analysis is deprecated due to memory issues. "
+        "Use parallel_roi_analysis_files instead which passes file paths.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     if analysis_params is None:
         analysis_params = {}
     
@@ -153,7 +372,7 @@ def save_parallel_results(
     Args:
         results: Results dictionary from parallel processing
         output_dir: Output directory path
-        format: Output format ('json', 'pickle', 'csv')
+        format: Output format ('json', 'csv')
         compress: Whether to compress output files
         
     Returns:
@@ -184,23 +403,6 @@ def save_parallel_results(
             
             created_files.append(filepath)
     
-    elif format == 'pickle':
-        import pickle
-        filename = "parallel_results.pkl"
-        if compress:
-            filename += '.gz'
-        
-        filepath = os.path.join(output_dir, filename)
-        
-        if compress:
-            import gzip
-            with gzip.open(filepath, 'wb') as f:
-                pickle.dump(results, f)
-        else:
-            with open(filepath, 'wb') as f:
-                pickle.dump(results, f)
-        
-        created_files.append(filepath)
     
     elif format == 'csv':
         # Flatten results to CSV (for tabular data only)
@@ -241,7 +443,7 @@ def load_parallel_results(
     
     Args:
         input_path: Path to results file or directory
-        format: Format to expect ('json', 'pickle', 'csv', or None for auto-detect)
+        format: Format to expect ('json', 'csv', or None for auto-detect)
         
     Returns:
         Results dictionary
@@ -250,8 +452,6 @@ def load_parallel_results(
         # Auto-detect format
         if input_path.endswith('.json') or input_path.endswith('.json.gz'):
             format = 'json'
-        elif input_path.endswith('.pkl') or input_path.endswith('.pkl.gz'):
-            format = 'pickle'
         elif input_path.endswith('.csv') or input_path.endswith('.csv.gz'):
             format = 'csv'
         elif os.path.isdir(input_path):
@@ -289,14 +489,6 @@ def load_parallel_results(
             
             results = deserialize_from_json(results)
     
-    elif format == 'pickle':
-        if input_path.endswith('.gz'):
-            import gzip
-            with gzip.open(input_path, 'rb') as f:
-                results = pickle.load(f)
-        else:
-            with open(input_path, 'rb') as f:
-                results = pickle.load(f)
     
     elif format == 'csv':
         if input_path.endswith('.gz'):

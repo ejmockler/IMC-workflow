@@ -35,15 +35,7 @@ from .memory_management import (
 )
 
 # Configuration management
-from .config_management import (
-    IMCAnalysisConfig,
-    ConfigurationManager,
-    ArcSinhConfig,
-    ClusteringConfig,
-    MemoryConfig,
-    SLICConfig,
-    MultiScaleConfig
-)
+# Config management now consolidated in src/config.py
 
 # SLIC morphology-aware segmentation
 from .slic_segmentation import (
@@ -108,7 +100,7 @@ from .main_pipeline import (
 
 # Efficient storage system
 try:
-    from .efficient_storage import (
+    from .data_storage import (
         create_storage_backend,
         HDF5Storage,
         ParquetStorage,
@@ -149,13 +141,7 @@ __all__ = [
     'get_memory_profile',
     
     # Configuration Management
-    'IMCAnalysisConfig',
-    'ConfigurationManager',
-    'ArcSinhConfig',
-    'ClusteringConfig',
-    'MemoryConfig',
-    'SLICConfig',
-    'MultiScaleConfig',
+    # Config management consolidated in src/config.py
     
     # SLIC Segmentation
     'slic_pipeline',

@@ -221,7 +221,7 @@ class HDF5Storage:
 class ParquetStorage:
     """
     Parquet-based storage for tabular IMC analysis data.
-    Optimized for feature matrices and metadata.
+    Uses partitioning by roi_id to avoid O(N²) rewrite behavior.
     """
     
     def __init__(self, storage_dir: Union[str, Path]):
@@ -231,10 +231,13 @@ class ParquetStorage:
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         
-        # File paths
-        self.features_path = self.storage_dir / "roi_features.parquet"
+        # Use partitioned directories for O(1) updates
+        self.features_dir = self.storage_dir / "roi_features_partitioned"
         self.metadata_path = self.storage_dir / "roi_metadata.parquet"
-        self.clustering_path = self.storage_dir / "clustering_results.parquet"
+        self.clustering_dir = self.storage_dir / "clustering_results_partitioned"
+        
+        self.features_dir.mkdir(exist_ok=True)
+        self.clustering_dir.mkdir(exist_ok=True)
     
     def save_roi_features(
         self, 
@@ -243,7 +246,7 @@ class ParquetStorage:
         protein_names: List[str],
         metadata: Optional[Dict] = None
     ) -> None:
-        """Save ROI feature matrix as tabular data."""
+        """Save ROI feature matrix as partitioned parquet file (O(1) operation)."""
         if feature_matrix.size == 0:
             return
         
@@ -261,17 +264,9 @@ class ParquetStorage:
                 if isinstance(value, (int, float, str, bool)):
                     feature_df[f'meta_{key}'] = value
         
-        # Append to existing parquet file or create new one
-        if self.features_path.exists():
-            existing_df = pd.read_parquet(self.features_path)
-            # Remove existing data for this ROI
-            existing_df = existing_df[existing_df['roi_id'] != roi_id]
-            combined_df = pd.concat([existing_df, feature_df], ignore_index=True)
-        else:
-            combined_df = feature_df
-        
-        # Save with compression
-        combined_df.to_parquet(self.features_path, compression='snappy')
+        # Save to partitioned file - O(1) operation!
+        roi_file = self.features_dir / f"roi_{roi_id}.parquet"
+        feature_df.to_parquet(roi_file, compression='snappy')
     
     def save_roi_metadata(self, roi_metadata_list: List[Dict]) -> None:
         """Save ROI-level metadata."""
@@ -279,7 +274,7 @@ class ParquetStorage:
         metadata_df.to_parquet(self.metadata_path, compression='snappy')
     
     def save_clustering_results(self, roi_id: str, clustering_results: Dict) -> None:
-        """Save clustering results in tabular format."""
+        """Save clustering results as partitioned parquet (O(1) operation)."""
         if 'cluster_centroids' not in clustering_results:
             return
         
@@ -304,30 +299,36 @@ class ParquetStorage:
             centroids_df['optimal_k'] = opt_results.get('final_n_clusters', -1)
             centroids_df['optimization_method'] = opt_results.get('recommendation', 'unknown')
         
-        # Append to existing file
-        if self.clustering_path.exists():
-            existing_df = pd.read_parquet(self.clustering_path)
-            existing_df = existing_df[existing_df['roi_id'] != roi_id]
-            combined_df = pd.concat([existing_df, centroids_df], ignore_index=True)
-        else:
-            combined_df = centroids_df
-        
-        combined_df.to_parquet(self.clustering_path, compression='snappy')
+        # Save to partitioned file - O(1) operation!
+        roi_file = self.clustering_dir / f"roi_{roi_id}.parquet"
+        centroids_df.to_parquet(roi_file, compression='snappy')
     
     def load_features_for_analysis(
         self, 
         roi_ids: Optional[List[str]] = None,
         proteins: Optional[List[str]] = None
     ) -> pd.DataFrame:
-        """Load feature data for downstream analysis."""
-        if not self.features_path.exists():
+        """Load feature data from partitioned storage."""
+        if not self.features_dir.exists():
             return pd.DataFrame()
         
-        df = pd.read_parquet(self.features_path)
-        
-        # Filter by ROI IDs
+        # Load only requested ROIs from partitioned files
+        dfs = []
         if roi_ids:
-            df = df[df['roi_id'].isin(roi_ids)]
+            # Load specific ROIs - O(k) where k = # of requested ROIs
+            for roi_id in roi_ids:
+                roi_file = self.features_dir / f"roi_{roi_id}.parquet"
+                if roi_file.exists():
+                    dfs.append(pd.read_parquet(roi_file))
+        else:
+            # Load all ROIs
+            for roi_file in self.features_dir.glob("roi_*.parquet"):
+                dfs.append(pd.read_parquet(roi_file))
+        
+        if not dfs:
+            return pd.DataFrame()
+        
+        df = pd.concat(dfs, ignore_index=True)
         
         # Filter by proteins
         if proteins:
@@ -342,18 +343,21 @@ class ParquetStorage:
     def get_storage_summary(self) -> Dict[str, Any]:
         """Get summary of stored data."""
         summary = {
-            'features_file_exists': self.features_path.exists(),
+            'features_dir_exists': self.features_dir.exists(),
             'metadata_file_exists': self.metadata_path.exists(),
-            'clustering_file_exists': self.clustering_path.exists()
+            'clustering_dir_exists': self.clustering_dir.exists()
         }
         
-        if self.features_path.exists():
-            features_df = pd.read_parquet(self.features_path)
-            summary.update({
-                'n_rois': features_df['roi_id'].nunique(),
-                'n_spatial_bins': len(features_df),
-                'n_proteins': len([col for col in features_df.columns if not col.startswith('meta_') and col not in ['roi_id', 'spatial_bin_id']]),
-                'features_file_size_mb': self.features_path.stat().st_size / (1024**2)
+        if self.features_dir.exists():
+            roi_files = list(self.features_dir.glob("roi_*.parquet"))
+            if roi_files:
+                # Sample first file to get structure
+                sample_df = pd.read_parquet(roi_files[0])
+                total_size = sum(f.stat().st_size for f in roi_files)
+                summary.update({
+                    'n_rois': len(roi_files),
+                    'n_proteins': len([col for col in sample_df.columns if not col.startswith('meta_') and col not in ['roi_id', 'spatial_bin_id']]),
+                    'features_total_size_mb': total_size / (1024**2)
             })
         
         return summary

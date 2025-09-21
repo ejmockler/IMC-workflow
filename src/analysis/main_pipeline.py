@@ -18,8 +18,8 @@ from .multiscale_analysis import perform_multiscale_analysis, compute_scale_cons
 # Validation moved to src/validation/core
 from ..validation.adapter import validate_segmentation_quality
 from .parallel_processing import create_roi_batch_processor
-from .config_management import IMCAnalysisConfig, ConfigurationManager
-from .efficient_storage import create_storage_backend
+from ..config import Config
+from .data_storage import create_storage_backend
 
 
 class IMCAnalysisPipeline:
@@ -34,7 +34,7 @@ class IMCAnalysisPipeline:
     - Simple parallelization for ROI-level processing
     """
     
-    def __init__(self, config: IMCAnalysisConfig):
+    def __init__(self, config: Config):
         """Initialize IMC analysis pipeline with clean configuration."""
         self.analysis_config = config
         self.results = {}
