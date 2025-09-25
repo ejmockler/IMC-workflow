@@ -18,6 +18,8 @@ from typing import List, Dict, Any
 import json
 import numpy as np
 import pandas as pd
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
 import gc  # For garbage collection
 import matplotlib.pyplot as plt
 from scipy import ndimage  # For morphological operations in validation
@@ -49,6 +51,304 @@ except (FileNotFoundError, ImportError):
 from src.utils.data_loader import load_metadata_from_csv
 from src.utils.helpers import Metadata
 from src.viz_utils.plotting import plot_segmentation_overlay
+from src.analysis.marker_validation import MarkerValidator, log_marker_audit_result
+from src.validation import (
+    create_validation_suite, ValidationCategory,
+    CoordinateValidator, IonCountValidator, BiologicalValidator,
+    PreprocessingValidator, SegmentationValidator, ClusteringValidator
+)
+from src.quality_control import (
+    QualityMonitor, QualityGateEngine, extract_quality_metrics_from_validation,
+    evaluate_roi_for_analysis, generate_quality_reports
+)
+
+
+def create_validation_summary(validation_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Create comprehensive validation summary from multiple ROI validation results."""
+    if not validation_results:
+        return {'summary': {}, 'details': [], 'recommendations': []}
+    
+    # Extract validation result objects
+    results = [r['validation_result'] for r in validation_results if 'validation_result' in r]
+    roi_ids = [r['roi_id'] for r in validation_results if 'roi_id' in r]
+    
+    if not results:
+        return {'summary': {}, 'details': [], 'recommendations': []}
+    
+    # Aggregate statistics
+    total_rois = len(results)
+    critical_failures = sum(1 for r in results if r.summary_stats.get('has_critical', False))
+    total_warnings = sum(r.summary_stats.get('severity_distribution', {}).get('warning', 0) for r in results)
+    
+    # Quality scores
+    quality_scores = [
+        r.summary_stats.get('overall_quality_score') 
+        for r in results 
+        if r.summary_stats.get('overall_quality_score') is not None
+    ]
+    
+    mean_quality = np.mean(quality_scores) if quality_scores else None
+    min_quality = np.min(quality_scores) if quality_scores else None
+    
+    # Collect all recommendations
+    all_recommendations = []
+    for result in results:
+        all_recommendations.extend(result.get_recommendations())
+    
+    # Get unique recommendations with frequency
+    from collections import Counter
+    recommendation_counts = Counter(all_recommendations)
+    top_recommendations = [rec for rec, count in recommendation_counts.most_common(10)]
+    
+    # Per-ROI details
+    roi_details = []
+    for i, (roi_id, result) in enumerate(zip(roi_ids, results)):
+        roi_details.append({
+            'roi_id': roi_id,
+            'status': result.summary_stats.get('status'),
+            'quality_score': result.summary_stats.get('overall_quality_score'),
+            'has_critical': result.summary_stats.get('has_critical', False),
+            'n_warnings': result.summary_stats.get('severity_distribution', {}).get('warning', 0),
+            'execution_time_ms': result.execution_time_ms
+        })
+    
+    return {
+        'summary': {
+            'total_rois': total_rois,
+            'critical_failures': critical_failures,
+            'total_warnings': total_warnings,
+            'success_rate': (total_rois - critical_failures) / total_rois if total_rois > 0 else 0,
+            'mean_quality_score': mean_quality,
+            'min_quality_score': min_quality,
+            'recommendation_diversity': len(recommendation_counts)
+        },
+        'details': roi_details,
+        'recommendations': top_recommendations,
+        'recommendation_counts': dict(recommendation_counts.most_common(10))
+    }
+
+
+def process_single_roi(args):
+    """
+    Process a single ROI file in parallel.
+    
+    Args:
+        args: Tuple of (roi_file, config_dict, protein_channels, dna_channels, 
+                       background_channel, excluded, plots_dir)
+                       
+    Returns:
+        Tuple of (roi_id, roi_result, audit_results) or (roi_id, None, error_msg)
+    """
+    roi_file, config_dict, protein_channels, dna_channels, background_channel, excluded, plots_dir = args
+    
+    try:
+        # Recreate config object (can't pickle complex objects)
+        config = Config()
+        config.__dict__.update(config_dict)
+        
+        # Initialize validator for this process
+        marker_validator = MarkerValidator(config)
+        
+        # Setup logging for this process
+        import logging
+        logger = logging.getLogger(f'ROI_{roi_file.stem}')
+        
+        logger.info(f"Processing {roi_file.name}...")
+        
+        # Load ROI data
+        roi_data = pd.read_csv(roi_file, sep='\t')
+        
+        # Extract coordinates
+        coords = roi_data[['X', 'Y']].values
+        
+        # Get background signal if available
+        background_col = [col for col in roi_data.columns if background_channel in col]
+        background_signal = roi_data[background_col[0]].values if background_col else np.zeros(len(coords))
+        
+        # Use robust column matching for protein channels
+        from src.utils.column_matching import match_imc_columns
+        
+        protein_column_mapping = match_imc_columns(
+            protein_channels, 
+            list(roi_data.columns),
+            case_sensitive=False,
+            fuzzy_threshold=0.8
+        )
+        
+        # Process protein channels with background correction
+        ion_counts = {}
+        for protein in protein_channels:
+            matched_column = protein_column_mapping.get(protein)
+            if matched_column:
+                # Apply background correction
+                signal = roi_data[matched_column].values
+                if config.processing['background_correction']['enabled']:
+                    corrected = signal - background_signal
+                    if config.processing['background_correction']['clip_negative']:
+                        corrected = np.clip(corrected, 0, None)
+                    ion_counts[protein] = corrected
+                else:
+                    ion_counts[protein] = signal
+                logger.debug(f"  Loaded {protein} from column '{matched_column}' with {np.sum(ion_counts[protein] > 0)} non-zero pixels")
+            else:
+                logger.warning(f"  Could not find column for protein '{protein}'")
+        
+        # Validate marker presence and audit
+        roi_id = roi_file.stem
+        file_audit = marker_validator.audit_roi_file(str(roi_file), roi_data)
+        ion_counts_audit = marker_validator.validate_ion_counts(ion_counts, roi_id)
+        
+        # Assert critical markers are present (fail loudly if not)
+        critical_markers = list(marker_validator.critical_markers & set(protein_channels))
+        from src.analysis.marker_validation import validate_marker_presence_assertion
+        validate_marker_presence_assertion(ion_counts, critical_markers, roi_id)
+        
+        # Extract DNA channels using robust matching
+        dna_column_mapping = match_imc_columns(
+            dna_channels,
+            list(roi_data.columns),
+            case_sensitive=False,
+            fuzzy_threshold=0.8
+        )
+        
+        dna1_col = dna_column_mapping.get(dna_channels[0])
+        dna2_col = dna_column_mapping.get(dna_channels[1])
+        
+        dna1_intensities = roi_data[dna1_col].values if dna1_col else np.zeros(len(coords))
+        dna2_intensities = roi_data[dna2_col].values if dna2_col else np.zeros(len(coords))
+        
+        if dna1_col:
+            logger.debug(f"  Loaded DNA1 from column '{dna1_col}'")
+        else:
+            logger.warning(f"  Could not find column for DNA channel '{dna_channels[0]}'")
+            
+        if dna2_col:
+            logger.debug(f"  Loaded DNA2 from column '{dna2_col}'")
+        else:
+            logger.warning(f"  Could not find column for DNA channel '{dna_channels[1]}'")
+        
+        # Comprehensive validation before analysis
+        validation_suite = create_validation_suite([
+            ValidationCategory.DATA_INTEGRITY,
+            ValidationCategory.SCIENTIFIC_QUALITY
+        ])
+        
+        validation_suite.add_rule(CoordinateValidator())
+        validation_suite.add_rule(IonCountValidator())  
+        # BiologicalValidator disabled - hangs with large data (250k pixels)
+        # validation_suite.add_rule(BiologicalValidator())
+        
+        validation_data = {
+            'coords': coords,
+            'ion_counts': ion_counts
+        }
+        
+        validation_result = validation_suite.validate(validation_data, {'roi_id': roi_id})
+        
+        # Log critical validation failures but continue processing
+        if validation_result.summary_stats['has_critical']:
+            critical_failures = validation_result.get_critical_failures()
+            failure_messages = [f.message for f in critical_failures]
+            logger.warning(f"Quality concerns in {roi_id}: {'; '.join(failure_messages)}")
+            logger.info(f"Continuing analysis of {roi_id} - quality will be tracked for reporting")
+        
+        # Perform multiscale analysis with SLIC
+        analysis_results = perform_multiscale_analysis(
+            coords, ion_counts, dna1_intensities, dna2_intensities,
+            scales_um=[10.0, 20.0, 40.0],
+            n_clusters=8,
+            use_slic=True,
+            config=config
+        )
+        
+        # Post-analysis validation
+        post_analysis_suite = create_validation_suite([ValidationCategory.PIPELINE_STATE])
+        post_analysis_suite.add_rule(ClusteringValidator())
+        
+        # Validate first scale results
+        first_scale = list(analysis_results.keys())[0]
+        first_result = analysis_results[first_scale]
+        
+        post_validation_data = {
+            'feature_matrix': first_result.get('feature_matrix'),
+            'cluster_labels': first_result.get('cluster_labels'),
+            'protein_names': first_result.get('protein_names'),
+            'cluster_centroids': first_result.get('cluster_centroids')
+        }
+        
+        post_validation_result = post_analysis_suite.validate(post_validation_data, {'roi_id': roi_id})
+        
+        # Validate analysis results using marker validator
+        results_audit = marker_validator.validate_analysis_results(
+            {'multiscale_results': analysis_results}, roi_id
+        )
+        
+        audit_results = [file_audit, ion_counts_audit, results_audit]
+        
+        # Add validation results to audit
+        validation_summary = {
+            'pre_analysis_quality': validation_result.summary_stats.get('overall_quality_score'),
+            'post_analysis_quality': post_validation_result.summary_stats.get('overall_quality_score'),
+            'validation_status': validation_result.summary_stats['status'],
+            'recommendations': validation_result.get_recommendations()
+        }
+        
+        # Store validation summary in results
+        analysis_results['validation_summary'] = validation_summary
+        
+        # Generate validation plots if plots_dir is provided
+        if plots_dir:
+            from pathlib import Path
+            import matplotlib.pyplot as plt
+            from src.viz_utils.plotting import plot_segmentation_overlay
+            
+            plots_path = Path(plots_dir)
+            plots_path.mkdir(parents=True, exist_ok=True)
+            
+            roi_name = roi_file.stem
+            for scale, result in analysis_results.items():
+                if scale == 'validation_summary':
+                    continue
+                    
+                if ('superpixel_labels' in result and 'composite_dna' in result and 
+                    result['composite_dna'].size > 0 and 'transformed_arrays' in result and 
+                    'cofactors_used' in result):
+                    try:
+                        # Create comprehensive multi-channel validation plot
+                        fig = plot_segmentation_overlay(
+                            image=result['composite_dna'],
+                            labels=result['superpixel_labels'],
+                            bounds=result['bounds'],
+                            transformed_arrays=result['transformed_arrays'],
+                            cofactors_used=result['cofactors_used'],
+                            config=config,
+                            superpixel_coords=result.get('superpixel_coords'),
+                            title=f"Multi-Channel Validation - {roi_name} - {scale}μm Scale"
+                        )
+                        plot_filename = plots_path / f"{roi_name}_scale_{scale}_multichannel_validation.png"
+                        fig.savefig(plot_filename, dpi=150, bbox_inches='tight', facecolor='white')
+                        plt.close(fig)
+                        logger.debug(f"Generated multi-channel validation plot: {plot_filename}")
+                    except Exception as e:
+                        logger.warning(f"Could not generate multi-channel plot for {roi_name} at scale {scale}: {e}")
+        
+        # Create the proper ROI data structure
+        roi_result = {
+            'coords': coords,
+            'ion_counts': ion_counts,
+            'dna_intensities': {'DNA1': dna1_intensities, 'DNA2': dna2_intensities},
+            'n_pixels': len(coords),
+            'filename': roi_file.name,
+            'multiscale_results': analysis_results
+        }
+        
+        logger.info(f"✓ Completed processing {roi_id}")
+        
+        return roi_id, roi_result, audit_results
+        
+    except Exception as e:
+        logger.error(f"✗ Failed processing {roi_file.stem}: {str(e)}")
+        return roi_file.stem, None, str(e)
 
 
 def setup_logging():
@@ -79,6 +379,11 @@ def load_imc_data(config: Config) -> Dict[str, Dict[str, Any]]:
     
     batch_data = {}
     roi_metadata = {}
+    audit_results = []
+    
+    # Initialize marker validator
+    marker_validator = MarkerValidator(config)
+    logger.info(f"Initialized marker validation for {len(marker_validator.protein_channels)} protein channels")
     
     # Get channel definitions from config
     protein_channels = config.channels['protein_channels']
@@ -88,81 +393,216 @@ def load_imc_data(config: Config) -> Dict[str, Dict[str, Any]]:
                 config.channels['calibration_channels'] + 
                 [config.channels['carrier_gas_channel']])
     
-    for roi_file in roi_files:
-        try:
-            logger.info(f"Loading {roi_file.name}...")
-            
-            # Load ROI data
-            roi_data = pd.read_csv(roi_file, sep='\t')
-            
-            # Extract coordinates
-            coords = roi_data[['X', 'Y']].values
-            
-            # Get background signal if available
-            background_col = [col for col in roi_data.columns if background_channel in col]
-            background_signal = roi_data[background_col[0]].values if background_col else np.zeros(len(coords))
-            
-            # Process protein channels with background correction
-            ion_counts = {}
-            for protein in protein_channels:
-                # Find the column with this protein marker
-                protein_col = [col for col in roi_data.columns if protein in col]
-                if protein_col:
-                    # Apply background correction
-                    signal = roi_data[protein_col[0]].values
-                    if config.processing['background_correction']['enabled']:
-                        corrected = signal - background_signal
-                        if config.processing['background_correction']['clip_negative']:
-                            corrected = np.clip(corrected, 0, None)
-                        ion_counts[protein] = corrected
-                    else:
-                        ion_counts[protein] = signal
-                    logger.debug(f"  Loaded {protein} with {np.sum(ion_counts[protein] > 0)} non-zero pixels")
-            
-            # Get DNA channels for morphological information  
-            dna_data = {}
-            for dna in dna_channels:
-                dna_col = [col for col in roi_data.columns if dna in col]
-                if dna_col:
-                    dna_data[dna] = roi_data[dna_col[0]].values
-                else:
-                    dna_data[dna] = np.zeros(len(coords))
-            
-            # Get metadata from centralized map
-            metadata = metadata_map.get(roi_file.stem, Metadata())
-            
-            # Determine batch from metadata
-            batch_id = f"T{metadata.timepoint}_{metadata.replicate_id}"
-            
-            if batch_id not in batch_data:
-                batch_data[batch_id] = {}
-                roi_metadata[batch_id] = []
-            
-            # Store ROI data with metadata
-            roi_name = roi_file.stem
-            batch_data[batch_id][roi_name] = {
-                'coords': coords,
-                'ion_counts': ion_counts,
-                'dna_intensities': dna_data,
-                'n_pixels': len(coords),
-                'filename': roi_file.name,
-                'metadata': metadata  # Store Metadata object directly
+    # Enable parallel processing for ROI analysis
+    enable_parallel = config.processing.get('enable_parallel', True)
+    max_workers = config.processing.get('max_workers', min(4, multiprocessing.cpu_count()))
+    
+    # Create plots directory path
+    output_config = config.raw.get('output', {})
+    plots_dir = Path(output_config.get('plots_dir', 'plots/validation'))
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Plots will be saved to: {plots_dir.resolve()}")
+    
+    if enable_parallel and len(roi_files) > 1:
+        logger.info(f"Processing {len(roi_files)} ROIs in parallel using {max_workers} workers")
+        
+        # Prepare arguments for parallel processing
+        config_dict = config.__dict__.copy()  # Serialize config for parallel processing
+        process_args = [
+            (roi_file, config_dict, protein_channels, dna_channels, background_channel, excluded, str(plots_dir))
+            for roi_file in roi_files
+        ]
+        
+        # Process ROIs in parallel
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_roi = {
+                executor.submit(process_single_roi, args): args[0] 
+                for args in process_args
             }
             
-            roi_metadata[batch_id].append({
-                'roi_name': roi_name,
-                'filename': roi_file.name,
-                'n_pixels': len(coords),
-                'n_proteins': len(ion_counts),
-                'region': metadata.region,
-                'condition': metadata.condition
-            })
-            
-            logger.info(f"  {len(coords)} pixels, {len(ion_counts)} proteins, {metadata.region} region")
-            
-        except Exception as e:
-            logger.error(f"Failed to load {roi_file}: {e}")
-            continue
+            # Collect results as they complete
+            for future in as_completed(future_to_roi):
+                roi_file = future_to_roi[future]
+                try:
+                    roi_id, roi_result, roi_audit_results = future.result()
+                    
+                    if roi_result is not None:
+                        # Get metadata to determine batch
+                        metadata = metadata_map.get(roi_id, Metadata())
+                        batch_id = f"T{metadata.timepoint}_{metadata.replicate_id}"
+                        
+                        if batch_id not in batch_data:
+                            batch_data[batch_id] = {}
+                            roi_metadata[batch_id] = []
+                        
+                        # Store ROI data with metadata
+                        roi_result['metadata'] = metadata
+                        batch_data[batch_id][roi_id] = roi_result
+                        
+                        roi_metadata[batch_id].append({
+                            'roi_name': roi_id,
+                            'filename': roi_result['filename'],
+                            'n_pixels': roi_result['n_pixels'],
+                            'n_proteins': len(roi_result['ion_counts']),
+                            'region': metadata.region,
+                            'condition': metadata.condition
+                        })
+                        
+                        audit_results.extend(roi_audit_results)
+                        logger.info(f"✓ Parallel processing completed for {roi_id} (batch: {batch_id})")
+                    else:
+                        logger.error(f"✗ Parallel processing failed for {roi_id}: {roi_audit_results}")
+                        
+                except Exception as e:
+                    logger.error(f"✗ Parallel processing exception for {roi_file.stem}: {str(e)}")
+        
+        logger.info(f"Parallel processing completed for {len(batch_data)} ROIs")
+    
+    else:
+        # Sequential processing (original code)
+        logger.info(f"Processing {len(roi_files)} ROIs sequentially")
+        
+        for roi_file in roi_files:
+            try:
+                logger.info(f"Loading {roi_file.name}...")
+                
+                # Load ROI data
+                roi_data = pd.read_csv(roi_file, sep='\t')
+                
+                # Extract coordinates
+                coords = roi_data[['X', 'Y']].values
+                
+                # Get background signal if available
+                background_col = [col for col in roi_data.columns if background_channel in col]
+                background_signal = roi_data[background_col[0]].values if background_col else np.zeros(len(coords))
+                
+                # Use robust column matching for protein channels
+                from src.utils.column_matching import match_imc_columns
+                protein_column_mapping = match_imc_columns(
+                    protein_channels, 
+                    list(roi_data.columns),
+                    case_sensitive=False,
+                    fuzzy_threshold=0.8
+                )
+                
+                # Process protein channels with background correction
+                ion_counts = {}
+                for protein in protein_channels:
+                    matched_column = protein_column_mapping.get(protein)
+                    if matched_column:
+                        # Apply background correction
+                        signal = roi_data[matched_column].values
+                        if config.processing['background_correction']['enabled']:
+                            corrected = signal - background_signal
+                            if config.processing['background_correction']['clip_negative']:
+                                corrected = np.clip(corrected, 0, None)
+                            ion_counts[protein] = corrected
+                        else:
+                            ion_counts[protein] = signal
+                        logger.debug(f"  Loaded {protein} from column '{matched_column}' with {np.sum(ion_counts[protein] > 0)} non-zero pixels")
+                    else:
+                        logger.warning(f"  Could not find column for protein '{protein}'")
+                
+                # Validate marker presence and audit
+                roi_id = roi_file.stem
+                file_audit = marker_validator.audit_roi_file(str(roi_file), roi_data)
+                log_marker_audit_result(file_audit, roi_id)
+                
+                ion_counts_audit = marker_validator.validate_ion_counts(ion_counts, roi_id)
+                log_marker_audit_result(ion_counts_audit, f"{roi_id}_processed")
+                
+                audit_results.extend([file_audit, ion_counts_audit])
+                
+                # Assert critical markers are present (fail loudly if not)
+                critical_markers = list(marker_validator.critical_markers & set(protein_channels))
+                try:
+                    from src.analysis.marker_validation import validate_marker_presence_assertion
+                    validate_marker_presence_assertion(ion_counts, critical_markers, roi_id)
+                    logger.info(f"✓ All critical markers present in {roi_id}")
+                except AssertionError as e:
+                    logger.error(f"CRITICAL MARKER FAILURE: {e}")
+                    raise
+                
+                # Comprehensive data validation
+                validation_suite = create_validation_suite([
+                    ValidationCategory.DATA_INTEGRITY,
+                    ValidationCategory.SCIENTIFIC_QUALITY
+                ])
+                
+                validation_suite.add_rule(CoordinateValidator())
+                validation_suite.add_rule(IonCountValidator())  
+                # BiologicalValidator disabled - hangs with large data (250k pixels)
+                # validation_suite.add_rule(BiologicalValidator())
+                
+                validation_data = {
+                    'coords': coords,
+                    'ion_counts': ion_counts
+                }
+                
+                validation_result = validation_suite.validate(validation_data, {'roi_id': roi_id})
+                
+                # Log validation results
+                logger.info(f"Validation for {roi_id}: {validation_result.summary_stats['status']} "
+                           f"(quality: {validation_result.summary_stats.get('overall_quality_score', 'N/A'):.2f})")
+                
+                if validation_result.summary_stats['has_critical']:
+                    critical_failures = validation_result.get_critical_failures()
+                    failure_messages = [f.message for f in critical_failures]
+                    logger.warning(f"Quality concerns in {roi_id}: {'; '.join(failure_messages)}")
+                    logger.info(f"Continuing processing of {roi_id} - quality tracked for reporting")
+                
+                # Store validation results for later analysis
+                audit_results.append({
+                    'roi_id': roi_id,
+                    'validation_result': validation_result,
+                    'type': 'comprehensive_validation'
+                })
+                
+                # Get DNA channels for morphological information  
+                dna_data = {}
+                for dna in dna_channels:
+                    dna_col = [col for col in roi_data.columns if dna in col]
+                    if dna_col:
+                        dna_data[dna] = roi_data[dna_col[0]].values
+                    else:
+                        dna_data[dna] = np.zeros(len(coords))
+                
+                # Get metadata from centralized map
+                metadata = metadata_map.get(roi_file.stem, Metadata())
+                
+                # Determine batch from metadata
+                batch_id = f"T{metadata.timepoint}_{metadata.replicate_id}"
+                
+                if batch_id not in batch_data:
+                    batch_data[batch_id] = {}
+                    roi_metadata[batch_id] = []
+                
+                # Store ROI data with metadata
+                roi_name = roi_file.stem
+                batch_data[batch_id][roi_name] = {
+                    'coords': coords,
+                    'ion_counts': ion_counts,
+                    'dna_intensities': dna_data,
+                    'n_pixels': len(coords),
+                    'filename': roi_file.name,
+                    'metadata': metadata  # Store Metadata object directly
+                }
+                
+                roi_metadata[batch_id].append({
+                    'roi_name': roi_name,
+                    'filename': roi_file.name,
+                    'n_pixels': len(coords),
+                    'n_proteins': len(ion_counts),
+                    'region': metadata.region,
+                    'condition': metadata.condition
+                })
+                
+                logger.info(f"  {len(coords)} pixels, {len(ion_counts)} proteins, {metadata.region} region")
+                
+            except Exception as e:
+                logger.error(f"Failed to load {roi_file}: {e}")
+                continue
     
     logger.info(f"Successfully loaded {sum(len(batch) for batch in batch_data.values())} ROIs "
                 f"across {len(batch_data)} batches")
@@ -173,7 +613,39 @@ def load_imc_data(config: Config) -> Dict[str, Dict[str, Any]]:
     logger.info(f"  Background correction: {config.processing['background_correction']['enabled']}")
     logger.info(f"  Excluded channels: {len(excluded)}")
     
-    return batch_data, roi_metadata
+    # Create comprehensive audit summary
+    if audit_results:
+        output_dir = Path(config.output.get('results_dir', 'results'))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Marker audit summary (legacy)
+        marker_audit_results = [r for r in audit_results if not isinstance(r, dict)]
+        if marker_audit_results:
+            audit_summary_path = output_dir / 'marker_audit_summary.json'
+            audit_summary = marker_validator.create_audit_summary(marker_audit_results, str(audit_summary_path))
+            logger.info(f"Marker audit summary: {audit_summary['total_errors']} errors, {audit_summary['total_warnings']} warnings")
+        
+        # Comprehensive validation summary
+        validation_results = [r for r in audit_results if isinstance(r, dict) and r.get('type') == 'comprehensive_validation']
+        if validation_results:
+            validation_summary = create_validation_summary(validation_results)
+            validation_summary_path = output_dir / 'comprehensive_validation_summary.json'
+            
+            with open(validation_summary_path, 'w') as f:
+                import json
+                json.dump(validation_summary, f, indent=2, default=str)
+            
+            logger.info(f"Comprehensive validation summary: {validation_summary['summary']['total_rois']} ROIs analyzed")
+            logger.info(f"  Overall quality score: {validation_summary['summary']['mean_quality_score']:.2f}")
+            logger.info(f"  Critical failures: {validation_summary['summary']['critical_failures']}")
+            logger.info(f"  Warnings: {validation_summary['summary']['total_warnings']}")
+            
+            # Log top recommendations
+            top_recommendations = validation_summary['recommendations'][:3]
+            if top_recommendations:
+                logger.info(f"  Top recommendations: {'; '.join(top_recommendations)}")
+    
+    return batch_data, roi_metadata, audit_results
 
 
 
@@ -563,6 +1035,15 @@ def save_single_roi_result(result: Dict[str, Any], roi_filename: str, config: Co
         for key, value in scale_result.items():
             if isinstance(value, np.ndarray):
                 arrays_to_save[f'scale_{scale}_{key}'] = value
+            elif isinstance(value, dict) and key in ['transformed_arrays', 'standardized_arrays']:
+                # Handle nested dictionaries containing protein channel arrays
+                for protein_name, protein_array in value.items():
+                    if isinstance(protein_array, np.ndarray):
+                        arrays_to_save[f'scale_{scale}_{key}_{protein_name}'] = protein_array
+                # Also save the protein names list in metadata
+                if f'scale_{scale}' not in metadata_only:
+                    metadata_only[f'scale_{scale}'] = {}
+                metadata_only[f'scale_{scale}'][f'{key}_channels'] = list(value.keys())
             else:
                 # Keep non-array data in metadata
                 if f'scale_{scale}' not in metadata_only:
@@ -673,9 +1154,15 @@ def main():
         config = Config('config.json')
         logger.info("Configuration loaded successfully")
         
+        # Initialize quality control system
+        print("\n🎯 Initializing quality control system...")
+        quality_monitor = QualityMonitor('quality_history.json')
+        gate_engine = QualityGateEngine()
+        logger.info("Quality control system initialized")
+        
         # Load IMC data organized by batches
         print("\n📂 Loading IMC data...")
-        batch_data, roi_metadata = load_imc_data(config)
+        batch_data, roi_metadata, audit_results = load_imc_data(config)
         
         total_rois = sum(len(batch) for batch in batch_data.values())
         total_pixels = sum(
@@ -706,8 +1193,9 @@ def main():
         logger.info(f"Plots will be saved to: {plots_dir.resolve()}")
         
         # Multi-scale analysis for each ROI with visual validation
-        print("\n🔬 Running multi-scale analysis with visual validation...")
+        print("\n🔬 Running multi-scale analysis with quality monitoring...")
         analysis_results = []
+        quality_decisions = []
         
         roi_count = 0
         for batch_id, batch_roi_data in batch_data.items():
@@ -719,8 +1207,50 @@ def main():
                       f"({roi_data['n_pixels']:,} pixels, {len(roi_data['ion_counts'])} proteins)")
                 
                 try:
-                    result = analyze_roi_with_multiscale(roi_data, config, plots_dir)
+                    # Check if multiscale results already exist (from parallel processing)
+                    if 'multiscale_results' in roi_data:
+                        # Already processed in parallel, just extract the results
+                        result = roi_data['multiscale_results']
+                        result['roi_metadata'] = {
+                            'roi_id': roi_name,
+                            'n_pixels': roi_data['n_pixels'],
+                            'n_proteins': len(roi_data['ion_counts']),
+                            'batch_id': batch_id
+                        }
+                    else:
+                        # Need to analyze (sequential processing)
+                        result = analyze_roi_with_multiscale(roi_data, config, plots_dir)
+                    
                     result['batch_id'] = batch_id
+                    
+                    # Extract quality metrics from validation
+                    if 'validation_results' in result:
+                        quality_metrics = extract_quality_metrics_from_validation(
+                            result['validation_results'], roi_name, batch_id
+                        )
+                        quality_monitor.add_roi_quality(quality_metrics)
+                        
+                        # Evaluate quality gates
+                        should_continue, reason, details = gate_engine.should_continue_analysis(
+                            quality_monitor, quality_metrics
+                        )
+                        
+                        quality_decisions.append({
+                            'roi_name': roi_name,
+                            'continue': should_continue,
+                            'skip_roi': details.get('skip_current_roi', False),
+                            'reason': reason,
+                            'quality_score': quality_metrics.overall_quality()
+                        })
+                        
+                        if details.get('skip_current_roi', False):
+                            print(f"      ⚠️  ROI skipped: {reason}")
+                            continue
+                        elif not should_continue:
+                            print(f"      🛑 Analysis stopped: {reason}")
+                            break
+                        elif 'warn' in reason.lower():
+                            print(f"      ⚠️  {reason}")
                     
                     # Save result immediately to disk to avoid memory accumulation
                     roi_filename = roi_data['filename'].replace('.txt', '')
@@ -753,6 +1283,29 @@ def main():
         # Run validation with memory management
         print("\n🔍 Running segmentation quality validation...")
         validation_results = run_validation(analysis_results, config)
+        
+        # Update quality control limits and generate reports
+        print("\n📊 Updating quality control system...")
+        quality_monitor.update_control_limits()
+        quality_monitor.save_history()
+        
+        # Generate quality reports
+        quality_reports = generate_quality_reports(quality_monitor, gate_engine)
+        if quality_reports:
+            print(f"   ✅ Generated quality reports: {', '.join(quality_reports.keys())}")
+        
+        # Quality decision summary
+        if quality_decisions:
+            passed = sum(1 for d in quality_decisions if d['continue'] and not d['skip_roi'])
+            skipped = sum(1 for d in quality_decisions if d['skip_roi'])
+            failed = sum(1 for d in quality_decisions if not d['continue'])
+            avg_quality = np.mean([d['quality_score'] for d in quality_decisions])
+            
+            print(f"\n🎯 Quality Gate Summary:")
+            print(f"   • {passed} ROIs passed quality gates")
+            print(f"   • {skipped} ROIs skipped due to quality issues")
+            print(f"   • {failed} ROIs triggered analysis stops")
+            print(f"   • Average quality score: {avg_quality:.3f}")
         
         # Save results
         print("\n💾 Saving results...")

@@ -106,10 +106,15 @@ def create_spatial_arrays_from_superpixels(
         # Create spatial array by mapping superpixel values back to spatial locations
         spatial_array = np.full_like(superpixel_labels, np.nan, dtype=float)
         
-        # Vectorized assignment using advanced indexing
-        for i, sp_id in enumerate(unique_labels):
-            mask = superpixel_labels == sp_id
-            spatial_array[mask] = superpixel_values[i]
+        # Fully vectorized assignment using lookup table - much faster than loops
+        # Create value lookup array where index = superpixel_id, value = protein_value
+        max_label = int(np.max(unique_labels))
+        value_lookup = np.full(max_label + 1, np.nan)
+        value_lookup[unique_labels] = superpixel_values
+        
+        # Apply lookup to all pixels at once - vectorized assignment
+        valid_mask = superpixel_labels >= 0
+        spatial_array[valid_mask] = value_lookup[superpixel_labels[valid_mask]]
         
         # Validate result
         n_assigned = np.sum(~np.isnan(spatial_array))

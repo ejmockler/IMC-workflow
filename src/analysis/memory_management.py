@@ -314,6 +314,34 @@ class ChunkedProcessor:
         }
 
 
+def estimate_memory_usage(coords: np.ndarray, ion_counts: Dict[str, np.ndarray]) -> float:
+    """
+    Estimate memory usage for ROI data in MB.
+    
+    Args:
+        coords: Coordinate array
+        ion_counts: Ion counts dictionary
+        
+    Returns:
+        Estimated memory usage in MB
+    """
+    # Calculate memory for coordinates (float64)
+    coords_memory = coords.nbytes
+    
+    # Calculate memory for ion counts
+    ion_counts_memory = sum(arr.nbytes for arr in ion_counts.values())
+    
+    # Add processing overhead (2x for intermediate calculations)
+    total_memory = (coords_memory + ion_counts_memory) * 2
+    
+    # Convert to MB
+    return total_memory / (1024 * 1024)
+
+
+# Alias for backward compatibility
+MemoryAwareProcessor = ChunkedProcessor
+
+
 def create_sparse_aggregation_matrix(
     coords: np.ndarray,
     bin_edges_x: np.ndarray,

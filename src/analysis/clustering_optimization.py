@@ -32,7 +32,15 @@ def elbow_method(
     if feature_matrix.size == 0:
         return [], [], 2
     
-    k_values = list(range(k_range[0], k_range[1] + 1))
+    # Handle edge case: insufficient samples for clustering
+    n_samples = feature_matrix.shape[0]
+    if n_samples < k_range[0]:
+        # Can't cluster with fewer samples than minimum k
+        return [1], [0.0], 1
+    
+    # Adjust k_range to not exceed number of samples
+    max_k = min(k_range[1], n_samples)
+    k_values = list(range(k_range[0], max_k + 1))
     inertias = []
     
     for k in k_values:
@@ -77,7 +85,14 @@ def silhouette_analysis(
     if feature_matrix.size == 0:
         return [], [], 2
     
-    k_values = list(range(k_range[0], k_range[1] + 1))
+    # Handle edge case: insufficient samples for clustering
+    n_samples = feature_matrix.shape[0]
+    if n_samples < k_range[0]:
+        return [1], [0.0], 1
+    
+    # Adjust k_range to not exceed number of samples
+    max_k = min(k_range[1], n_samples)
+    k_values = list(range(k_range[0], max_k + 1))
     silhouette_scores = []
     
     for k in k_values:
@@ -119,9 +134,16 @@ def gap_statistic(
     if feature_matrix.size == 0:
         return [], [], 2
     
+    # Handle edge case: insufficient samples for clustering
+    n_samples = feature_matrix.shape[0]
+    if n_samples < k_range[0]:
+        return [1], [0.0], 1
+    
     np.random.seed(random_state)
     
-    k_values = list(range(k_range[0], k_range[1] + 1))
+    # Adjust k_range to not exceed number of samples
+    max_k = min(k_range[1], n_samples)
+    k_values = list(range(k_range[0], max_k + 1))
     gap_values = []
     
     # Get data range for reference generation
@@ -181,19 +203,33 @@ def multiple_validation_metrics(
     if feature_matrix.size == 0:
         return {}
     
+    # Handle edge case: insufficient samples for clustering
+    n_samples = feature_matrix.shape[0]
+    if n_samples < k_range[0]:
+        return {
+            'elbow': ([1], [0.0], 1),
+            'silhouette': ([1], [0.0], 1),
+            'gap': ([1], [0.0], 1),
+            'calinski_harabasz': ([1], [0.0], 1),
+            'davies_bouldin': ([1], [float('inf')], 1)
+        }
+    
     results = {}
     
+    # Adjust k_range for all methods
+    adjusted_k_range = (k_range[0], min(k_range[1], n_samples))
+    
     # Elbow method
-    results['elbow'] = elbow_method(feature_matrix, k_range, random_state)
+    results['elbow'] = elbow_method(feature_matrix, adjusted_k_range, random_state)
     
     # Silhouette analysis
-    results['silhouette'] = silhouette_analysis(feature_matrix, k_range, random_state)
+    results['silhouette'] = silhouette_analysis(feature_matrix, adjusted_k_range, random_state)
     
     # Gap statistic
-    results['gap'] = gap_statistic(feature_matrix, k_range, random_state)
+    results['gap'] = gap_statistic(feature_matrix, adjusted_k_range, random_state)
     
     # Additional validation metrics
-    k_values = list(range(k_range[0], k_range[1] + 1))
+    k_values = list(range(adjusted_k_range[0], adjusted_k_range[1] + 1))
     calinski_scores = []
     davies_bouldin_scores = []
     
@@ -386,14 +422,19 @@ def optimize_clustering_parameters(
     # Biological validation for different k values
     biological_scores = {}
     if use_morphology_validation:
-        for k in range(k_range[0], k_range[1] + 1):
-            kmeans = KMeans(n_clusters=k, random_state=random_state, n_init=10)
-            labels = kmeans.fit_predict(feature_matrix)
-            
-            bio_score = spatial_coherence_score(
-                feature_matrix, labels, protein_names
-            )
-            biological_scores[k] = bio_score
+        # Handle edge case: insufficient samples for clustering
+        n_samples = feature_matrix.shape[0]
+        max_k = min(k_range[1], n_samples)
+        
+        for k in range(k_range[0], max_k + 1):
+            if n_samples >= k:  # Only test if we have enough samples
+                kmeans = KMeans(n_clusters=k, random_state=random_state, n_init=10)
+                labels = kmeans.fit_predict(feature_matrix)
+                
+                bio_score = spatial_coherence_score(
+                    feature_matrix, labels, protein_names
+                )
+                biological_scores[k] = bio_score
     
     # Final recommendation considering all factors
     if biological_scores:

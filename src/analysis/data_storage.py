@@ -14,6 +14,52 @@ import warnings
 from datetime import datetime
 import pickle
 import gzip
+import re
+
+# Security function for ROI ID sanitization
+def _sanitize_roi_id(roi_id: str, max_length: int = 100) -> str:
+    """
+    Sanitize ROI ID to prevent path traversal and injection attacks.
+    
+    Args:
+        roi_id: Raw ROI identifier
+        max_length: Maximum allowed length
+        
+    Returns:
+        Sanitized ROI ID safe for use in filenames and HDF5 group names
+        
+    Raises:
+        ValueError: If ROI ID cannot be safely sanitized
+    """
+    if not roi_id or not isinstance(roi_id, str):
+        raise ValueError("ROI ID must be a non-empty string")
+    
+    # Remove any path separators and dangerous characters
+    # Allow only alphanumeric, underscore, hyphen, and dot
+    sanitized = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', roi_id)
+    
+    # Remove leading/trailing dots and underscores to prevent hidden files
+    sanitized = sanitized.strip('._')
+    
+    # Ensure it doesn't start with hyphen (can be problematic in some contexts)
+    if sanitized.startswith('-'):
+        sanitized = 'roi_' + sanitized
+    
+    # Limit length
+    if len(sanitized) > max_length:
+        sanitized = sanitized[:max_length]
+    
+    # Ensure we still have a valid identifier
+    if not sanitized or sanitized == '.' or sanitized == '..':
+        raise ValueError(f"ROI ID '{roi_id}' cannot be safely sanitized")
+    
+    # Final validation - must not contain any remaining dangerous patterns
+    dangerous_patterns = ['..', '//', '\\\\', '.\\', './']
+    if any(pattern in sanitized for pattern in dangerous_patterns):
+        raise ValueError(f"ROI ID '{roi_id}' contains dangerous patterns after sanitization")
+    
+    return sanitized
+
 
 # Optional dependencies with graceful fallbacks
 try:
@@ -67,8 +113,15 @@ class HDF5Storage:
             metadata: Optional metadata dictionary
         """
         with h5py.File(self.storage_path, 'a') as f:
+            # Sanitize ROI ID for security
+            safe_roi_id = _sanitize_roi_id(roi_id)
+            
             # Create group for this ROI
-            roi_group = f.create_group(roi_id) if roi_id not in f else f[roi_id]
+            roi_group = f.create_group(safe_roi_id) if safe_roi_id not in f else f[safe_roi_id]
+            
+            # Store original ROI ID as metadata if different
+            if safe_roi_id != roi_id:
+                roi_group.attrs['original_roi_id'] = roi_id
             
             # Store timestamp
             roi_group.attrs['timestamp'] = datetime.now().isoformat()
@@ -155,10 +208,16 @@ class HDF5Storage:
         results = {}
         
         with h5py.File(self.storage_path, 'r') as f:
-            if roi_id not in f:
-                raise KeyError(f"ROI '{roi_id}' not found in storage")
+            # Try sanitized ROI ID first
+            safe_roi_id = _sanitize_roi_id(roi_id)
             
-            roi_group = f[roi_id]
+            if safe_roi_id in f:
+                roi_group = f[safe_roi_id]
+            elif roi_id in f:
+                # Fallback to original for backward compatibility
+                roi_group = f[roi_id]
+            else:
+                raise KeyError(f"ROI '{roi_id}' (sanitized: '{safe_roi_id}') not found in storage")
             
             # Load arrays
             for key in roi_group.keys():
@@ -264,8 +323,11 @@ class ParquetStorage:
                 if isinstance(value, (int, float, str, bool)):
                     feature_df[f'meta_{key}'] = value
         
+        # Sanitize ROI ID for security
+        safe_roi_id = _sanitize_roi_id(roi_id)
+        
         # Save to partitioned file - O(1) operation!
-        roi_file = self.features_dir / f"roi_{roi_id}.parquet"
+        roi_file = self.features_dir / f"roi_{safe_roi_id}.parquet"
         feature_df.to_parquet(roi_file, compression='snappy')
     
     def save_roi_metadata(self, roi_metadata_list: List[Dict]) -> None:
@@ -299,8 +361,11 @@ class ParquetStorage:
             centroids_df['optimal_k'] = opt_results.get('final_n_clusters', -1)
             centroids_df['optimization_method'] = opt_results.get('recommendation', 'unknown')
         
+        # Sanitize ROI ID for security
+        safe_roi_id = _sanitize_roi_id(roi_id)
+        
         # Save to partitioned file - O(1) operation!
-        roi_file = self.clustering_dir / f"roi_{roi_id}.parquet"
+        roi_file = self.clustering_dir / f"roi_{safe_roi_id}.parquet"
         centroids_df.to_parquet(roi_file, compression='snappy')
     
     def load_features_for_analysis(
@@ -445,18 +510,25 @@ class HybridStorage:
             exported_files.append(str(csv_path))
         
         # Export clustering summary
-        if self.parquet_storage.clustering_path.exists():
-            clustering_df = pd.read_parquet(self.parquet_storage.clustering_path)
-            
-            # Create summary by ROI
-            roi_summary = clustering_df.groupby('roi_id').agg({
-                'optimal_k': 'first',
-                'optimization_method': 'first'
-            }).reset_index()
-            
-            summary_path = export_path / "clustering_summary.csv"
-            roi_summary.to_csv(summary_path, index=False)
-            exported_files.append(str(summary_path))
+        if self.parquet_storage.clustering_dir.exists():
+            # Load all clustering files from the partitioned directory
+            clustering_files = list(self.parquet_storage.clustering_dir.glob("roi_*.parquet"))
+            if clustering_files:
+                clustering_dfs = []
+                for file in clustering_files:
+                    df = pd.read_parquet(file)
+                    clustering_dfs.append(df)
+                clustering_df = pd.concat(clustering_dfs, ignore_index=True)
+                
+                # Create summary by ROI
+                roi_summary = clustering_df.groupby('roi_id').agg({
+                    'optimal_k': 'first',
+                    'optimization_method': 'first'
+                }).reset_index()
+                
+                summary_path = export_path / "clustering_summary.csv"
+                roi_summary.to_csv(summary_path, index=False)
+                exported_files.append(str(summary_path))
         
         # Export analysis metadata
         metadata = {
@@ -488,18 +560,22 @@ class CompressedJSONStorage:
     
     def save_roi_analysis(self, roi_id: str, results: Dict[str, Any]) -> None:
         """Save ROI analysis using compressed JSON."""
+        # Sanitize ROI ID for security
+        safe_roi_id = _sanitize_roi_id(roi_id)
+        
         # Convert numpy arrays to lists for JSON serialization
         json_results = self._prepare_for_json(results)
         
         # Add metadata
         json_results['_metadata'] = {
-            'roi_id': roi_id,
+            'roi_id': roi_id,  # Keep original for reference
+            'safe_roi_id': safe_roi_id,  # Include sanitized version
             'timestamp': datetime.now().isoformat(),
             'storage_format': 'compressed_json'
         }
         
-        # Save to file
-        filename = f"roi_{roi_id}.json"
+        # Save to file with sanitized name
+        filename = f"roi_{safe_roi_id}.json"
         if self.compression:
             filename += ".gz"
         

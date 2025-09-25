@@ -10,6 +10,7 @@ from typing import Dict, List, Tuple, Optional, TYPE_CHECKING
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from .ion_count_processing import ion_count_pipeline
 from .slic_segmentation import slic_pipeline
+from .unified_pipeline import UnifiedPipeline, PipelineConfig, AnalysisMode
 
 if TYPE_CHECKING:
     from ..config import Config
@@ -24,7 +25,8 @@ def perform_multiscale_analysis(
     n_clusters: int = 8,
     use_slic: bool = True,
     memory_limit_gb: float = 12.0,
-    config: Optional['Config'] = None
+    config: Optional['Config'] = None,
+    cached_cofactors: Optional[Dict[str, float]] = None
 ) -> Dict[float, Dict]:
     """
     Perform analysis at multiple spatial scales.
@@ -41,72 +43,69 @@ def perform_multiscale_analysis(
     Returns:
         Dictionary mapping scale -> analysis results
     """
+    import logging
+    logger = logging.getLogger('MultiscaleAnalysis')
+    logger.info(f"Starting multiscale analysis with {len(coords)} pixels, {len(ion_counts)} proteins, {len(scales_um)} scales")
+    
     results = {}
+    shared_cofactors = None  # Cache cofactors across scales
+    
+    # Initialize unified pipeline with cofactor caching
+    logger.info("Initializing unified pipeline...")
+    pipeline = UnifiedPipeline(config)
+    if cached_cofactors:
+        pipeline._cached_cofactors = cached_cofactors
     
     for scale_um in scales_um:
-        if use_slic:
-            # Use SLIC-based morphology-aware analysis
-            scale_result = slic_pipeline(
-                coords, ion_counts, dna1_intensities, dna2_intensities,
-                target_bin_size_um=scale_um, config=config
-            )
-            
-            # Apply clustering directly to superpixel-aggregated data
-            if scale_result['superpixel_counts']:
-                # Skip re-binning - work directly with superpixel data
-                from .ion_count_processing import apply_arcsinh_transform, standardize_features
-                from .ion_count_processing import create_feature_matrix, perform_clustering
-                from .ion_count_processing import compute_cluster_centroids
-                
-                # Step 1: Transform superpixel data directly 
-                transformed_arrays, cofactors_used = apply_arcsinh_transform(
-                    scale_result['superpixel_counts'],
-                    optimization_method="percentile", 
-                    percentile_threshold=5.0
-                )
-                
-                # Step 2: Create mask (all superpixels are valid)
-                first_protein = next(iter(transformed_arrays.keys()))
-                n_superpixels = len(transformed_arrays[first_protein])
-                mask = np.ones(n_superpixels, dtype=bool)  # All superpixels valid
-                
-                # Step 3: Standardize
-                standardized_arrays, scalers = standardize_features(transformed_arrays, mask)
-                
-                # Step 4: Create feature matrix  
-                feature_matrix, protein_names, valid_indices = create_feature_matrix(standardized_arrays, mask)
-                
-                # Step 5: Cluster
-                cluster_labels, kmeans_model, optimization_results = perform_clustering(
-                    feature_matrix, protein_names, n_clusters=n_clusters, random_state=42
-                )
-                
-                # Step 6: Compute centroids
-                cluster_centroids = compute_cluster_centroids(feature_matrix, cluster_labels, protein_names)
-                
-                # Update scale_result with clustering results
-                scale_result.update({
-                    'transformed_arrays': transformed_arrays,
-                    'cofactors_used': cofactors_used,
-                    'standardized_arrays': standardized_arrays,
-                    'scalers': scalers,
-                    'feature_matrix': feature_matrix,
-                    'protein_names': protein_names,
-                    'cluster_labels': cluster_labels,
-                    'kmeans_model': kmeans_model,
-                    'cluster_centroids': cluster_centroids,
-                    'optimization_results': optimization_results
-                })
+        logger.info(f"Processing scale {scale_um}μm...")
         
-        else:
-            # Use square binning approach
-            ion_result = ion_count_pipeline(
-                coords, ion_counts,
-                bin_size_um=scale_um,
-                n_clusters=n_clusters,
-                memory_limit_gb=memory_limit_gb
-            )
-            scale_result = ion_result
+        # Configure pipeline for this scale
+        pipeline_config = PipelineConfig(
+            target_scale_um=scale_um,
+            mode=AnalysisMode.SLIC if use_slic else AnalysisMode.SQUARE,
+            n_clusters=n_clusters,
+            memory_limit_gb=memory_limit_gb,
+            use_cached_cofactors=True
+        )
+        
+        # Execute unified analysis
+        logger.info(f"Executing unified analysis for scale {scale_um}μm...")
+        unified_result = pipeline.analyze(
+            coords, ion_counts, dna1_intensities, dna2_intensities, pipeline_config
+        )
+        logger.info(f"Completed analysis for scale {scale_um}μm")
+        
+        # Convert unified result to expected format
+        scale_result = {
+            'transformed_arrays': unified_result.transformed_arrays,
+            'cofactors_used': unified_result.cofactors_used,
+            'standardized_arrays': unified_result.standardized_arrays,
+            'scalers': unified_result.scalers,
+            'feature_matrix': unified_result.feature_matrix,
+            'protein_names': unified_result.protein_names,
+            'cluster_labels': unified_result.cluster_labels,
+            'cluster_centroids': unified_result.cluster_centroids,
+            'optimization_results': unified_result.optimization_results
+        }
+        
+        # Add mode-specific results
+        if unified_result.superpixel_labels is not None:
+            scale_result.update({
+                'superpixel_labels': unified_result.superpixel_labels,
+                'superpixel_coords': unified_result.superpixel_coords,
+                'superpixel_counts': unified_result.superpixel_counts,
+                'composite_dna': unified_result.composite_dna,
+                'bounds': unified_result.bounds
+            })
+        
+        if unified_result.cluster_map is not None:
+            scale_result.update({
+                'cluster_map': unified_result.cluster_map,
+                'bin_coords': unified_result.bin_coords
+            })
+        
+        # Cache cofactors for subsequent scales
+        shared_cofactors = unified_result.cofactors_used
         
         # Add scale identifier
         scale_result['scale_um'] = scale_um

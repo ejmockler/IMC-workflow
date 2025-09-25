@@ -530,9 +530,10 @@ def plot_segmentation_overlay(
         if primary_marker in spatial_protein_arrays:
             primary_panels.append((primary_marker, group_name))
     
-    # Panel 3 & 4: Primary markers (up to 2) 
+    # Panel 3, 4, & 5: Primary markers (up to 3) 
     protein_start_idx = 2  # Start after DNA and segmentation
-    for panel_idx, (marker, group_name) in enumerate(primary_panels[:2]):
+    max_primary_panels = min(len(primary_panels), len(top_positions) - protein_start_idx)
+    for panel_idx, (marker, group_name) in enumerate(primary_panels[:max_primary_panels]):
         ax = fig.add_axes(top_positions[protein_start_idx + panel_idx])
         
         marker_data = spatial_protein_arrays[marker]
@@ -557,7 +558,7 @@ def plot_segmentation_overlay(
         ax.set_aspect('equal')
     
     # Fill empty primary panel slots if needed
-    for panel_idx in range(len(primary_panels), 2):
+    for panel_idx in range(max_primary_panels, len(top_positions) - protein_start_idx):
         if protein_start_idx + panel_idx < len(top_positions):
             ax = fig.add_axes(top_positions[protein_start_idx + panel_idx])
             ax.text(0.5, 0.5, 'Marker\nN/A', ha='center', va='center',
@@ -567,12 +568,20 @@ def plot_segmentation_overlay(
             ax.set_aspect('equal')
     
     
-    # BOTTOM ROW - Additional available protein channels
+    # BOTTOM ROW - Additional available protein channels with prioritization
     # Get primary markers that were already shown
-    shown_markers = set(marker for marker, _ in primary_panels[:2])
+    shown_markers = set(marker for marker, _ in primary_panels[:max_primary_panels])
     
-    # Select remaining available proteins, excluding those already shown
-    available_proteins = [p for p in spatial_protein_arrays.keys() if p not in shown_markers]
+    # Get critical markers that must be included
+    always_include = viz_config.get('always_include', [])
+    priority_markers = [m for m in always_include if m in spatial_protein_arrays and m not in shown_markers]
+    
+    # Get remaining proteins (not already shown, not in priority list)
+    remaining_proteins = [p for p in spatial_protein_arrays.keys() 
+                         if p not in shown_markers and p not in priority_markers]
+    
+    # Combine priority markers first, then remaining
+    available_proteins = priority_markers + remaining_proteins
     max_panels = config.visualization.get('validation_plots', {}).get('max_additional_channels', 5)
     
     for i, protein in enumerate(available_proteins[:max_panels]):

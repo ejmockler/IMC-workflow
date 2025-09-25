@@ -162,7 +162,8 @@ def optimize_cofactors_for_dataset(
 def apply_arcsinh_transform(
     ion_count_arrays: Dict[str, np.ndarray],
     optimization_method: str = "percentile",
-    percentile_threshold: float = 5.0
+    percentile_threshold: float = 5.0,
+    cached_cofactors: Optional[Dict[str, float]] = None
 ) -> Tuple[Dict[str, np.ndarray], Dict[str, float]]:
     """
     Apply arcsinh transformation with automatic marker-specific cofactor optimization.
@@ -172,20 +173,25 @@ def apply_arcsinh_transform(
     
     Args:
         ion_count_arrays: Dictionary of protein name -> 2D ion count array
-        optimization_method: Method for cofactor optimization ('percentile', 'mad', 'variance')
+        optimization_method: Method for cofactor optimization ('percentile', 'mad', 'variance', 'cached')
         percentile_threshold: Percentile threshold for percentile method (default: 5th percentile)
+        cached_cofactors: Pre-computed cofactors to use when optimization_method='cached'
         
     Returns:
         Tuple of (transformed_arrays, cofactors_used)
     """
-    # Always optimize cofactors for this dataset
-    cofactors = {}
-    for protein_name, counts in ion_count_arrays.items():
-        cofactors[protein_name] = estimate_optimal_cofactor(
-            counts.ravel(), 
-            method=optimization_method,
-            percentile_threshold=percentile_threshold
-        )
+    if optimization_method == "cached" and cached_cofactors:
+        # Use cached cofactors - skip computation for performance
+        cofactors = cached_cofactors.copy()
+    else:
+        # Compute cofactors for this dataset
+        cofactors = {}
+        for protein_name, counts in ion_count_arrays.items():
+            cofactors[protein_name] = estimate_optimal_cofactor(
+                counts.ravel(), 
+                method=optimization_method,
+                percentile_threshold=percentile_threshold
+            )
     
     transformed = {}
     cofactors_used = {}
@@ -353,6 +359,34 @@ def perform_clustering(
             raise ValueError(f"Unknown optimization method: {optimization_method}")
         
         n_clusters = optimal_k
+    
+    # Handle edge case: insufficient samples for requested clusters
+    n_samples = feature_matrix.shape[0]
+    if n_samples < n_clusters:
+        # Reduce clusters to match available samples
+        n_clusters_adjusted = min(n_clusters, n_samples)
+        print(f"Warning: Reducing clusters from {n_clusters} to {n_clusters_adjusted} due to insufficient samples ({n_samples})")
+        n_clusters = n_clusters_adjusted
+        
+        # Update optimization results to reflect adjustment
+        if 'optimization_results' in locals():
+            optimization_results['cluster_adjustment'] = {
+                'original_k': n_clusters,
+                'adjusted_k': n_clusters_adjusted,
+                'reason': 'insufficient_samples'
+            }
+    
+    # Special case: if only 1 sample, assign to single cluster
+    if n_samples == 1:
+        cluster_labels = np.array([0])
+        kmeans = None  # Cannot create KMeans with 1 sample
+        optimization_results.update({
+            'final_n_clusters': 1,
+            'n_samples': 1,
+            'n_features': feature_matrix.shape[1],
+            'single_sample_case': True
+        })
+        return cluster_labels, kmeans, optimization_results
     
     # Perform K-means clustering with optimized parameters
     kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)

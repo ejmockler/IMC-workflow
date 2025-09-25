@@ -63,9 +63,14 @@ def prepare_dna_composite(
     valid_mask = (x_bins >= 0) & (x_bins < len(x_grid)) & \
                  (y_bins >= 0) & (y_bins < len(y_grid))
     
-    for i in np.where(valid_mask)[0]:
-        dna1_field[y_bins[i], x_bins[i]] += dna1_intensities[i]
-        dna2_field[y_bins[i], x_bins[i]] += dna2_intensities[i]
+    # Vectorized accumulation using np.add.at for massive performance improvement
+    # This replaces the slow Python loop with efficient NumPy operations
+    valid_indices = np.where(valid_mask)[0]
+    if len(valid_indices) > 0:
+        np.add.at(dna1_field, (y_bins[valid_indices], x_bins[valid_indices]), 
+                  dna1_intensities[valid_indices])
+        np.add.at(dna2_field, (y_bins[valid_indices], x_bins[valid_indices]), 
+                  dna2_intensities[valid_indices])
     
     # No smoothing for IMC data - preserve native resolution
     # IMC already provides cellular-level detail at ~1μm resolution
@@ -97,10 +102,12 @@ def prepare_dna_composite(
                 
                 # Avoid division by zero
                 if noise_floor <= 0:
-                    # If noise floor is zero, use a small fraction of the median
+                    # For sparse grids, use percentile of non-zero values
                     non_zero = all_vals[all_vals > 0]
                     if len(non_zero) > 0:
-                        noise_floor = np.median(non_zero) * 0.01
+                        # Use 25th percentile of non-zero values for robust cofactor
+                        # This prevents over-compression of sparse data
+                        noise_floor = np.percentile(non_zero, 25)
                     else:
                         noise_floor = 1.0  # Fallback
                 
@@ -171,25 +178,53 @@ def perform_slic_segmentation(
     if composite_image.size == 0:
         return np.array([])
     
-    # Create tissue mask based on DNA signal presence
-    # After ArcSinh transform, background should be near 0
-    # Use a threshold to identify tissue regions
-    if config is not None and hasattr(config, 'dna_processing'):
-        tissue_threshold = config.dna_processing.get('tissue_threshold', 0.1)
+    # Create tissue mask using adaptive thresholding
+    # For sparse IMC data, use a very low threshold to capture all tissue
+    non_zero_vals = composite_image[composite_image > 0]
+    if len(non_zero_vals) > 0:
+        # For sparse data, any non-zero value likely represents tissue
+        # Use a very low percentile or just above zero
+        tissue_threshold = non_zero_vals.min() * 0.5  # Half of minimum non-zero value
+        # This ensures we capture all pixels with actual signal
+        tissue_threshold = max(tissue_threshold, 0.01)
     else:
-        tissue_threshold = 0.1  # Default threshold for transformed values
+        # If all zeros, use minimal threshold
+        tissue_threshold = 0.01
+    
     tissue_mask = composite_image > tissue_threshold
     
-    # Apply morphological operations to clean up the mask
-    from scipy.ndimage import binary_opening, binary_closing, binary_erosion
-    tissue_mask = binary_closing(binary_opening(tissue_mask, iterations=2), iterations=2)
+    # Apply conditional morphological operations based on tissue density
+    from scipy.ndimage import binary_opening, binary_closing, binary_erosion, binary_dilation
+    from skimage.morphology import remove_small_objects
     
-    # Create an eroded mask to avoid edge artifacts
-    # Erode by a few pixels to exclude the very edge of tissue
-    tissue_mask_eroded = binary_erosion(tissue_mask, iterations=3)
+    # Calculate tissue density to determine appropriate processing
+    tissue_density = np.sum(tissue_mask) / tissue_mask.size
     
-    # If erosion removed everything, use original mask
+    if tissue_density > 0.3:  # Dense tissue
+        # Can afford light cleanup
+        tissue_mask = binary_closing(tissue_mask, iterations=1)
+        tissue_mask_eroded = binary_erosion(tissue_mask, iterations=1)
+    elif tissue_density > 0.1:  # Moderate density
+        # Very light cleanup - just connect nearby pixels
+        tissue_mask = binary_dilation(tissue_mask, iterations=1)
+        tissue_mask_eroded = tissue_mask  # No erosion
+    else:  # Sparse tissue (< 10% pixels)
+        # No morphological operations - preserve all tissue pixels
+        # Just remove very small isolated spots (noise)
+        min_size = max(5, int(0.0005 * tissue_mask.size))  # 0.05% of image
+        try:
+            tissue_mask = remove_small_objects(tissue_mask, min_size=min_size)
+        except:
+            # If remove_small_objects fails, keep original mask
+            pass
+        tissue_mask_eroded = tissue_mask  # No erosion for sparse data
+    
+    # Ensure we have some tissue mask
     if not np.any(tissue_mask_eroded):
+        tissue_mask_eroded = tissue_mask
+    if not np.any(tissue_mask):
+        # Fall back to including any non-zero pixels
+        tissue_mask = composite_image > 0
         tissue_mask_eroded = tissue_mask
     
     # Calculate number of superpixels based on tissue area (not total image area)
@@ -229,21 +264,60 @@ def perform_slic_segmentation(
         channel_axis=-1 if len(rgb_image.shape) > 2 else None
     )
     
-    # Post-process: only keep superpixels that have significant overlap with tissue
-    # This avoids edge artifacts and border-following superpixels
+    # Post-process: keep superpixels with adaptive overlap threshold
+    # Adjust threshold based on tissue density for sparse data
     unique_labels = np.unique(superpixel_labels)
+    
+    # Use tissue density to determine appropriate overlap threshold
+    tissue_density = np.sum(tissue_mask) / tissue_mask.size
+    if tissue_density > 0.2:
+        # Dense tissue: standard 50% threshold
+        overlap_threshold = 0.5
+    elif tissue_density > 0.05:
+        # Moderate density: 20% threshold
+        overlap_threshold = 0.2
+    else:
+        # Very sparse tissue: only 10% overlap required
+        overlap_threshold = 0.1
+    
     for label in unique_labels:
         label_mask = superpixel_labels == label
-        # Check overlap with eroded tissue mask (avoiding edges)
+        # Check overlap with eroded tissue mask
         tissue_overlap = np.sum(label_mask & tissue_mask_eroded)
         total_pixels = np.sum(label_mask)
         
-        # If less than 50% overlap with tissue core, mark as background
-        if tissue_overlap < 0.5 * total_pixels:
+        # Apply adaptive threshold
+        if total_pixels > 0 and tissue_overlap < overlap_threshold * total_pixels:
             superpixel_labels[label_mask] = -1
     
     # Also set regions completely outside tissue to -1
     superpixel_labels[~tissue_mask] = -1
+    
+    # Final safeguard: if we eliminated ALL superpixels, relax the threshold
+    # This handles edge cases with very sparse or synthetic data
+    if np.all(superpixel_labels == -1) and len(unique_labels) > 0:
+        # Re-run the original SLIC labels and use more relaxed criteria
+        original_labels = slic(
+            rgb_image,
+            n_segments=n_segments,
+            compactness=compactness * compactness_mult,
+            sigma=sigma * sigma_mult,
+            start_label=0,
+            channel_axis=-1 if len(rgb_image.shape) > 2 else None
+        )
+        
+        # Keep superpixels that have ANY overlap with tissue (not eroded)
+        for label in np.unique(original_labels):
+            label_mask = original_labels == label
+            # Check overlap with original tissue mask (not eroded)
+            tissue_overlap = np.sum(label_mask & tissue_mask)
+            
+            # If any part overlaps with tissue, keep it
+            if tissue_overlap > 0:
+                superpixel_labels[label_mask] = label
+        
+        # Set background pixels to -1
+        superpixel_labels[~tissue_mask] = -1
     
     return superpixel_labels
 
@@ -295,23 +369,54 @@ def aggregate_to_superpixels(
     if len(unique_superpixels) == 0:
         return {}, np.array([])
     
-    # Aggregate ion counts for each superpixel
+    # Vectorized aggregation using bincount for O(N) performance
+    # Create mapping from superpixel_id to index in results array
+    superpixel_id_to_idx = {sp_id: i for i, sp_id in enumerate(unique_superpixels)}
+    max_superpixel_id = int(np.max(unique_superpixels))
+    
+    # Create index array for bincount (superpixel_id -> result_index)
+    # Use -1 for invalid assignments to exclude them
+    valid_assignments = superpixel_assignments >= 0
+    assignment_indices = np.full_like(superpixel_assignments, -1)
+    for sp_id, idx in superpixel_id_to_idx.items():
+        assignment_indices[superpixel_assignments == sp_id] = idx
+    
+    # Aggregate ion counts for each superpixel using vectorized operations
     superpixel_counts = {}
     for protein_name, counts in ion_counts.items():
-        protein_superpixel_counts = np.zeros(len(unique_superpixels))
-        
-        for i, superpixel_id in enumerate(unique_superpixels):
-            mask = superpixel_assignments == superpixel_id
-            protein_superpixel_counts[i] = np.sum(counts[mask])
-        
-        superpixel_counts[protein_name] = protein_superpixel_counts
+        # Use bincount for vectorized summation - much faster than loops
+        # Only include valid assignments (>= 0)
+        valid_mask = assignment_indices >= 0
+        if np.any(valid_mask):
+            binned_counts = np.bincount(
+                assignment_indices[valid_mask], 
+                weights=counts[valid_mask], 
+                minlength=len(unique_superpixels)
+            )
+            superpixel_counts[protein_name] = binned_counts
+        else:
+            superpixel_counts[protein_name] = np.zeros(len(unique_superpixels))
     
-    # Compute superpixel centroid coordinates
+    # Vectorized computation of superpixel centroid coordinates
     superpixel_coords = np.zeros((len(unique_superpixels), 2))
-    for i, superpixel_id in enumerate(unique_superpixels):
-        mask = superpixel_assignments == superpixel_id
-        if np.any(mask):
-            superpixel_coords[i] = np.mean(coords[mask], axis=0)
+    for coord_dim in range(2):  # x and y coordinates
+        valid_mask = assignment_indices >= 0
+        if np.any(valid_mask):
+            # Use bincount to sum coordinates, then divide by counts
+            coord_sums = np.bincount(
+                assignment_indices[valid_mask],
+                weights=coords[valid_mask, coord_dim],
+                minlength=len(unique_superpixels)
+            )
+            coord_counts = np.bincount(
+                assignment_indices[valid_mask],
+                minlength=len(unique_superpixels)
+            )
+            # Avoid division by zero
+            nonzero_mask = coord_counts > 0
+            superpixel_coords[nonzero_mask, coord_dim] = (
+                coord_sums[nonzero_mask] / coord_counts[nonzero_mask]
+            )
     
     return superpixel_counts, superpixel_coords
 
@@ -400,8 +505,9 @@ def slic_pipeline(
     )
     
     # Step 2: Perform SLIC segmentation
+    # Use default sigma from function signature (1.5) instead of hardcoding 1.0
     superpixel_labels = perform_slic_segmentation(
-        composite_dna, target_bin_size_um, resolution_um, compactness, 1.0, config
+        composite_dna, target_bin_size_um, resolution_um, compactness, config=config
     )
     
     # Step 3: Aggregate ion counts to superpixels

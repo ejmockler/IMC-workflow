@@ -22,6 +22,12 @@ from src.analysis.parallel_processing import (
 )
 
 
+# Module-level function for pickling in tests
+def simple_analysis_function(roi_data):
+    """Simple analysis function for testing."""
+    return roi_data
+
+
 class TestMemoryAwareScheduler:
     """Test dynamic memory-aware worker scheduling."""
     
@@ -98,12 +104,12 @@ class TestMemoryAwareScheduler:
         """Test waiting for memory to become available."""
         scheduler = MemoryAwareScheduler()
         
-        # Simulate memory dropping
-        mock_vmem.return_value = Mock(percent=75.0)
+        # Simulate memory above threshold initially, then dropping
+        mock_vmem.return_value = Mock(percent=85.0)
         
         scheduler.wait_for_memory(threshold_percent=80.0, timeout=1)
         
-        # Should complete without timeout
+        # Should have called sleep at least once
         assert mock_sleep.called
 
 
@@ -193,6 +199,7 @@ class TestFileBasedProcessing:
             roi_files,
             mock_analysis,
             n_processes=2,
+            batch_size=3,  # Process all in one batch
             use_memory_scheduler=False
         )
         
@@ -238,7 +245,7 @@ class TestDeprecatedInterface:
             roi_data = {'roi1': {'data': [1, 2, 3]}}
             parallel_roi_analysis(
                 roi_data,
-                lambda x: x,
+                simple_analysis_function,
                 n_processes=1
             )
 

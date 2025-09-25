@@ -35,6 +35,7 @@
     "adhesion_markers": ["CD44"]
   },
   "processing": {
+    "enable_parallel": false,
     "background_correction": {
       "enabled": true,
       "method": "pixel_subtraction",
@@ -271,6 +272,7 @@
         "default": "viridis"
       },
       "max_additional_channels": 5,
+      "always_include": ["CD206", "CD44"],
       "layout": {
         "figsize": [20, 12],
         "top_row_panels": 4,
