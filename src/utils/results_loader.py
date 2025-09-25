@@ -367,3 +367,61 @@ class IMCResultsLoader:
             return consistency_df
         
         return pd.DataFrame()
+    
+    def load_roi_arrays(self, roi_id: str, scale: float = 20.0) -> Optional[Dict]:
+        """Load spatial arrays from NPZ file for visualization.
+        
+        Args:
+            roi_id: ROI identifier (without _arrays suffix)
+            scale: Scale in micrometers (10.0, 20.0, or 40.0)
+            
+        Returns:
+            Dictionary with spatial arrays or None if not found
+        """
+        # Handle different roi_id formats
+        if roi_id.endswith('_arrays'):
+            roi_id = roi_id.replace('_arrays', '')
+        if roi_id.endswith('_metadata'):
+            roi_id = roi_id.replace('_metadata', '')
+            
+        npz_file = self.roi_dir / f"{roi_id}_arrays.npz"
+        
+        if not npz_file.exists():
+            logger.warning(f"NPZ file not found: {npz_file}")
+            return None
+        
+        try:
+            data = np.load(npz_file)
+            scale_key = f"scale_{scale}"
+            
+            # Get available arrays for this scale
+            result = {}
+            
+            # Essential arrays for visualization
+            essential_keys = [
+                f'{scale_key}_composite_dna',
+                f'{scale_key}_cluster_labels', 
+                f'{scale_key}_superpixel_labels',
+                f'{scale_key}_feature_matrix',
+                f'{scale_key}_superpixel_coords'
+            ]
+            
+            for key in essential_keys:
+                if key in data:
+                    # Remove scale prefix for cleaner access
+                    clean_key = key.replace(f'{scale_key}_', '')
+                    result[clean_key] = data[key]
+            
+            # Also load protein-specific arrays if needed
+            for protein in self.protein_channels:
+                transformed_key = f'{scale_key}_transformed_arrays_{protein}'
+                if transformed_key in data:
+                    if 'transformed_arrays' not in result:
+                        result['transformed_arrays'] = {}
+                    result['transformed_arrays'][protein] = data[transformed_key]
+            
+            return result if result else None
+            
+        except Exception as e:
+            logger.error(f"Error loading NPZ file {npz_file}: {e}")
+            return None
