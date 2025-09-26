@@ -34,7 +34,13 @@ class IMCDataAdapter:
         
         # Get paths from config
         output_config = config.get('output', {})
-        self.results_dir = Path(output_config.get('results_dir', 'results/cross_sectional_kidney_injury'))
+        results_dir_path = output_config.get('results_dir', 'results/cross_sectional_kidney_injury')
+        
+        # Handle relative paths - if results directory doesn't exist, try with ../ prefix
+        self.results_dir = Path(results_dir_path)
+        if not self.results_dir.exists():
+            self.results_dir = Path('../') / results_dir_path
+        
         self.roi_dir = self.results_dir / output_config.get('roi_results_dir', 'roi_results')
         
         # Get protein channels from config
