@@ -1,0 +1,4 @@
+# file: /Users/noot/Documents/IMC/src/analysis/memory_management.py
+# hypothesis_version: 6.140.2
+
+[1.0, 2.0, 3.0, 4.0, 8.0, 20.0, 1000, 1024, 'aggregated_counts', 'all_chunks_complete', 'available_gb', 'bin_edges_x', 'bin_edges_y', 'bin_size_um', 'cluster_centroids', 'cluster_labels', 'cluster_map', 'clustering_gb', 'clustering_info', 'cofactors_used', 'error', 'feature_matrix', 'feature_matrix_gb', 'input_data_gb', 'label', 'memory_gb', 'memory_limit_gb', 'memory_report', 'n_snapshots', 'n_spatial_bins', 'peak_memory_gb', 'processing_arrays_gb', 'processing_method', 'profile', 'protein_names', 'scalers', 'sparse', 'standardized_arrays', 'total_estimated_gb', 'trajectory', 'transformed_arrays', 'valid_indices', 'within_limit']

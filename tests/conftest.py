@@ -33,8 +33,8 @@ def mock_config():
             sigma=2.0
         ),
         clustering=SimpleNamespace(
-            optimization_method="comprehensive",
-            k_range=[2, 8]
+            method="leiden",
+            resolution=1.0
         ),
         storage=SimpleNamespace(
             format="hdf5",
@@ -47,7 +47,7 @@ def mock_config():
         to_dict=lambda: {
             "multiscale": {"scales_um": [10.0, 20.0, 40.0], "enable_scale_analysis": True},
             "slic": {"use_slic": True, "compactness": 10.0, "sigma": 2.0},
-            "clustering": {"optimization_method": "comprehensive", "k_range": [2, 8]},
+            "clustering": {"method": "leiden", "resolution": 1.0},
             "storage": {"format": "hdf5", "compression": True},
             "normalization": {"method": "arcsinh", "cofactor": 1.0}
         }

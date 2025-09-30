@@ -47,7 +47,6 @@ class TestMultiscaleAnalysis:
         
         # Standard analysis parameters
         self.scales_um = [10.0, 20.0, 40.0]
-        self.n_clusters = 5
     
     def test_perform_multiscale_analysis_basic(self):
         """Test basic multiscale analysis execution."""
@@ -57,16 +56,20 @@ class TestMultiscaleAnalysis:
             dna1_intensities=self.dna1_intensities,
             dna2_intensities=self.dna2_intensities,
             scales_um=self.scales_um,
-            n_clusters=self.n_clusters,
             use_slic=False  # Use square binning for predictable structure
         )
         
         # Check that results exist for all scales
         assert isinstance(results, dict)
-        assert set(results.keys()) == set(self.scales_um)
+        expected_keys = set(self.scales_um)
+        if len(self.scales_um) > 1:
+            expected_keys.add('hierarchy')  # Hierarchy is added for multi-scale analysis
+        assert set(results.keys()) == expected_keys
         
         # Check structure for each scale
         for scale_um, result in results.items():
+            if scale_um == 'hierarchy':  # Skip hierarchy check
+                continue
             assert 'scale_um' in result
             assert result['scale_um'] == scale_um
             assert 'method' in result
@@ -74,7 +77,9 @@ class TestMultiscaleAnalysis:
             
             # Should have basic analysis components  
             # Check for actual keys that are commonly present
-            assert 'aggregated_counts' in result or 'superpixel_coords' in result, f"Missing aggregated data for scale {scale_um}"
+            assert 'cluster_labels' in result, f"Missing cluster_labels for scale {scale_um}"
+            assert 'features' in result, f"Missing features for scale {scale_um}"
+            assert 'spatial_coords' in result, f"Missing spatial_coords for scale {scale_um}"
             assert 'method' in result
             assert 'scale_um' in result
     
@@ -83,13 +88,13 @@ class TestMultiscaleAnalysis:
         # Test SLIC method
         slic_results = perform_multiscale_analysis(
             self.coords, self.ion_counts, self.dna1_intensities, self.dna2_intensities,
-            scales_um=[20.0], n_clusters=3, use_slic=True
+            scales_um=[20.0], use_slic=True
         )
         
         # Test square binning method
         square_results = perform_multiscale_analysis(
             self.coords, self.ion_counts, self.dna1_intensities, self.dna2_intensities,
-            scales_um=[20.0], n_clusters=3, use_slic=False
+            scales_um=[20.0], use_slic=False
         )
         
         # Both should complete successfully
@@ -105,35 +110,24 @@ class TestMultiscaleAnalysis:
         # Run multiscale analysis with square binning to ensure cluster_map exists
         multiscale_results = perform_multiscale_analysis(
             self.coords, self.ion_counts, self.dna1_intensities, self.dna2_intensities,
-            scales_um=self.scales_um, n_clusters=self.n_clusters, use_slic=False
+            scales_um=self.scales_um, use_slic=False
         )
         
         # Compute consistency
-        consistency_results = compute_scale_consistency(
-            multiscale_results,
-            consistency_metrics=['ari', 'nmi', 'cluster_stability']
-        )
+        consistency_results = compute_scale_consistency(multiscale_results)
         
         # Check structure
         assert isinstance(consistency_results, dict)
-        assert 'overall' in consistency_results
+        assert 'scale_progression' in consistency_results
         
-        # Check pairwise comparisons
-        scales = sorted(multiscale_results.keys())
-        for i, scale1 in enumerate(scales):
-            for scale2 in scales[i+1:]:
-                pair_key = f"{scale1}um_vs_{scale2}um"
-                assert pair_key in consistency_results
-                
-                pair_metrics = consistency_results[pair_key]
-                assert 'adjusted_rand_index' in pair_metrics
-                assert 'normalized_mutual_info' in pair_metrics
-                assert 'centroid_stability' in pair_metrics
+        # Check scale progression
+        if 'scale_progression' in consistency_results:
+            scale_progression = consistency_results['scale_progression']
+            assert 'n_clusters_per_scale' in scale_progression
+            assert isinstance(scale_progression['n_clusters_per_scale'], list)
         
-        # Check overall metrics
-        overall = consistency_results['overall']
-        assert 'mean_ari' in overall
-        assert 'mean_nmi' in overall
+        # Check that validation results are reasonable
+        assert len(consistency_results) >= 1  # Should have at least one validation metric
     
     def test_compute_adjusted_rand_index(self):
         """Test ARI computation between scales."""
@@ -148,16 +142,19 @@ class TestMultiscaleAnalysis:
         # Compute ARI
         ari = compute_adjusted_rand_index(result1, result2)
         
-        # ARI should be a valid score
-        assert isinstance(ari, float)
-        assert -1 <= ari <= 1
+        # Validate ARI properties
+        assert isinstance(ari, (float, np.floating)), f"ARI should be float, got {type(ari)}"
+        assert -1.0 <= ari <= 1.0, f"ARI {ari} outside valid range [-1, 1]"
+        assert not np.isnan(ari), "ARI should not be NaN"
+        assert np.isfinite(ari), "ARI should be finite"
         
         # Test with identical maps
         identical_result = {
             'cluster_map': result1['cluster_map'].copy()
         }
         identical_ari = compute_adjusted_rand_index(result1, identical_result)
-        assert identical_ari == pytest.approx(1.0, abs=1e-10)
+        assert identical_ari == pytest.approx(1.0, abs=1e-10), \
+            f"Identical maps should have ARI=1.0, got {identical_ari}"
     
     def test_compute_normalized_mutual_info(self):
         """Test NMI computation between scales."""
@@ -171,20 +168,23 @@ class TestMultiscaleAnalysis:
         
         nmi = compute_normalized_mutual_info(result1, result2)
         
-        # NMI should be valid
-        assert isinstance(nmi, float)
-        assert 0 <= nmi <= 1
+        # Validate NMI properties
+        assert isinstance(nmi, (float, np.floating)), f"NMI should be float, got {type(nmi)}"
+        assert 0.0 <= nmi <= 1.0, f"NMI {nmi} outside valid range [0, 1]"
+        assert not np.isnan(nmi), "NMI should not be NaN"
+        assert np.isfinite(nmi), "NMI should be finite"
         
         # Test with identical maps
         identical_nmi = compute_normalized_mutual_info(result1, result1)
-        assert identical_nmi == pytest.approx(1.0, abs=1e-10)
+        assert identical_nmi == pytest.approx(1.0, abs=1e-10), \
+            f"Identical maps should have NMI=1.0, got {identical_nmi}"
     
     def test_identify_scale_dependent_features(self):
         """Test identification of scale-dependent protein features."""
         # Run multiscale analysis
         multiscale_results = perform_multiscale_analysis(
             self.coords, self.ion_counts, self.dna1_intensities, self.dna2_intensities,
-            scales_um=self.scales_um, n_clusters=self.n_clusters
+            scales_um=self.scales_um
         )
         
         # Identify scale-dependent features
@@ -209,7 +209,7 @@ class TestMultiscaleAnalysis:
         # Run full analysis pipeline
         multiscale_results = perform_multiscale_analysis(
             self.coords, self.ion_counts, self.dna1_intensities, self.dna2_intensities,
-            scales_um=self.scales_um, n_clusters=self.n_clusters
+            scales_um=self.scales_um
         )
         
         consistency_results = compute_scale_consistency(multiscale_results)
@@ -254,7 +254,7 @@ class TestMultiscaleAnalysisEdgeCases:
         
         results = perform_multiscale_analysis(
             empty_coords, empty_ion_counts, empty_dna, empty_dna,
-            scales_um=[20.0], n_clusters=3
+            scales_um=[20.0]
         )
         
         # Should handle empty data gracefully
@@ -272,7 +272,7 @@ class TestMultiscaleAnalysisEdgeCases:
         
         results = perform_multiscale_analysis(
             coords, ion_counts, dna1, dna2,
-            scales_um=[20.0], n_clusters=3
+            scales_um=[20.0]
         )
         
         assert 20.0 in results
@@ -289,8 +289,8 @@ class TestMultiscaleAnalysisEdgeCases:
         
         # Should handle gracefully
         assert isinstance(consistency, dict)
-        # No pairwise comparisons possible, but overall should exist
-        assert 'overall' in consistency
+        # For single scale, should get error message about no hierarchy
+        assert 'error' in consistency
     
     def test_different_cluster_map_sizes(self):
         """Test consistency computation with different sized cluster maps."""

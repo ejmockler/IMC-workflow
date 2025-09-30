@@ -160,6 +160,7 @@ def perform_slic_segmentation(
     resolution_um: float = 1.0,
     compactness: float = 10.0,
     sigma: float = 1.5,  # Restored to midpoint between original 2.0 and 1.0
+    n_segments: Optional[int] = None,  # Direct specification of segments
     config: Optional['Config'] = None
 ) -> np.ndarray:
     """
@@ -227,11 +228,14 @@ def perform_slic_segmentation(
         tissue_mask = composite_image > 0
         tissue_mask_eroded = tissue_mask
     
-    # Calculate number of superpixels based on tissue area (not total image area)
-    tissue_area_pixels = np.sum(tissue_mask_eroded)
-    tissue_area_um2 = tissue_area_pixels * (resolution_um ** 2)
-    target_superpixel_area_um2 = target_bin_size_um ** 2
-    n_segments = max(1, int(tissue_area_um2 / target_superpixel_area_um2))
+    # Calculate number of superpixels
+    if n_segments is None:
+        # Calculate based on tissue area (not total image area)
+        tissue_area_pixels = np.sum(tissue_mask_eroded)
+        tissue_area_um2 = tissue_area_pixels * (resolution_um ** 2)
+        target_superpixel_area_um2 = target_bin_size_um ** 2
+        n_segments = max(1, int(tissue_area_um2 / target_superpixel_area_um2))
+    # else: use the provided n_segments directly
     
     # Perform SLIC segmentation
     # Convert to 3-channel for SLIC (grayscale -> RGB)
@@ -469,10 +473,12 @@ def slic_pipeline(
     ion_counts: Dict[str, np.ndarray],
     dna1_intensities: np.ndarray,
     dna2_intensities: np.ndarray,
-    target_bin_size_um: float = 20.0,
+    target_scale_um: float = 20.0,  # Renamed for consistency with multiscale
     resolution_um: float = 1.0,
     compactness: float = 10.0,
-    config: Optional['Config'] = None
+    n_segments: Optional[int] = None,  # Proper SLIC parameter
+    config: Optional['Config'] = None,
+    cached_cofactors: Optional[Dict[str, float]] = None  # Added for consistency
 ) -> Dict:
     """
     Complete SLIC-based morphology-aware aggregation pipeline.
@@ -482,7 +488,7 @@ def slic_pipeline(
         ion_counts: Dictionary of protein ion counts
         dna1_intensities: DNA1 channel data
         dna2_intensities: DNA2 channel data
-        target_bin_size_um: Target superpixel size
+        target_scale_um: Target superpixel size
         resolution_um: Working resolution (default 1.0μm for IMC)
         compactness: SLIC compactness parameter
         
@@ -505,9 +511,17 @@ def slic_pipeline(
     )
     
     # Step 2: Perform SLIC segmentation
-    # Use default sigma from function signature (1.5) instead of hardcoding 1.0
+    # Use n_segments if provided, otherwise use target_scale_um
+    if n_segments is not None:
+        # Direct specification of number of segments
+        effective_n_segments = n_segments
+    else:
+        # Calculate from target scale
+        effective_n_segments = None  # Let perform_slic_segmentation calculate
+    
     superpixel_labels = perform_slic_segmentation(
-        composite_dna, target_bin_size_um, resolution_um, compactness, config=config
+        composite_dna, target_scale_um, resolution_um, compactness, 
+        n_segments=effective_n_segments, config=config
     )
     
     # Step 3: Aggregate ion counts to superpixels
@@ -528,5 +542,6 @@ def slic_pipeline(
         'composite_dna': composite_dna,
         'bounds': bounds,
         'resolution_um': resolution_um,
-        'target_bin_size_um': target_bin_size_um
+        'target_scale_um': target_scale_um,
+        'n_segments_used': len(np.unique(superpixel_labels[superpixel_labels >= 0])) if superpixel_labels.size > 0 else 0
     }

@@ -10,7 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from typing import Dict, Tuple, Optional, List
 from scipy import sparse
-from .clustering_optimization import optimize_clustering_parameters
+from .spatial_clustering import perform_spatial_clustering, stability_analysis
 from .memory_management import (
     estimate_memory_requirements, check_memory_availability, 
     MemoryEfficientPipeline, get_memory_profile
@@ -235,6 +235,11 @@ def standardize_features(
                 continue
         else:
             valid_values = array.reshape(-1, 1)
+            if len(valid_values) == 0:
+                # No valid data - return zeros
+                standardized[protein_name] = np.zeros_like(array)
+                scalers[protein_name] = None
+                continue
         
         # Fit scaler on valid data
         scaler = StandardScaler()
@@ -303,103 +308,62 @@ def create_feature_matrix(
 
 def perform_clustering(
     feature_matrix: np.ndarray,
-    protein_names: List[str],
-    n_clusters: Optional[int] = None,
-    k_range: Tuple[int, int] = (2, 15),
-    optimization_method: str = "comprehensive",
+    spatial_coords: Optional[np.ndarray] = None,
+    method: str = 'leiden',
+    resolution: Optional[float] = None,
     random_state: int = 42
-) -> Tuple[np.ndarray, KMeans, Dict]:
+) -> Tuple[np.ndarray, None, Dict]:
     """
-    Perform optimized clustering on standardized feature matrix.
+    Perform spatial-aware clustering using modern methods.
     
-    CRITICAL FIX: Replaces arbitrary n_clusters=8 with data-driven optimization.
+    This replaces the old 5-metric weighted consensus with stability-based selection.
     
     Args:
         feature_matrix: N x P feature matrix
-        protein_names: Names of proteins corresponding to columns
-        n_clusters: Fixed number of clusters (if None, will optimize)
-        k_range: Range of k values to test for optimization
-        optimization_method: 'comprehensive', 'silhouette', 'gap', or 'elbow'
+        spatial_coords: Optional N x 2 spatial coordinates
+        method: 'leiden' or 'hdbscan'
+        resolution: Resolution parameter (if None, will use stability analysis)
         random_state: Random seed for reproducibility
         
     Returns:
-        Tuple of (cluster_labels, kmeans_model, optimization_results)
+        Tuple of (cluster_labels, None, clustering_info)
+        Note: Second element is None for backward compatibility (was kmeans model)
     """
     if feature_matrix.size == 0:
         return np.array([]), None, {}
     
-    optimization_results = {}
+    # If no resolution specified, use stability analysis
+    if resolution is None:
+        stability_result = stability_analysis(
+            feature_matrix, spatial_coords,
+            method=method,
+            resolution_range=(0.5, 2.0),
+            n_resolutions=15,
+            random_state=random_state
+        )
+        resolution = stability_result['optimal_resolution']
+        optimization_results = {'stability_analysis': stability_result}
+    else:
+        optimization_results = {'fixed_resolution': resolution}
     
-    if n_clusters is None:
-        # Optimize number of clusters
-        if optimization_method == "comprehensive":
-            # Use comprehensive optimization with multiple metrics
-            opt_results = optimize_clustering_parameters(
-                feature_matrix, protein_names, k_range, random_state=random_state
-            )
-            optimal_k = opt_results['optimal_k']
-            optimization_results = opt_results
-            
-        elif optimization_method == "silhouette":
-            from .clustering_optimization import silhouette_analysis
-            _, _, optimal_k = silhouette_analysis(feature_matrix, k_range, random_state)
-            optimization_results = {'method': 'silhouette', 'optimal_k': optimal_k}
-            
-        elif optimization_method == "gap":
-            from .clustering_optimization import gap_statistic
-            _, _, optimal_k = gap_statistic(feature_matrix, k_range, random_state)
-            optimization_results = {'method': 'gap', 'optimal_k': optimal_k}
-            
-        elif optimization_method == "elbow":
-            from .clustering_optimization import elbow_method
-            _, _, optimal_k = elbow_method(feature_matrix, k_range, random_state)
-            optimization_results = {'method': 'elbow', 'optimal_k': optimal_k}
-            
-        else:
-            raise ValueError(f"Unknown optimization method: {optimization_method}")
-        
-        n_clusters = optimal_k
+    # Perform clustering
+    cluster_labels, clustering_info = perform_spatial_clustering(
+        feature_matrix, spatial_coords,
+        method=method,
+        resolution=resolution,
+        random_state=random_state
+    )
     
-    # Handle edge case: insufficient samples for requested clusters
-    n_samples = feature_matrix.shape[0]
-    if n_samples < n_clusters:
-        # Reduce clusters to match available samples
-        n_clusters_adjusted = min(n_clusters, n_samples)
-        print(f"Warning: Reducing clusters from {n_clusters} to {n_clusters_adjusted} due to insufficient samples ({n_samples})")
-        n_clusters = n_clusters_adjusted
-        
-        # Update optimization results to reflect adjustment
-        if 'optimization_results' in locals():
-            optimization_results['cluster_adjustment'] = {
-                'original_k': n_clusters,
-                'adjusted_k': n_clusters_adjusted,
-                'reason': 'insufficient_samples'
-            }
-    
-    # Special case: if only 1 sample, assign to single cluster
-    if n_samples == 1:
-        cluster_labels = np.array([0])
-        kmeans = None  # Cannot create KMeans with 1 sample
-        optimization_results.update({
-            'final_n_clusters': 1,
-            'n_samples': 1,
-            'n_features': feature_matrix.shape[1],
-            'single_sample_case': True
-        })
-        return cluster_labels, kmeans, optimization_results
-    
-    # Perform K-means clustering with optimized parameters
-    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=10)
-    cluster_labels = kmeans.fit_predict(feature_matrix)
-    
-    # Add final clustering info to optimization results
+    # Add clustering info to optimization results
     optimization_results.update({
-        'final_n_clusters': n_clusters,
+        'method': method,
+        'resolution': resolution,
+        'n_clusters': clustering_info.get('n_clusters', 0),
         'n_samples': feature_matrix.shape[0],
         'n_features': feature_matrix.shape[1]
     })
     
-    return cluster_labels, kmeans, optimization_results
+    return cluster_labels, None, optimization_results  # None for backward compatibility (was kmeans)
 
 
 def create_cluster_map(
@@ -421,9 +385,18 @@ def create_cluster_map(
     cluster_map = np.full(array_shape, -1, dtype=int)
     
     if len(cluster_labels) > 0 and len(valid_indices) > 0:
-        # Convert linear indices back to 2D
-        y_indices, x_indices = np.unravel_index(valid_indices, array_shape)
-        cluster_map[y_indices, x_indices] = cluster_labels
+        # Handle case where cluster_labels and valid_indices have different lengths
+        # This can happen when clustering algorithms filter out points or fail
+        min_length = min(len(cluster_labels), len(valid_indices))
+        
+        if min_length > 0:
+            # Use only the first min_length elements from both arrays
+            used_valid_indices = valid_indices[:min_length]
+            used_cluster_labels = cluster_labels[:min_length]
+            
+            # Convert linear indices back to 2D
+            y_indices, x_indices = np.unravel_index(used_valid_indices, array_shape)
+            cluster_map[y_indices, x_indices] = used_cluster_labels
     
     return cluster_map
 
@@ -504,7 +477,6 @@ def ion_count_pipeline(
             'cluster_labels': np.array([]),
             'cluster_map': np.array([]),
             'cluster_centroids': {},
-            'kmeans_model': None,
             'optimization_results': {},
             'bin_edges_x': np.array([]),
             'bin_edges_y': np.array([]),
@@ -561,12 +533,12 @@ def ion_count_pipeline(
     # Step 4: Create feature matrix
     feature_matrix, protein_names, valid_indices = create_feature_matrix(standardized_arrays, mask)
     
-    # Step 5: Perform clustering with optimization
-    cluster_labels, kmeans_model, optimization_results = perform_clustering(
+    # Step 5: Perform clustering with optimization  
+    cluster_labels, clustering_info = perform_spatial_clustering(
         feature_matrix=feature_matrix,
-        protein_names=protein_names,
-        n_clusters=n_clusters,  # Will be optimized if None
-        optimization_method="comprehensive"
+        spatial_coords=None,  # Would need to extract from bin centers
+        method='leiden',
+        resolution=1.0 if n_clusters is None else None
     )
     
     # Step 6: Create spatial cluster map
@@ -594,8 +566,7 @@ def ion_count_pipeline(
         'cluster_labels': cluster_labels,
         'cluster_map': cluster_map,
         'cluster_centroids': cluster_centroids,
-        'kmeans_model': kmeans_model,
-        'optimization_results': optimization_results,
+        'clustering_info': clustering_info,
         'bin_edges_x': bin_edges_x,
         'bin_edges_y': bin_edges_y,
         'protein_names': protein_names,

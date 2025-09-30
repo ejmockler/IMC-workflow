@@ -10,7 +10,8 @@ from typing import Dict, List, Tuple, Optional, TYPE_CHECKING
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from .ion_count_processing import ion_count_pipeline
 from .slic_segmentation import slic_pipeline
-from .unified_pipeline import UnifiedPipeline, PipelineConfig, AnalysisMode
+from .spatial_clustering import perform_spatial_clustering, stability_analysis, compute_spatial_coherence
+from .hierarchical_multiscale import build_multiscale_hierarchy, add_neighbor_composition_features
 
 if TYPE_CHECKING:
     from ..config import Config
@@ -22,14 +23,19 @@ def perform_multiscale_analysis(
     dna1_intensities: np.ndarray,
     dna2_intensities: np.ndarray,
     scales_um: List[float] = [10.0, 20.0, 40.0],
-    n_clusters: int = 8,
+    method: str = 'leiden',
     use_slic: bool = True,
-    memory_limit_gb: float = 12.0,
     config: Optional['Config'] = None,
     cached_cofactors: Optional[Dict[str, float]] = None
-) -> Dict[float, Dict]:
+) -> Dict:
     """
-    Perform analysis at multiple spatial scales.
+    Perform hierarchical multi-scale analysis with data-driven clustering.
+    
+    This new approach:
+    1. Performs spatial aggregation at each scale
+    2. Runs stability analysis to find optimal resolution
+    3. Builds hierarchical relationships between scales
+    4. Provides diagnostic visualizations for scientist review
     
     Args:
         coords: Nx2 coordinate array
@@ -37,129 +43,163 @@ def perform_multiscale_analysis(
         dna1_intensities: DNA1 channel data
         dna2_intensities: DNA2 channel data
         scales_um: List of spatial scales to analyze
-        n_clusters: Number of clusters for each scale
-        use_slic: Whether to use SLIC segmentation (vs square binning)
+        method: Clustering method ('leiden', 'hdbscan')
+        use_slic: Whether to use SLIC segmentation
+        config: Configuration object
+        cached_cofactors: Pre-computed arcsinh cofactors
         
     Returns:
-        Dictionary mapping scale -> analysis results
+        Dictionary with hierarchical analysis results
     """
     import logging
     logger = logging.getLogger('MultiscaleAnalysis')
-    logger.info(f"Starting multiscale analysis with {len(coords)} pixels, {len(ion_counts)} proteins, {len(scales_um)} scales")
+    logger.info(f"Starting hierarchical multi-scale analysis with {len(coords)} pixels")
     
     results = {}
-    shared_cofactors = None  # Cache cofactors across scales
     
-    # Initialize unified pipeline with cofactor caching
-    logger.info("Initializing unified pipeline...")
-    pipeline = UnifiedPipeline(config)
-    if cached_cofactors:
-        pipeline._cached_cofactors = cached_cofactors
-    
-    for scale_um in scales_um:
+    # Process each scale
+    for scale_idx, scale_um in enumerate(scales_um):
         logger.info(f"Processing scale {scale_um}μm...")
         
-        # Configure pipeline for this scale
-        pipeline_config = PipelineConfig(
-            target_scale_um=scale_um,
-            mode=AnalysisMode.SLIC if use_slic else AnalysisMode.SQUARE,
-            n_clusters=n_clusters,
-            memory_limit_gb=memory_limit_gb,
-            use_cached_cofactors=True
+        # Step 1: Spatial aggregation
+        if use_slic:
+            aggregation_result = slic_pipeline(
+                coords=coords,
+                ion_counts=ion_counts,
+                dna1_intensities=dna1_intensities,
+                dna2_intensities=dna2_intensities,
+                target_scale_um=scale_um,
+                n_segments=None  # Data-driven
+            )
+            # Extract features from superpixels
+            features = np.array([aggregation_result['superpixel_counts'][protein] 
+                                for protein in ion_counts.keys()]).T
+            spatial_coords = aggregation_result['superpixel_coords']
+        else:
+            aggregation_result = ion_count_pipeline(
+                coords=coords,
+                ion_counts=ion_counts,
+                bin_size_um=scale_um
+            )
+            features = aggregation_result['feature_matrix']
+            # Create spatial coordinates from bin centers
+            bin_edges_x = aggregation_result['bin_edges_x']
+            bin_edges_y = aggregation_result['bin_edges_y']
+            valid_indices = aggregation_result['valid_indices']
+            
+            # Create bin center coordinates for valid bins
+            if len(bin_edges_x) > 1 and len(bin_edges_y) > 1:
+                x_centers = (bin_edges_x[:-1] + bin_edges_x[1:]) / 2
+                y_centers = (bin_edges_y[:-1] + bin_edges_y[1:]) / 2
+                
+                # Convert valid indices to 2D coordinates  
+                n_x_bins = len(bin_edges_x) - 1
+                y_indices = valid_indices // n_x_bins
+                x_indices = valid_indices % n_x_bins
+                
+                spatial_coords = np.column_stack([
+                    x_centers[x_indices],
+                    y_centers[y_indices]
+                ])
+            else:
+                spatial_coords = np.zeros((len(features), 2))
+        
+        # Get protein names
+        protein_names = list(ion_counts.keys())
+        
+        # Step 2: Add spatial features for coarse scales
+        enhanced_protein_names = protein_names.copy()
+        if scale_um >= 20 and features.size > 0 and len(features.shape) == 2:
+            original_n_features = features.shape[1]
+            features = add_neighbor_composition_features(
+                features, spatial_coords, 
+                np.zeros(len(features)),  # Placeholder labels
+                radius_um=scale_um
+            )
+            # Add feature names for the composition features
+            n_composition_features = features.shape[1] - original_n_features
+            for i in range(n_composition_features):
+                enhanced_protein_names.append(f"neighborhood_comp_{i}")
+        
+        # Step 3: Stability analysis for resolution selection
+        stability_result = stability_analysis(
+            features, spatial_coords,
+            method=method,
+            resolution_range=(0.5, 2.0) if scale_um <= 20 else (0.2, 1.0),
+            n_resolutions=15,
+            n_bootstrap=10
         )
         
-        # Execute unified analysis
-        logger.info(f"Executing unified analysis for scale {scale_um}μm...")
-        unified_result = pipeline.analyze(
-            coords, ion_counts, dna1_intensities, dna2_intensities, pipeline_config
-        )
-        logger.info(f"Completed analysis for scale {scale_um}μm")
+        optimal_resolution = stability_result['optimal_resolution']
         
-        # Convert unified result to expected format
-        scale_result = {
-            'transformed_arrays': unified_result.transformed_arrays,
-            'cofactors_used': unified_result.cofactors_used,
-            'standardized_arrays': unified_result.standardized_arrays,
-            'scalers': unified_result.scalers,
-            'feature_matrix': unified_result.feature_matrix,
-            'protein_names': unified_result.protein_names,
-            'cluster_labels': unified_result.cluster_labels,
-            'cluster_centroids': unified_result.cluster_centroids,
-            'optimization_results': unified_result.optimization_results
+        # Step 4: Perform clustering at optimal resolution with co-abundance features
+        cluster_labels, clustering_info = perform_spatial_clustering(
+            features, spatial_coords,
+            method=method,
+            resolution=optimal_resolution,
+            spatial_weight=0.2 if scale_um <= 20 else 0.4,  # More spatial weight at coarse scales
+            use_coabundance=True,  # Enable co-abundance feature generation
+            protein_names=enhanced_protein_names
+        )
+        
+        # Step 5: Compute spatial coherence
+        coherence = compute_spatial_coherence(cluster_labels, spatial_coords)
+        
+        results[scale_um] = {
+            'features': features,
+            'spatial_coords': spatial_coords,
+            'cluster_labels': cluster_labels,
+            'clustering_info': clustering_info,
+            'stability_analysis': stability_result,
+            'spatial_coherence': coherence,
+            'scale_um': scale_um,
+            'method': 'slic' if use_slic else 'square'
         }
-        
-        # Add mode-specific results
-        if unified_result.superpixel_labels is not None:
-            scale_result.update({
-                'superpixel_labels': unified_result.superpixel_labels,
-                'superpixel_coords': unified_result.superpixel_coords,
-                'superpixel_counts': unified_result.superpixel_counts,
-                'composite_dna': unified_result.composite_dna,
-                'bounds': unified_result.bounds
-            })
-        
-        if unified_result.cluster_map is not None:
-            scale_result.update({
-                'cluster_map': unified_result.cluster_map,
-                'bin_coords': unified_result.bin_coords
-            })
-        
-        # Cache cofactors for subsequent scales
-        shared_cofactors = unified_result.cofactors_used
-        
-        # Add scale identifier
-        scale_result['scale_um'] = scale_um
-        scale_result['method'] = 'slic' if use_slic else 'square'
-        
-        results[scale_um] = scale_result
+    
+    # Step 6: Build hierarchy if we have multiple scales
+    if len(scales_um) > 1:
+        # Use finest scale as base
+        finest_scale = min(scales_um)
+        hierarchy = build_multiscale_hierarchy(
+            results[finest_scale]['features'],
+            results[finest_scale]['spatial_coords'],
+            results[finest_scale]['cluster_labels'],
+            coarsening_factor=2.0,
+            n_scales=len(scales_um)
+        )
+        results['hierarchy'] = hierarchy
     
     return results
 
 
+# OLD perform_multiscale_analysis DELETED - Now using hierarchical approach only
+
+
 def compute_scale_consistency(
-    multiscale_results: Dict[float, Dict],
-    consistency_metrics: List[str] = ['ari', 'nmi', 'cluster_stability']
+    multiscale_results: Dict[float, Dict]
 ) -> Dict[str, Dict]:
     """
-    Compute consistency metrics between different spatial scales.
+    Validate hierarchical relationships between scales.
+    
+    With the new hierarchical approach, we check parent-child coherence
+    rather than arbitrary pairwise comparisons.
     
     Args:
         multiscale_results: Results from perform_multiscale_analysis
-        consistency_metrics: List of metrics to compute
         
     Returns:
-        Dictionary of consistency measurements
+        Dictionary of hierarchical validation metrics
     """
-    scales = sorted(multiscale_results.keys())
-    consistency_results = {}
+    from .hierarchical_multiscale import validate_hierarchy
     
-    # Pairwise scale comparisons
-    for i, scale1 in enumerate(scales):
-        for scale2 in scales[i+1:]:
-            pair_key = f"{scale1}um_vs_{scale2}um"
-            consistency_results[pair_key] = {}
-            
-            result1 = multiscale_results[scale1]
-            result2 = multiscale_results[scale2]
-            
-            if 'ari' in consistency_metrics:
-                ari = compute_adjusted_rand_index(result1, result2)
-                consistency_results[pair_key]['adjusted_rand_index'] = ari
-            
-            if 'nmi' in consistency_metrics:
-                nmi = compute_normalized_mutual_info(result1, result2)
-                consistency_results[pair_key]['normalized_mutual_info'] = nmi
-            
-            if 'cluster_stability' in consistency_metrics:
-                stability = compute_cluster_centroid_stability(result1, result2)
-                consistency_results[pair_key]['centroid_stability'] = stability
-    
-    # Overall consistency scores
-    overall_consistency = compute_overall_consistency(consistency_results)
-    consistency_results['overall'] = overall_consistency
-    
-    return consistency_results
+    if 'hierarchy' in multiscale_results:
+        return validate_hierarchy(multiscale_results['hierarchy'])
+    else:
+        # Fallback for non-hierarchical results
+        return {'error': 'No hierarchy found - run hierarchical analysis first'}
 
+
+# Old pairwise comparison functions removed - using hierarchical validation instead
 
 def compute_adjusted_rand_index(
     result1: Dict, 
@@ -400,14 +440,18 @@ def summarize_multiscale_analysis(
     """
     Create comprehensive summary of multiscale analysis.
     """
+    # Filter out non-numeric keys (like 'hierarchy')
+    numeric_scales = [k for k in multiscale_results.keys() if isinstance(k, (int, float))]
+    
     summary = {
-        'scales_analyzed': sorted(multiscale_results.keys()),
-        'consistency_summary': consistency_results.get('overall', {}),
+        'scales_analyzed': sorted(numeric_scales),
+        'consistency_summary': consistency_results.get('scale_progression', {}),
         'scale_specific_summaries': {}
     }
     
     # Summarize each scale
-    for scale_um, result in multiscale_results.items():
+    for scale_um in numeric_scales:
+        result = multiscale_results[scale_um]
         scale_summary = {
             'n_clusters_found': len(result.get('cluster_centroids', {})),
             'n_spatial_bins': len(result.get('cluster_labels', [])),

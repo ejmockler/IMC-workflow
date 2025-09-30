@@ -10,11 +10,21 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.patches import Rectangle
 from typing import Dict, List, Optional, Tuple, Union
-import seaborn as sns
-from skimage.segmentation import mark_boundaries
+try:
+    import seaborn as sns
+except ImportError:
+    sns = None
+try:
+    from skimage.segmentation import mark_boundaries
+except ImportError:
+    mark_boundaries = None
 import warnings
 import logging
-from ..analysis.spatial_utils import prepare_spatial_arrays_for_plotting, validate_plot_data
+try:
+    from ..analysis.spatial_utils import prepare_spatial_arrays_for_plotting, validate_plot_data
+except ImportError:
+    prepare_spatial_arrays_for_plotting = None
+    validate_plot_data = None
 
 
 

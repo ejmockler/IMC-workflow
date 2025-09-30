@@ -1,0 +1,4 @@
+# file: /Users/noot/Documents/IMC/src/analysis/parallel_processing.py
+# hypothesis_version: 6.140.2
+
+[0.5, 1.0, 4.0, 5.0, 70.0, 80.0, 1024, '.csv', '.csv.gz', '.gz', '.json', '.json.gz', '__len__', '__numpy_array__', '_results.json', 'csv', 'data', 'dtype', 'f', 'gzip', 'i', 'json', 'output_dir', 'parallel_results.csv', 'r', 'roi_', 'roi_id', 'rt', 'shape', 'w', 'wt']

@@ -140,8 +140,11 @@ class ValidationRule(ABC):
 @dataclass
 class ValidationSuiteConfig:
     """Configuration for validation suite execution."""
+    # Basic info
+    name: str = "validation_suite"
+    
     # Execution control
-    stop_on_critical: bool = False  # Changed: Continue processing even with critical failures
+    stop_on_critical: bool = True  # Default behavior: Stop on critical failures
     parallel_execution: bool = False
     timeout_seconds: int = 300
     
@@ -261,15 +264,46 @@ class ValidationSuite:
         self.logger.info(f"Results: {suite_result.summary_stats}")
         
         return suite_result
+    
+    def run(
+        self, 
+        data: Dict[str, Any], 
+        context: Dict[str, Any] = None
+    ) -> 'ValidationSuiteResult':
+        """Alias for validate() method for backward compatibility."""
+        return self.validate(data, context)
 
 
-@dataclass
 class ValidationSuiteResult:
     """Comprehensive result from validation suite execution."""
-    results: List[ValidationResult]
-    config: ValidationSuiteConfig
-    execution_time_ms: float
-    context: Dict[str, Any] = field(default_factory=dict)
+    
+    def __init__(
+        self, 
+        results: List[ValidationResult] = None,
+        config: ValidationSuiteConfig = None,
+        execution_time_ms: float = 0.0,
+        context: Dict[str, Any] = None,
+        # Legacy parameters
+        suite_name: str = None,
+        start_time: pd.Timestamp = None,
+        end_time: pd.Timestamp = None
+    ):
+        """Initialize ValidationSuiteResult with flexible signature."""
+        self.results = results or []
+        self.config = config or ValidationSuiteConfig()
+        self.context = context or {}
+        
+        # Handle legacy constructor
+        if suite_name is not None:
+            self.suite_name = suite_name
+            self.config.name = suite_name
+        
+        if start_time is not None and end_time is not None:
+            self.start_time = start_time
+            self.end_time = end_time
+            self.execution_time_ms = (end_time - start_time).total_seconds() * 1000
+        else:
+            self.execution_time_ms = execution_time_ms
     
     @property
     def summary_stats(self) -> Dict[str, Any]:
@@ -279,15 +313,16 @@ class ValidationSuiteResult:
         
         severity_counts = {}
         for severity in ValidationSeverity:
-            severity_counts[severity.value] = sum(1 for r in self.results if r.severity == severity)
+            severity_counts[severity] = sum(1 for r in self.results if r.severity == severity)
         
         quality_scores = [r.quality_score for r in self.results if r.quality_score is not None]
         
         return {
             "total_rules": len(self.results),
             "severity_distribution": severity_counts,
-            "has_critical": severity_counts.get("critical", 0) > 0,
-            "has_warnings": severity_counts.get("warning", 0) > 0,
+            "severity_counts": severity_counts,  # For backward compatibility
+            "has_critical": severity_counts.get(ValidationSeverity.CRITICAL, 0) > 0,
+            "has_warnings": severity_counts.get(ValidationSeverity.WARNING, 0) > 0,
             "overall_quality_score": np.mean(quality_scores) if quality_scores else None,
             "min_quality_score": np.min(quality_scores) if quality_scores else None,
             "execution_time_ms": self.execution_time_ms,
@@ -297,11 +332,11 @@ class ValidationSuiteResult:
     def _determine_status(self) -> str:
         """Determine overall validation status."""
         if any(r.severity == ValidationSeverity.CRITICAL for r in self.results):
-            return "failed"
+            return "critical"
         elif any(r.severity == ValidationSeverity.WARNING for r in self.results):
-            return "passed_with_warnings"
+            return "warning"
         else:
-            return "passed"
+            return "pass"
     
     def get_critical_failures(self) -> List[ValidationResult]:
         """Get all critical validation failures."""
@@ -336,6 +371,31 @@ class ValidationSuiteResult:
             json.dump(self.to_dict(), f, indent=2, default=str)
         
         logging.getLogger('ValidationSuite').info(f"Validation report saved to {output_path}")
+
+
+# Backward compatibility alias with different constructor signature
+class ValidationReport(ValidationSuiteResult):
+    """Backward compatibility wrapper for ValidationSuiteResult."""
+    
+    def __init__(
+        self, 
+        suite_name: str, 
+        results: List[ValidationResult], 
+        start_time: pd.Timestamp, 
+        end_time: pd.Timestamp,
+        context: Dict[str, Any] = None
+    ):
+        """Initialize validation report with legacy signature."""
+        # Convert to new signature
+        super().__init__(
+            results=results,
+            config=ValidationSuiteConfig(),  # Default config
+            execution_time_ms=(end_time - start_time).total_seconds() * 1000,
+            context=context or {}
+        )
+        self.suite_name = suite_name
+        self.start_time = start_time
+        self.end_time = end_time
 
 
 # Quality scoring utilities

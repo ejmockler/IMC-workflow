@@ -17,13 +17,30 @@ from .ion_count_processing import (
     optimize_cofactors_for_dataset
 )
 
-# Clustering optimization
-from .clustering_optimization import (
-    optimize_clustering_parameters,
-    elbow_method,
-    silhouette_analysis,
-    gap_statistic,
-    spatial_coherence_score
+# Spatial clustering (NEW - replaces old clustering_optimization)
+from .spatial_clustering import (
+    perform_spatial_clustering,
+    stability_analysis,
+    compute_spatial_coherence,
+    select_resolution_headless
+)
+
+# Co-abundance feature engineering
+from .coabundance_features import (
+    generate_coabundance_features,
+    compute_local_covariance,
+    select_informative_coabundance_features,
+    compute_protein_modules,
+    create_hierarchical_features
+)
+
+# Hierarchical multi-scale analysis
+from .hierarchical_multiscale import (
+    build_multiscale_hierarchy,
+    coarsen_graph,
+    add_neighbor_composition_features,
+    compute_texture_features,
+    validate_hierarchy
 )
 
 # Memory management
@@ -46,14 +63,18 @@ from .slic_segmentation import (
 )
 
 # Multi-scale analysis
-from .multiscale_analysis import (
-    perform_multiscale_analysis,
-    compute_scale_consistency,
-    identify_scale_dependent_features,
-    summarize_multiscale_analysis,
-    compute_adjusted_rand_index,
-    compute_normalized_mutual_info
-)
+try:
+    from .multiscale_analysis import (
+        perform_multiscale_analysis,
+        compute_scale_consistency,
+        identify_scale_dependent_features,
+        summarize_multiscale_analysis,
+        compute_adjusted_rand_index,
+        compute_normalized_mutual_info
+    )
+except ImportError:
+    # Multiscale analysis temporarily disabled due to import issues
+    pass
 
 # Batch correction
 from .batch_correction import (
@@ -84,14 +105,7 @@ from .threshold_analysis import (
     compute_spatial_clustering
 )
 
-# Metrics
-from .metrics import (
-    ValidationResult,
-    ClusterValidator,
-    SilhouetteValidator,
-    SpatialCoherenceValidator,
-    ValidationSuite
-)
+# Note: Validation metrics moved to src/validation/ framework
 
 # Main pipeline orchestrator
 from .main_pipeline import (
@@ -127,12 +141,25 @@ __all__ = [
     'estimate_optimal_cofactor',
     'optimize_cofactors_for_dataset',
     
-    # Clustering Optimization
-    'optimize_clustering_parameters',
-    'elbow_method',
-    'silhouette_analysis',
-    'gap_statistic',
-    'spatial_coherence_score',
+    # Spatial Clustering (NEW)
+    'perform_spatial_clustering',
+    'stability_analysis',
+    'compute_spatial_coherence',
+    'select_resolution_headless',
+    
+    # Co-abundance Features
+    'generate_coabundance_features',
+    'compute_local_covariance',
+    'select_informative_coabundance_features',
+    'compute_protein_modules',
+    'create_hierarchical_features',
+    
+    # Hierarchical Multi-scale
+    'build_multiscale_hierarchy',
+    'coarsen_graph',
+    'add_neighbor_composition_features',
+    'compute_texture_features',
+    'validate_hierarchy',
     
     # Memory Management
     'MemoryEfficientPipeline',
@@ -178,12 +205,7 @@ __all__ = [
     'extract_threshold_features',
     'compute_spatial_clustering',
     
-    # Metrics
-    'compute_ari',
-    'compute_nmi',
-    'compute_silhouette',
-    'compute_calinski_harabasz',
-    'compute_davies_bouldin',
+    # Note: Validation metrics moved to src/validation/ framework
     
     # Main Pipeline
     'run_production_pipeline',

@@ -15,11 +15,12 @@ import warnings
 from .ion_count_processing import ion_count_pipeline
 from .slic_segmentation import slic_pipeline
 from .multiscale_analysis import perform_multiscale_analysis, compute_scale_consistency
-# Validation moved to src/validation/core
-from ..validation.adapter import validate_segmentation_quality
 from .parallel_processing import create_roi_batch_processor
 from ..config import Config
-from .data_storage import create_storage_backend
+try:
+    from .data_storage import create_storage_backend
+except ImportError:
+    create_storage_backend = None
 
 
 class IMCAnalysisPipeline:
@@ -68,15 +69,23 @@ class IMCAnalysisPipeline:
                 if matching_cols:
                     ion_counts[protein_name] = df[matching_cols[0]].values
                 else:
-                    warnings.warn(f"Protein {protein_name} not found in {roi_file_path}")
-                    ion_counts[protein_name] = np.zeros(len(df))
+                    raise ValueError(f"Critical error: Protein {protein_name} not found in {roi_file_path}. "
+                                   f"Analysis cannot proceed with incomplete data. "
+                                   f"Available columns: {list(df.columns)}")
             
             # Extract DNA channels
             dna1_cols = [col for col in df.columns if 'DNA1' in col or 'Ir191' in col]
             dna2_cols = [col for col in df.columns if 'DNA2' in col or 'Ir193' in col]
             
-            dna1_intensities = df[dna1_cols[0]].values if dna1_cols else np.ones(len(df)) * 1000
-            dna2_intensities = df[dna2_cols[0]].values if dna2_cols else np.ones(len(df)) * 800
+            if not dna1_cols:
+                raise ValueError(f"Critical error: DNA1 channel not found in {roi_file_path}. "
+                               f"Required for analysis. Available columns: {list(df.columns)}")
+            if not dna2_cols:
+                raise ValueError(f"Critical error: DNA2 channel not found in {roi_file_path}. "
+                               f"Required for analysis. Available columns: {list(df.columns)}")
+                               
+            dna1_intensities = df[dna1_cols[0]].values
+            dna2_intensities = df[dna2_cols[0]].values
             
             return {
                 'coords': coords,
@@ -115,30 +124,54 @@ class IMCAnalysisPipeline:
             pass
         
         # Perform multi-scale analysis using configuration
+        multiscale_config = getattr(self.analysis_config.analysis, 'multiscale', {})
+        slic_config = getattr(self.analysis_config.segmentation, 'slic', {})
+        
         multiscale_results = perform_multiscale_analysis(
             coords=roi_data['coords'],
             ion_counts=roi_data['ion_counts'],
             dna1_intensities=roi_data['dna1_intensities'],
             dna2_intensities=roi_data['dna2_intensities'],
-            scales_um=config.multiscale.scales_um,
-            n_clusters=None,  # Let optimization decide
-            use_slic=config.slic.use_slic
+            scales_um=getattr(multiscale_config, 'scales_um', [10, 20, 50]),
+            method='leiden',  # Using new spatial clustering
+            use_slic=getattr(slic_config, 'use_slic', False),
+            config=self.analysis_config
         )
         
         # Compute consistency metrics between scales
         consistency_results = compute_scale_consistency(multiscale_results)
         
-        return {
+        # Extract main scale results for backward compatibility
+        main_scale_results = multiscale_results.get('scale_results', {})
+        if main_scale_results:
+            # Get results from the primary scale (usually the first one)
+            primary_scale = list(main_scale_results.keys())[0] if main_scale_results else None
+            primary_results = main_scale_results.get(primary_scale, {}) if primary_scale else {}
+        else:
+            primary_results = {}
+        
+        result = {
             'multiscale_results': multiscale_results,
             'consistency_results': consistency_results,
-            'configuration_used': config.to_dict(),
+            'configuration_used': config.to_dict() if hasattr(config, 'to_dict') else str(config),
             'metadata': {
-                'n_measurements': roi_data['n_measurements'],
-                'scales_analyzed': config.multiscale.scales_um,
-                'method': 'slic' if config.slic.use_slic else 'square',
+                'n_measurements': roi_data.get('n_measurements', len(roi_data['coords'])),
+                'scales_analyzed': getattr(multiscale_config, 'scales_um', [10, 20, 50]),
+                'method': 'slic' if getattr(slic_config, 'use_slic', False) else 'square',
                 'optimization_enabled': True
             }
         }
+        
+        # Add backward compatibility fields from primary scale
+        if primary_results:
+            result.update({
+                'cluster_labels': primary_results.get('cluster_labels', []),
+                'feature_matrix': primary_results.get('feature_matrix', np.array([])),
+                'protein_names': primary_results.get('protein_names', []),
+                'silhouette_score': primary_results.get('silhouette_score', 0.0)
+            })
+        
+        return result
     
     def run_batch_analysis(
         self, 
@@ -183,13 +216,40 @@ class IMCAnalysisPipeline:
             base_path=output_dir
         )
         
-        # Check if config is picklable - if not, use sequential processing
+        # Check if config is serializable for multiprocessing - if not, use sequential processing
         use_sequential = False
         try:
-            import pickle
-            pickle.dumps(self.analysis_config)
-        except (pickle.PicklingError, TypeError, AttributeError):
-            # Config is not picklable, use sequential processing
+            # Test multiprocessing compatibility by checking if config object itself
+            # can be serialized (not just its to_dict output)
+            import json
+            
+            # First, check if the config object attributes contain any callables
+            def check_for_callables(obj, path="config"):
+                if callable(obj):
+                    raise TypeError(f"Config contains callable at {path}: {obj}")
+                elif hasattr(obj, '__dict__'):
+                    for attr_name, attr_value in obj.__dict__.items():
+                        check_for_callables(attr_value, f"{path}.{attr_name}")
+                elif isinstance(obj, dict):
+                    for key, value in obj.items():
+                        check_for_callables(value, f"{path}[{key}]")
+                elif isinstance(obj, (list, tuple)):
+                    for i, item in enumerate(obj):
+                        check_for_callables(item, f"{path}[{i}]")
+            
+            check_for_callables(self.analysis_config)
+            
+            # Also test JSON serialization of the config's to_dict if available
+            if hasattr(self.analysis_config, 'to_dict'):
+                config_dict = self.analysis_config.to_dict()
+                json_str = json.dumps(config_dict)
+                json.loads(json_str)
+            else:
+                # Try to serialize the config object attributes
+                json.dumps(self.analysis_config.__dict__)
+                
+        except (TypeError, ValueError, AttributeError):
+            # Config is not serializable, use sequential processing
             use_sequential = True
         
         # Analysis parameters with defaults
@@ -211,7 +271,7 @@ class IMCAnalysisPipeline:
             
             for roi_id, roi_data in roi_data_dict.items():
                 try:
-                    result = self.analyze_single_roi(roi_data, **final_analysis_params)
+                    result = self.analyze_single_roi(roi_data, override_config=final_analysis_params)
                     results[roi_id] = result
                     
                     # Save result if output directory specified
@@ -291,11 +351,12 @@ class IMCAnalysisPipeline:
                     reference_channels = {'DNA_composite': scale_result['composite_dna']}
                     
                     # Compute segmentation quality metrics
-                    quality_metrics = validate_segmentation_quality(
-                        segments=scale_result['superpixel_labels'],
-                        reference_channels=reference_channels,
-                        scale_um=scale
-                    )
+                    # TODO: Implement proper segmentation quality validation
+                    quality_metrics = {
+                        'n_segments': len(np.unique(scale_result['superpixel_labels'])),
+                        'scale_um': scale,
+                        'status': 'placeholder'
+                    }
                     
                     validation_summary['scale_validations'][scale].append(quality_metrics)
         
@@ -401,11 +462,15 @@ class IMCAnalysisPipeline:
 def _pipeline_config_to_dict():
     """Convert pipeline config to dictionary."""
     return {
-        "multiscale": {"scales_um": [10.0, 20.0, 40.0], "enable_scale_analysis": True},
-        "slic": {"use_slic": True, "compactness": 10.0, "sigma": 2.0},
-        "clustering": {"optimization_method": "comprehensive", "k_range": [2, 8]},
-        "storage": {"format": "json", "compression": True},
-        "normalization": {"method": "arcsinh", "cofactor": 1.0}
+        "analysis": {
+            "multiscale": {"scales_um": [10.0, 20.0, 40.0], "enable_scale_analysis": True},
+            "clustering": {"method": "leiden", "resolution": 1.0},
+            "normalization": {"method": "arcsinh", "cofactor": 1.0}
+        },
+        "segmentation": {
+            "slic": {"use_slic": True, "compactness": 10.0, "sigma": 2.0}
+        },
+        "storage": {"format": "json", "compression": True}
     }
 
 
@@ -434,26 +499,30 @@ def run_complete_analysis(
     from types import SimpleNamespace
     
     pipeline_config = SimpleNamespace(
-        multiscale=SimpleNamespace(
-            scales_um=[10.0, 20.0, 40.0],
-            enable_scale_analysis=True
+        analysis=SimpleNamespace(
+            multiscale=SimpleNamespace(
+                scales_um=[10.0, 20.0, 40.0],
+                enable_scale_analysis=True
+            ),
+            clustering=SimpleNamespace(
+                method="leiden",
+                resolution=1.0
+            ),
+            normalization=SimpleNamespace(
+                method="arcsinh",
+                cofactor=1.0
+            )
         ),
-        slic=SimpleNamespace(
-            use_slic=True,
-            compactness=10.0,
-            sigma=2.0
-        ),
-        clustering=SimpleNamespace(
-            optimization_method="comprehensive",
-            k_range=[2, 8]
+        segmentation=SimpleNamespace(
+            slic=SimpleNamespace(
+                use_slic=True,
+                compactness=10.0,
+                sigma=2.0
+            )
         ),
         storage=SimpleNamespace(
             format="json",
             compression=True
-        ),
-        normalization=SimpleNamespace(
-            method="arcsinh",
-            cofactor=1.0
         ),
         to_dict=_pipeline_config_to_dict
     )
@@ -503,6 +572,9 @@ def run_complete_analysis(
     
     if errors:
         print(f"Analysis completed with {len(errors)} errors")
+        print("Error details:")
+        for i, error in enumerate(errors, 1):
+            print(f"  {i}. {error}")
     else:
         print("Analysis completed successfully")
     

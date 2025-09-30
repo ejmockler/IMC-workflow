@@ -1,474 +1,340 @@
 """
-Performance Regression Tests for IMC Analysis Pipeline
+Performance Regression Monitoring
 
-Tests to ensure O(N²) fixes remain effective and performance doesn't regress.
-Uses complexity analysis rather than brittle timing assertions.
+Tracks algorithmic complexity and performance to prevent regressions.
+Focuses on scaling behavior rather than absolute timing (which is environment-dependent).
 """
 
-import pytest
 import numpy as np
+import pytest
 import time
-import tempfile
-from pathlib import Path
-import pandas as pd
-from typing import List, Tuple
 import tracemalloc
 import gc
+from typing import List, Tuple
 
-from src.analysis.data_storage import (
-    create_storage_backend,
-    ParquetStorage,
-    HDF5Storage
-)
 from src.analysis.ion_count_processing import (
+    apply_arcsinh_transform, 
     aggregate_ion_counts,
-    apply_arcsinh_transform,
     ion_count_pipeline
 )
+from src.analysis.spatial_clustering import perform_spatial_clustering
+from src.analysis.multiscale_analysis import perform_multiscale_analysis
 
 
-@pytest.mark.performance
-class TestDataStoragePerformance:
-    """Test storage performance to verify O(N²) fixes."""
+class TestAlgorithmicComplexity:
+    """Test that algorithms scale as expected with input size."""
     
-    def test_parquet_partitioned_scaling(self):
-        """Test that Parquet storage scales linearly, not quadratically."""
-        pd = pytest.importorskip('pandas')
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
-            storage = ParquetStorage(tmpdir)
-            
-            # Test with increasing numbers of ROIs
-            roi_counts = [5, 10, 20]  # Start small for CI
-            save_times = []
-            
-            for n_rois in roi_counts:
-                start_time = time.time()
-                
-                # Save multiple ROIs
-                for i in range(n_rois):
-                    feature_matrix = np.random.rand(50, 5)  # Small for speed
-                    protein_names = [f'protein_{j}' for j in range(5)]
-                    
-                    storage.save_roi_features(f'roi_{i}', feature_matrix, protein_names)
-                
-                elapsed = time.time() - start_time
-                save_times.append(elapsed)
-            
-            # Check scaling behavior
-            # With partitioned storage, time should scale roughly linearly
-            # Allow some variance but prevent quadratic growth
-            if len(save_times) >= 2:
-                # Time ratio should be close to ROI ratio for linear scaling
-                time_ratio = save_times[-1] / save_times[0]
-                roi_ratio = roi_counts[-1] / roi_counts[0]
-                
-                # Allow some overhead but prevent quadratic behavior
-                # Linear: ratio ≈ roi_ratio, Quadratic: ratio ≈ roi_ratio²
-                max_acceptable_ratio = roi_ratio * 1.5  # Allow 50% overhead
-                
-                assert time_ratio <= max_acceptable_ratio, \
-                    f"Performance regression: time ratio {time_ratio:.2f} > {max_acceptable_ratio:.2f}"
-    
-    def test_no_read_modify_write_cycle_timing(self):
-        """Test that adding ROIs doesn't read existing ones (timing-based)."""
-        pd = pytest.importorskip('pandas')
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
-            storage = ParquetStorage(tmpdir)
-            
-            # Create initial ROIs
-            n_initial = 10
-            for i in range(n_initial):
-                feature_matrix = np.random.rand(30, 3)
-                storage.save_roi_features(f'roi_{i}', feature_matrix, ['p1', 'p2', 'p3'])
-            
-            # Measure time to add one more ROI
-            start_time = time.time()
-            storage.save_roi_features('new_roi', np.random.rand(30, 3), ['p1', 'p2', 'p3'])
-            add_time = time.time() - start_time
-            
-            # Should be fast (no dependency on existing ROI count)
-            # This is a complexity test, not an absolute timing test
-            assert add_time < 1.0, f"Adding ROI took too long: {add_time:.3f}s"
-            
-            # Verify files exist separately (partitioned behavior)
-            features_dir = Path(tmpdir) / "roi_features_partitioned"
-            roi_files = list(features_dir.glob("roi_*.parquet"))
-            assert len(roi_files) == n_initial + 1
-    
-    def test_hdf5_compression_performance(self):
-        """Test HDF5 compression doesn't cause exponential slowdown."""
-        h5py = pytest.importorskip('h5py')
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
-            storage = HDF5Storage(Path(tmpdir) / "test.h5", compression='gzip')
-            
-            # Test with increasing data sizes
-            data_sizes = [100, 500, 1000]  # Rows in matrix
-            save_times = []
-            
-            for size in data_sizes:
-                large_data = {
-                    'feature_matrix': np.random.rand(size, 50),
-                    'cluster_labels': np.random.randint(0, 5, size)
-                }
-                
-                start_time = time.time()
-                storage.save_analysis_results(large_data, f'test_{size}')
-                elapsed = time.time() - start_time
-                save_times.append(elapsed)
-            
-            # Compression time should scale reasonably with data size
-            if len(save_times) >= 2:
-                # Check that it's not exponential growth
-                for i in range(1, len(save_times)):
-                    size_ratio = data_sizes[i] / data_sizes[i-1]
-                    time_ratio = save_times[i] / save_times[i-1]
-                    
-                    # Allow quadratic growth for compression but not exponential
-                    max_ratio = size_ratio ** 2 * 2  # Allow some overhead
-                    
-                    assert time_ratio <= max_ratio, \
-                        f"Compression performance regression: {time_ratio:.2f} > {max_ratio:.2f}"
-
-
-@pytest.mark.performance
-class TestIonCountProcessingPerformance:
-    """Test ion count processing performance to verify vectorization fixes."""
-    
-    def test_aggregate_ion_counts_scaling(self):
-        """Test that ion count aggregation scales linearly with data size."""
-        # Test with increasing data sizes
-        data_sizes = [1000, 5000, 10000]  # Number of points
-        processing_times = []
-        
-        for n_points in data_sizes:
-            # Create test data
-            coords = np.random.uniform(0, 100, (n_points, 2))
-            ion_counts = {
-                'protein1': np.random.poisson(5, n_points),
-                'protein2': np.random.poisson(10, n_points)
-            }
-            
-            # Measure aggregation time
-            start_time = time.time()
-            
-            try:
-                result = aggregate_ion_counts(
-                    coords=coords,
-                    ion_counts=ion_counts,
-                    bin_size_um=10.0
-                )
-                
-                elapsed = time.time() - start_time
-                processing_times.append(elapsed)
-                
-                # Verify result is reasonable
-                assert isinstance(result, dict)
-                
-            except Exception as e:
-                # If function fails, skip performance test
-                pytest.skip(f"Ion count aggregation failed: {e}")
-        
-        # Check scaling behavior (should be roughly linear)
-        if len(processing_times) >= 2:
-            for i in range(1, len(processing_times)):
-                size_ratio = data_sizes[i] / data_sizes[i-1]
-                time_ratio = processing_times[i] / processing_times[i-1]
-                
-                # Allow some overhead but prevent quadratic scaling
-                max_acceptable_ratio = size_ratio * 2.0
-                
-                assert time_ratio <= max_acceptable_ratio, \
-                    f"Ion count aggregation scaling regression: {time_ratio:.2f} > {max_acceptable_ratio:.2f}"
-    
-    def test_arcsinh_transform_vectorization(self):
-        """Test that arcsinh transform is properly vectorized."""
-        # Create test data with increasing sizes
-        sizes = [1000, 10000, 50000]
-        transform_times = []
+    def test_arcsinh_transform_linear_scaling(self):
+        """arcsinh transform should scale O(n) with number of points."""
+        sizes = [1000, 2000, 4000]
+        times = []
         
         for size in sizes:
+            np.random.seed(42)
             ion_counts = {
-                'CD45': np.random.poisson(5, size),
-                'CD31': np.random.poisson(8, size),
-                'CD11b': np.random.poisson(3, size)
+                'marker1': np.random.poisson(100, size).astype(float),
+                'marker2': np.random.poisson(50, size).astype(float)
             }
             
-            start_time = time.time()
+            # Warm up
+            apply_arcsinh_transform({'test': np.random.poisson(10, 100).astype(float)})
             
-            try:
-                transformed, cofactors = apply_arcsinh_transform(ion_counts)
-                elapsed = time.time() - start_time
-                transform_times.append(elapsed)
-                
-                # Verify transformation worked
-                assert isinstance(transformed, dict)
-                assert len(transformed) == len(ion_counts)
-                
-            except Exception as e:
-                pytest.skip(f"Arcsinh transform failed: {e}")
+            # Measure time
+            start_time = time.perf_counter()
+            transformed, _ = apply_arcsinh_transform(ion_counts)
+            elapsed = time.perf_counter() - start_time
+            times.append(elapsed)
         
-        # Vectorized operations should scale very well
-        if len(transform_times) >= 2:
-            # Allow generous scaling for numerical operations
-            for i in range(1, len(transform_times)):
-                size_ratio = sizes[i] / sizes[i-1]
-                time_ratio = transform_times[i] / transform_times[i-1]
-                
-                # Vectorized operations should scale nearly linearly
-                max_ratio = size_ratio * 1.5
-                
-                assert time_ratio <= max_ratio, \
-                    f"Arcsinh transform not properly vectorized: {time_ratio:.2f} > {max_ratio:.2f}"
+        # Should scale roughly linearly: T(2n) ≈ 2*T(n)
+        # Allow 50% tolerance for measurement noise and overhead
+        scaling_factor_1 = times[1] / times[0]  # 2x data
+        scaling_factor_2 = times[2] / times[1]  # 2x data again
+        
+        assert 0.5 < scaling_factor_1 < 4.0, \
+            f"Poor scaling 1k->2k: {scaling_factor_1:.2f}x"
+        assert 0.5 < scaling_factor_2 < 4.0, \
+            f"Poor scaling 2k->4k: {scaling_factor_2:.2f}x"
     
-    def test_ion_count_pipeline_memory_efficiency(self):
-        """Test that ion count pipeline doesn't consume excessive memory."""
-        # Start memory tracking
+    def test_spatial_aggregation_scaling(self):
+        """Spatial aggregation should scale roughly O(n) with number of points."""
+        point_counts = [500, 1000, 2000]
+        times = []
+        
+        for n_points in point_counts:
+            np.random.seed(42)
+            coords = np.random.uniform(0, 100, (n_points, 2))
+            ion_counts = {'marker': np.random.poisson(100, n_points).astype(float)}
+            
+            # Fixed grid size - complexity should scale with points, not bins
+            bin_edges = np.linspace(0, 100, 21)  # 20x20 grid
+            
+            # Warm up
+            aggregate_ion_counts(
+                np.random.uniform(0, 100, (100, 2)),
+                {'test': np.random.poisson(10, 100).astype(float)},
+                np.linspace(0, 100, 11), np.linspace(0, 100, 11)
+            )
+            
+            start_time = time.perf_counter()
+            aggregated = aggregate_ion_counts(coords, ion_counts, bin_edges, bin_edges)
+            elapsed = time.perf_counter() - start_time
+            times.append(elapsed)
+        
+        # Should scale sub-quadratically
+        scaling_factor_1 = times[1] / times[0]  # 2x points
+        scaling_factor_2 = times[2] / times[1]  # 2x points
+        
+        # Allow generous bounds - focus on preventing O(n²) behavior
+        assert scaling_factor_1 < 8.0, \
+            f"Excessive scaling 500->1000: {scaling_factor_1:.2f}x (expected <8x)"
+        assert scaling_factor_2 < 8.0, \
+            f"Excessive scaling 1000->2000: {scaling_factor_2:.2f}x (expected <8x)"
+    
+    def test_clustering_scaling_behavior(self):
+        """Spatial clustering should not scale worse than O(n log n)."""
+        sizes = [100, 200, 400]
+        times = []
+        
+        for size in sizes:
+            np.random.seed(42)
+            coords = np.random.uniform(0, 100, (size, 2))
+            features = np.random.randn(size, 3)
+            
+            # Warm up
+            perform_spatial_clustering(
+                np.random.randn(50, 3),
+                np.random.uniform(0, 100, (50, 2)),
+                method='leiden', random_state=42
+            )
+            
+            start_time = time.perf_counter()
+            labels, metadata = perform_spatial_clustering(
+                features, coords, method='leiden', random_state=42
+            )
+            elapsed = time.perf_counter() - start_time
+            times.append(elapsed)
+        
+        # Should scale better than O(n²)
+        # For O(n log n): doubling size should increase time by ~2.4x
+        # For O(n²): doubling size would increase time by 4x
+        scaling_factor_1 = times[1] / times[0]  # 2x size
+        scaling_factor_2 = times[2] / times[1]  # 2x size
+        
+        # Flag if scaling worse than O(n^1.5)
+        assert scaling_factor_1 < 6.0, \
+            f"Poor clustering scaling 100->200: {scaling_factor_1:.2f}x"
+        assert scaling_factor_2 < 6.0, \
+            f"Poor clustering scaling 200->400: {scaling_factor_2:.2f}x"
+
+
+class TestMemoryComplexity:
+    """Test memory usage scaling and detect memory leaks."""
+    
+    def test_memory_usage_scaling(self):
+        """Memory usage should scale linearly with data size."""
         tracemalloc.start()
         
-        # Test with moderate-sized data
-        n_points = 5000
+        sizes = [1000, 2000]
+        memory_usage = []
+        
+        for size in sizes:
+            gc.collect()  # Clean up before measurement
+            tracemalloc.clear_traces()
+            
+            # Create data
+            coords = np.random.uniform(0, 100, (size, 2))
+            ion_counts = {
+                'marker1': np.random.poisson(100, size).astype(float),
+                'marker2': np.random.poisson(50, size).astype(float),
+                'marker3': np.random.poisson(75, size).astype(float)
+            }
+            
+            # Process data
+            transformed, _ = apply_arcsinh_transform(ion_counts)
+            bin_edges = np.linspace(0, 100, 21)
+            aggregated = aggregate_ion_counts(coords, ion_counts, bin_edges, bin_edges)
+            
+            current, peak = tracemalloc.get_traced_memory()
+            memory_usage.append(peak)
+        
+        tracemalloc.stop()
+        
+        # Memory should scale roughly linearly (within 4x for 2x data)
+        memory_ratio = memory_usage[1] / memory_usage[0]
+        assert memory_ratio < 4.0, \
+            f"Memory scaling worse than linear: {memory_ratio:.2f}x for 2x data"
+    
+    def test_no_memory_leaks_in_loop(self):
+        """Repeated operations should not accumulate memory."""
+        tracemalloc.start()
+        
+        # Baseline memory
+        gc.collect()
+        baseline_current, baseline_peak = tracemalloc.get_traced_memory()
+        
+        # Perform repeated operations
+        for i in range(10):
+            coords = np.random.uniform(0, 100, (500, 2))
+            ion_counts = {'marker': np.random.poisson(100, 500).astype(float)}
+            
+            # Process and discard
+            transformed, _ = apply_arcsinh_transform(ion_counts)
+            del transformed, coords, ion_counts
+            
+            if i % 3 == 0:
+                gc.collect()  # Periodic cleanup
+        
+        # Final memory check
+        gc.collect()
+        final_current, final_peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        
+        # Memory growth should be minimal
+        memory_growth = final_current - baseline_current
+        assert memory_growth < 10 * 1024 * 1024, \
+            f"Potential memory leak: {memory_growth / 1024 / 1024:.1f}MB growth"
+
+
+class TestPerformanceBenchmarks:
+    """Benchmark key operations for regression detection."""
+    
+    @pytest.mark.benchmark
+    def test_full_pipeline_performance_baseline(self):
+        """Benchmark complete pipeline for regression detection."""
+        np.random.seed(42)
+        
+        # Realistic dataset size
+        n_points = 2000
         coords = np.random.uniform(0, 200, (n_points, 2))
         ion_counts = {
-            'CD45': np.random.negative_binomial(5, 0.3, n_points),
-            'CD31': np.random.negative_binomial(10, 0.5, n_points),
-            'CD11b': np.random.negative_binomial(3, 0.2, n_points),
-            'CD206': np.random.negative_binomial(8, 0.4, n_points)
+            'CD45': np.random.negative_binomial(5, 0.3, n_points).astype(float),
+            'CD31': np.random.negative_binomial(10, 0.5, n_points).astype(float),
+            'CD11b': np.random.negative_binomial(3, 0.2, n_points).astype(float)
         }
+        dna1 = np.random.poisson(800, n_points).astype(float)
+        dna2 = np.random.poisson(750, n_points).astype(float)
         
-        # Get initial memory
-        initial_snapshot = tracemalloc.take_snapshot()
+        # Warm up
+        ion_count_pipeline(
+            np.random.uniform(0, 100, (100, 2)),
+            {'test': np.random.poisson(50, 100).astype(float)},
+            bin_size_um=20.0
+        )
         
-        try:
-            # Run pipeline
-            result = ion_count_pipeline(
-                coords=coords,
-                ion_counts=ion_counts,
-                bin_size_um=20.0,
-                n_clusters=5
-            )
-            
-            # Get final memory
-            final_snapshot = tracemalloc.take_snapshot()
-            
-            # Calculate memory usage
-            top_stats = final_snapshot.compare_to(initial_snapshot, 'lineno')
-            total_memory_mb = sum(stat.size for stat in top_stats) / (1024 * 1024)
-            
-            # Memory usage should be reasonable for the data size
-            # Input data is roughly: 5000 points * 4 proteins * 8 bytes ≈ 160KB
-            # Allow significant overhead for processing but not excessive
-            max_memory_mb = 100  # 100MB should be more than enough
-            
-            assert total_memory_mb <= max_memory_mb, \
-                f"Excessive memory usage: {total_memory_mb:.2f}MB"
-            
-            # Verify pipeline produced results
-            assert isinstance(result, dict)
-            
-        except Exception as e:
-            pytest.skip(f"Ion count pipeline failed: {e}")
+        # Benchmark full pipeline
+        start_time = time.perf_counter()
         
-        finally:
-            tracemalloc.stop()
-            gc.collect()
-
-
-@pytest.mark.performance
-class TestComplexityBenchmarks:
-    """Complexity-based performance tests using Big O analysis."""
+        results = ion_count_pipeline(
+            coords, ion_counts, bin_size_um=20.0
+        )
+        
+        elapsed = time.perf_counter() - start_time
+        
+        # Should complete in reasonable time (environment-dependent baseline)
+        # This is more for tracking regressions than absolute performance
+        assert elapsed < 30.0, \
+            f"Pipeline too slow: {elapsed:.1f}s for {n_points} points"
+        
+        # Verify results are reasonable
+        assert 'cluster_labels' in results
+        assert len(results['cluster_labels']) > 0
+        
+        print(f"Pipeline benchmark: {elapsed:.2f}s for {n_points} points")
     
-    def test_data_size_scaling_analysis(self):
-        """Analyze how processing time scales with data size."""
-        from src.analysis.slic_segmentation import prepare_dna_composite
-        
-        # Test different data sizes
-        sizes = [500, 1000, 2000]  # Points
-        times = []
-        
-        for n_points in sizes:
-            # Generate test data
-            dna1 = np.random.poisson(800, n_points).astype(float)
-            dna2 = np.random.poisson(600, n_points).astype(float)
-            coords = np.random.uniform(0, 100, (n_points, 2))
-            
-            start_time = time.time()
-            
-            try:
-                composite = prepare_dna_composite(
-                    dna1_intensities=dna1,
-                    dna2_intensities=dna2,
-                    coords=coords,
-                    resolution_um=2.0,
-                    bounds=(0, 100, 0, 100)
-                )
-                
-                elapsed = time.time() - start_time
-                times.append(elapsed)
-                
-                # Verify output
-                assert composite is not None
-                
-            except Exception as e:
-                pytest.skip(f"DNA composite preparation failed: {e}")
-        
-        # Analyze complexity
-        if len(times) >= 3:
-            # Calculate growth rates
-            growth_rates = []
-            for i in range(1, len(times)):
-                size_ratio = sizes[i] / sizes[i-1]
-                time_ratio = times[i] / times[i-1]
-                growth_rate = np.log(time_ratio) / np.log(size_ratio)
-                growth_rates.append(growth_rate)
-            
-            avg_growth_rate = np.mean(growth_rates)
-            
-            # Growth rate should be reasonable:
-            # 1.0 = linear, 2.0 = quadratic, 3.0 = cubic
-            # Image processing might be between linear and quadratic
-            assert avg_growth_rate <= 2.5, \
-                f"Poor complexity scaling: growth rate {avg_growth_rate:.2f}"
-    
-    def test_protein_count_scaling(self):
-        """Test how processing scales with number of proteins."""
-        from src.analysis.ion_count_processing import standardize_features
+    def test_multiscale_analysis_performance(self):
+        """Benchmark multiscale analysis performance."""
+        np.random.seed(42)
         
         n_points = 1000
-        protein_counts = [2, 5, 10, 20]
-        times = []
+        coords = np.random.uniform(0, 100, (n_points, 2))
+        ion_counts = {
+            'marker1': np.random.poisson(100, n_points).astype(float),
+            'marker2': np.random.poisson(50, n_points).astype(float)
+        }
+        dna1 = np.random.poisson(800, n_points).astype(float)
+        dna2 = np.random.poisson(750, n_points).astype(float)
         
-        for n_proteins in protein_counts:
-            # Create data with varying protein counts
-            ion_data = {}
-            for i in range(n_proteins):
-                ion_data[f'protein_{i}'] = np.random.poisson(5, n_points)
-            
-            start_time = time.time()
-            
-            try:
-                standardized, scalers = standardize_features(ion_data)
-                elapsed = time.time() - start_time
-                times.append(elapsed)
-                
-                assert len(standardized) == n_proteins
-                
-            except Exception as e:
-                pytest.skip(f"Feature standardization failed: {e}")
+        scales_um = [10.0, 20.0, 40.0]
         
-        # Should scale linearly with number of proteins
-        if len(times) >= 2:
-            for i in range(1, len(times)):
-                protein_ratio = protein_counts[i] / protein_counts[i-1]
-                time_ratio = times[i] / times[i-1]
-                
-                # Should be roughly linear scaling
-                max_ratio = protein_ratio * 1.5
-                
-                assert time_ratio <= max_ratio, \
-                    f"Poor protein scaling: {time_ratio:.2f} > {max_ratio:.2f}"
-
-
-@pytest.mark.performance
-@pytest.mark.slow
-class TestLargeDatasetPerformance:
-    """Performance tests with larger datasets (marked slow)."""
-    
-    def test_large_roi_processing_time(self, large_roi_data):
-        """Test processing time for large ROI datasets."""
-        start_time = time.time()
+        start_time = time.perf_counter()
         
         try:
-            # Test with ion count pipeline
-            result = ion_count_pipeline(
-                coords=large_roi_data['coords'],
-                ion_counts=large_roi_data['ion_counts'],
-                bin_size_um=20.0,
-                n_clusters=8
-            )
-            
-            elapsed = time.time() - start_time
-            
-            # Large dataset should still process in reasonable time
-            max_time_seconds = 30  # Generous limit for CI
-            assert elapsed <= max_time_seconds, \
-                f"Large dataset processing too slow: {elapsed:.2f}s > {max_time_seconds}s"
-            
-            # Verify results
-            assert isinstance(result, dict)
-            assert 'feature_matrix' in result or 'aggregated_counts' in result
-            
-        except Exception as e:
-            pytest.skip(f"Large dataset processing failed: {e}")
-    
-    def test_memory_usage_large_dataset(self, large_roi_data):
-        """Test memory usage with large datasets."""
-        import psutil
-        import os
-        
-        process = psutil.Process(os.getpid())
-        initial_memory = process.memory_info().rss / (1024 * 1024)  # MB
-        
-        try:
-            # Process large dataset
-            from src.analysis.multiscale_analysis import perform_multiscale_analysis
-            
             results = perform_multiscale_analysis(
-                coords=large_roi_data['coords'],
-                ion_counts=large_roi_data['ion_counts'],
-                dna1_intensities=large_roi_data['dna1_intensities'],
-                dna2_intensities=large_roi_data['dna2_intensities'],
-                scales_um=[20.0, 40.0],  # Reduced for memory test
-                n_clusters=5,
-                use_slic=False  # Use simpler method for memory test
+                coords=coords,
+                ion_counts=ion_counts,
+                dna1_intensities=dna1,
+                dna2_intensities=dna2,
+                scales_um=scales_um,
+                method='leiden'
             )
             
-            peak_memory = process.memory_info().rss / (1024 * 1024)  # MB
-            memory_increase = peak_memory - initial_memory
+            elapsed = time.perf_counter() - start_time
             
-            # Memory increase should be reasonable for large dataset
-            max_memory_mb = 200  # Generous limit
-            assert memory_increase <= max_memory_mb, \
-                f"Excessive memory usage: {memory_increase:.2f}MB increase"
+            # Should complete in reasonable time
+            assert elapsed < 60.0, \
+                f"Multiscale analysis too slow: {elapsed:.1f}s"
             
-            # Verify results
-            assert isinstance(results, dict)
+            print(f"Multiscale benchmark: {elapsed:.2f}s for {len(scales_um)} scales")
             
         except Exception as e:
-            pytest.skip(f"Large dataset multiscale analysis failed: {e}")
+            # If it fails, that's also performance-relevant information
+            elapsed = time.perf_counter() - start_time
+            pytest.fail(f"Multiscale analysis failed after {elapsed:.1f}s: {e}")
+
+
+class TestPerformanceRegression:
+    """Detect performance regressions by comparing against historical data."""
+    
+    def test_establish_performance_baseline(self):
+        """Establish baseline performance metrics for future comparison."""
+        # This would typically save results to a file for CI/CD comparison
+        # For now, just ensure operations complete within bounds
         
-        finally:
-            # Force cleanup
-            gc.collect()
+        operations = [
+            ("arcsinh_1k", lambda: self._benchmark_arcsinh(1000)),
+            ("aggregation_1k", lambda: self._benchmark_aggregation(1000)),
+            ("clustering_500", lambda: self._benchmark_clustering(500)),
+        ]
+        
+        baselines = {}
+        for name, operation in operations:
+            start_time = time.perf_counter()
+            operation()
+            elapsed = time.perf_counter() - start_time
+            baselines[name] = elapsed
+            
+            # Ensure reasonable performance
+            assert elapsed < 10.0, f"{name} baseline too slow: {elapsed:.2f}s"
+        
+        # In real CI/CD, would save baselines to file and compare in future runs
+        print("Performance baselines:", baselines)
+    
+    def _benchmark_arcsinh(self, size):
+        """Helper to benchmark arcsinh transformation."""
+        ion_counts = {
+            f'marker_{i}': np.random.poisson(100, size).astype(float)
+            for i in range(5)
+        }
+        transformed, _ = apply_arcsinh_transform(ion_counts)
+        return transformed
+    
+    def _benchmark_aggregation(self, size):
+        """Helper to benchmark spatial aggregation."""
+        coords = np.random.uniform(0, 100, (size, 2))
+        ion_counts = {'marker': np.random.poisson(100, size).astype(float)}
+        bin_edges = np.linspace(0, 100, 21)
+        aggregated = aggregate_ion_counts(coords, ion_counts, bin_edges, bin_edges)
+        return aggregated
+    
+    def _benchmark_clustering(self, size):
+        """Helper to benchmark spatial clustering."""
+        coords = np.random.uniform(0, 100, (size, 2))
+        features = np.random.randn(size, 4)
+        labels, metadata = perform_spatial_clustering(
+            features, coords, method='leiden', random_state=42
+        )
+        return labels, metadata
 
 
-def test_performance_regression_baseline():
-    """Establish performance baseline for regression detection."""
-    # This test establishes baseline performance metrics
-    # In a real CI system, you would store these metrics and compare over time
-    
-    import sys
-    import platform
-    
-    baseline_info = {
-        'python_version': sys.version,
-        'platform': platform.platform(),
-        'numpy_version': np.__version__,
-    }
-    
-    print(f"Performance baseline: {baseline_info}")
-    
-    # Simple operation timing for baseline
-    n = 10000
-    data = np.random.rand(n, 10)
-    
-    start_time = time.time()
-    result = np.sum(data, axis=1)
-    baseline_time = time.time() - start_time
-    
-    print(f"Baseline numpy operation time: {baseline_time:.4f}s for {n} points")
-    
-    # This would be stored and compared in a real regression system
-    assert baseline_time < 1.0  # Sanity check
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])

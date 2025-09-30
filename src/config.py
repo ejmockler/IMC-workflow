@@ -1,8 +1,57 @@
 """Unified configuration module for IMC analysis."""
 
 import json
+import warnings
 from pathlib import Path
 from typing import Dict, Any, Optional
+
+
+def migrate_config(config_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Migrate old config format to new format.
+    Handles removal of n_clusters and addition of resolution parameters.
+    """
+    modified = False
+    
+    if 'analysis' in config_dict:
+        clustering = config_dict['analysis'].get('clustering', {})
+        
+        # Check for old n_clusters parameter
+        if 'n_clusters' in clustering:
+            warnings.warn(
+                "Config contains deprecated 'n_clusters' parameter. "
+                "Using resolution-based clustering instead.",
+                DeprecationWarning
+            )
+            del clustering['n_clusters']
+            modified = True
+            
+        # Ensure new parameters exist
+        if 'resolution_range' not in clustering:
+            clustering['resolution_range'] = [0.5, 2.0]
+            modified = True
+        if 'optimization_method' not in clustering and 'optimization_method' in clustering:
+            # Fix: only set if not present
+            pass
+        elif 'optimization_method' not in clustering:
+            clustering['optimization_method'] = 'stability'
+            modified = True
+            
+    if 'kidney_experiment' in config_dict:
+        exp = config_dict['kidney_experiment']
+        clustering = exp.get('clustering', {})
+        if 'n_clusters' in clustering:
+            warnings.warn(
+                "Removing n_clusters from kidney_experiment.clustering",
+                DeprecationWarning
+            )
+            del clustering['n_clusters']
+            modified = True
+            
+    if modified:
+        warnings.warn("Config was migrated to new format", UserWarning)
+            
+    return config_dict
 
 
 class Config:
@@ -62,7 +111,7 @@ class Config:
         self.validate_channel_consistency()
     
     def _load_config(self) -> Dict[str, Any]:
-        """Load configuration from JSON file.
+        """Load configuration from JSON file and apply migrations.
         
         Returns:
             Dictionary containing configuration data
@@ -72,7 +121,12 @@ class Config:
             return {}
         
         with open(self.config_path, 'r') as f:
-            return json.load(f)
+            config_dict = json.load(f)
+        
+        # Apply migrations to handle old format
+        config_dict = migrate_config(config_dict)
+        
+        return config_dict
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value by key.

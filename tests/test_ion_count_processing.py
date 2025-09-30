@@ -244,6 +244,10 @@ class TestFeatureMatrix:
 class TestIonCountPipeline:
     """Test complete ion count processing pipeline."""
     
+    def setUp(self):
+        """Ensure consistent random seed for all pipeline tests."""
+        np.random.seed(42)
+    
     def test_pipeline_integration(self):
         """Test full pipeline with realistic data."""
         np.random.seed(42)
@@ -259,44 +263,85 @@ class TestIonCountPipeline:
             'CD11b': np.random.negative_binomial(3, 0.2, n_points)   # Myeloid marker
         }
         
-        # Run pipeline
+        # Run pipeline (resolution will be selected automatically)
         results = ion_count_pipeline(
             coords,
             ion_counts,
-            bin_size_um=20.0,
-            n_clusters=5
+            bin_size_um=20.0
         )
         
-        # Check all expected outputs
-        assert 'aggregated_counts' in results
-        assert 'transformed_arrays' in results
-        assert 'cofactors_used' in results
-        assert 'standardized_arrays' in results
-        assert 'feature_matrix' in results
-        assert 'cluster_labels' in results
-        assert 'cluster_centroids' in results
+        # Check all expected outputs with specific validation
+        required_keys = ['aggregated_counts', 'transformed_arrays', 'cofactors_used', 
+                        'standardized_arrays', 'feature_matrix', 'cluster_labels', 'cluster_centroids']
+        for key in required_keys:
+            assert key in results, f"Missing required key: {key}"
         
-        # Check dimensions consistency
-        n_bins = len(results['bin_edges_x']) - 1
-        n_bins_y = len(results['bin_edges_y']) - 1
+        # Validate aggregated counts structure and values
+        aggregated = results['aggregated_counts']
+        assert set(aggregated.keys()) == set(ion_counts.keys())
+        for protein, counts in aggregated.items():
+            assert isinstance(counts, np.ndarray), f"{protein} counts should be numpy array"
+            assert counts.dtype in [np.float64, np.float32], f"{protein} counts should be float type"
+            assert np.all(counts >= 0), f"{protein} counts should be non-negative"
+            assert np.sum(counts) > 0, f"{protein} should have non-zero total counts"
         
-        # Feature matrix should have correct shape
-        assert results['feature_matrix'].shape[1] == 3  # 3 proteins
+        # Validate transformed arrays
+        transformed = results['transformed_arrays']
+        assert set(transformed.keys()) == set(ion_counts.keys())
+        for protein, array in transformed.items():
+            assert array.ndim == 2, f"{protein} transformed array should be 2D"
+            assert np.all(np.isfinite(array)), f"{protein} transformed values should be finite"
+            # Arcsinh should produce values >= 0 for non-negative input
+            assert np.all(array >= 0), f"{protein} arcsinh values should be non-negative"
         
-        # Cluster labels should match feature matrix
-        assert len(results['cluster_labels']) == results['feature_matrix'].shape[0]
-        
-        # Should have 5 clusters as requested
-        assert len(np.unique(results['cluster_labels'])) == 5
-        
-        # Cofactors should be optimized for each protein
-        assert len(results['cofactors_used']) == 3
+        # Validate cofactors with specific ranges
+        cofactors = results['cofactors_used']
+        assert len(cofactors) == 3
         for protein in ion_counts:
-            assert protein in results['cofactors_used']
-            assert results['cofactors_used'][protein] > 0
+            assert protein in cofactors, f"Missing cofactor for {protein}"
+            cofactor = cofactors[protein]
+            assert 0.1 <= cofactor <= 1000, f"{protein} cofactor {cofactor} outside reasonable range [0.1, 1000]"
+        
+        # Validate standardized arrays
+        standardized = results['standardized_arrays']
+        for protein, array in standardized.items():
+            flat_values = array.ravel()
+            mean_val = np.mean(flat_values)
+            std_val = np.std(flat_values)
+            assert abs(mean_val) < 0.1, f"{protein} standardized mean {mean_val} not close to 0"
+            assert abs(std_val - 1.0) < 0.1, f"{protein} standardized std {std_val} not close to 1"
+        
+        # Feature matrix validation with exact checks
+        feature_matrix = results['feature_matrix']
+        assert feature_matrix.shape[1] == 3, f"Expected 3 features, got {feature_matrix.shape[1]}"
+        assert feature_matrix.shape[0] > 0, "Feature matrix should have rows"
+        assert np.all(np.isfinite(feature_matrix)), "All feature values should be finite"
+        
+        # Cluster validation with specific bounds
+        cluster_labels = results['cluster_labels']
+        assert len(cluster_labels) == feature_matrix.shape[0], "Cluster labels must match feature matrix rows"
+        n_clusters_found = len(np.unique(cluster_labels[cluster_labels >= 0]))  # Exclude -1 noise labels
+        assert 2 <= n_clusters_found <= 10, f"Found {n_clusters_found} clusters, expected 2-10"
+        
+        # Validate cluster centroids
+        centroids = results['cluster_centroids']
+        assert isinstance(centroids, dict), "Centroids should be a dictionary"
+        assert len(centroids) == n_clusters_found, "Should have one centroid per cluster"
+        
+        # Check that all centroids have values for all proteins
+        protein_names = results['protein_names']
+        for cluster_id, cluster_centroid in centroids.items():
+            assert len(cluster_centroid) == len(protein_names), f"Cluster {cluster_id} missing protein values"
+            for protein, value in cluster_centroid.items():
+                assert np.isfinite(value), f"Non-finite centroid value for {protein} in cluster {cluster_id}"
     
-    def test_pipeline_with_optimization(self):
-        """Test pipeline with automatic cluster optimization."""
+    @pytest.mark.parametrize("bin_size,expected_min_bins", [
+        (5.0, 80),   # Fine binning should create more bins
+        (10.0, 20),  # Medium binning 
+        (20.0, 5)    # Coarse binning should create fewer bins
+    ])
+    def test_pipeline_with_different_resolutions(self, bin_size, expected_min_bins):
+        """Test pipeline with different spatial resolutions."""
         np.random.seed(42)
         
         coords = np.random.uniform(0, 50, (500, 2))
@@ -304,21 +349,34 @@ class TestIonCountPipeline:
             'Marker1': np.random.poisson(100, 500)
         }
         
-        # Run without specifying n_clusters
+        # Run with specified resolution
         results = ion_count_pipeline(
             coords,
             ion_counts,
-            bin_size_um=10.0,
-            n_clusters=None  # Should trigger optimization
+            bin_size_um=bin_size
         )
         
-        # Should have optimization results
-        assert 'optimization_results' in results
-        assert 'optimal_k' in results['optimization_results']
+        # Validate specific clustering results
+        assert 'cluster_labels' in results, "Missing cluster_labels in results"
+        cluster_labels = results['cluster_labels']
+        assert len(cluster_labels) >= expected_min_bins, f"Expected at least {expected_min_bins} spatial bins, got {len(cluster_labels)}"
         
-        # Optimal k should be reasonable
-        optimal_k = results['optimization_results']['optimal_k']
-        assert 2 <= optimal_k <= 15
+        # Validate number of clusters based on resolution
+        unique_clusters = np.unique(cluster_labels[cluster_labels >= 0])  # Exclude noise
+        n_clusters = len(unique_clusters)
+        assert 1 <= n_clusters <= 8, f"Found {n_clusters} clusters at {bin_size}μm resolution, expected 1-8"
+        
+        # Finer resolution should generally produce more spatial bins
+        n_spatial_bins = len(cluster_labels)
+        if bin_size <= 10.0:
+            assert n_spatial_bins >= 15, f"Fine resolution {bin_size}μm should produce at least 15 bins, got {n_spatial_bins}"
+        
+        # Validate clustering info if present
+        if 'clustering_info' in results:
+            clustering_info = results['clustering_info']
+            assert 'method' in clustering_info, "Clustering method should be recorded"
+            assert 'n_clusters' in clustering_info, "Number of clusters should be recorded"
+            assert clustering_info['n_clusters'] == n_clusters, "Recorded cluster count should match actual"
 
 
 if __name__ == '__main__':

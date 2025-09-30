@@ -1,0 +1,4 @@
+# file: /Users/noot/Documents/IMC/src/analysis/ion_count_processing.py
+# hypothesis_version: 6.140.2
+
+[0.1, 0.5, 1.0, 1.4826, 2.0, 4.0, 5.0, 20.0, 'aggregated_counts', 'bin_edges_x', 'bin_edges_y', 'bin_size_um', 'cached', 'cluster_centroids', 'cluster_labels', 'cluster_map', 'clustering_info', 'cofactors_used', 'empty_input', 'feature_matrix', 'final_memory_gb', 'fixed_resolution', 'leiden', 'mad', 'memory_limit_gb', 'memory_report', 'method', 'n_clusters', 'n_features', 'n_samples', 'optimal_resolution', 'optimization_results', 'percentile', 'processing_method', 'protein_names', 'resolution', 'scalers', 'stability_analysis', 'standard', 'standardized_arrays', 'total_estimated_gb', 'transformed_arrays', 'valid_indices', 'variance', 'within_limit']

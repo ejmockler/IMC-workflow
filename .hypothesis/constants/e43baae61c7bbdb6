@@ -1,0 +1,4 @@
+# file: /Users/noot/Documents/IMC/src/config.py
+# hypothesis_version: 6.140.2
+
+[0.5, 2.0, '.', 'analysis', 'channel_groups', 'channels', 'clustering', 'config.json', 'data', 'data/241218_IMC_Alun', 'dna_processing', 'experimental', 'kidney_experiment', 'metadata_tracking', 'n_clusters', 'optimization_method', 'output', 'performance', 'primary_markers', 'processing', 'protein_channels', 'quality_control', 'r', 'raw_data_dir', 'resolution_range', 'results', 'results_dir', 'segmentation', 'stability', 'validation_plots', 'visualization', 'w']

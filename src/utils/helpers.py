@@ -11,6 +11,8 @@ from scipy.spatial.distance import pdist
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
+import re
+import unicodedata
 
 # --- DATA STRUCTURES ---
 
@@ -339,3 +341,66 @@ def build_pair_color_map(pairs: List[str]) -> Dict[str, any]:
     for i, pair in enumerate(unique_pairs):
         color_map[pair] = palette[i % len(palette)]
     return color_map
+
+
+def sanitize_filename(filename: str, max_length: int = 255) -> str:
+    """
+    Sanitize filename to prevent security vulnerabilities.
+    
+    Args:
+        filename: Raw filename to sanitize
+        max_length: Maximum allowed filename length
+        
+    Returns:
+        Safe filename with dangerous patterns removed
+        
+    Raises:
+        ValueError: If filename is empty or contains only invalid characters
+    """
+    if not filename or not isinstance(filename, str):
+        raise ValueError("Filename must be a non-empty string")
+    
+    # Normalize unicode to remove exotic characters
+    filename = unicodedata.normalize('NFKC', filename)
+    
+    # Remove or replace dangerous characters
+    # Remove path traversal patterns
+    filename = filename.replace('..', '')
+    filename = filename.replace('/', '_')
+    filename = filename.replace('\\', '_')
+    
+    # Remove shell metacharacters
+    dangerous_chars = ['<', '>', ':', '"', '|', '?', '*', ';', '&', '`', '$', '(', ')']
+    for char in dangerous_chars:
+        filename = filename.replace(char, '_')
+    
+    # Remove control characters and null bytes
+    filename = ''.join(char for char in filename if ord(char) >= 32)
+    
+    # Handle Windows reserved names
+    windows_reserved = {
+        'CON', 'PRN', 'AUX', 'NUL',
+        'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+        'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'
+    }
+    
+    name_without_ext = filename.split('.')[0].upper()
+    if name_without_ext in windows_reserved:
+        filename = f"safe_{filename}"
+    
+    # Limit length
+    if len(filename) > max_length:
+        # Preserve extension if present
+        parts = filename.rsplit('.', 1)
+        if len(parts) == 2:
+            name, ext = parts
+            max_name_length = max_length - len(ext) - 1
+            filename = name[:max_name_length] + '.' + ext
+        else:
+            filename = filename[:max_length]
+    
+    # Ensure result is not empty
+    if not filename or filename.strip() == '':
+        raise ValueError("Sanitized filename is empty")
+    
+    return filename

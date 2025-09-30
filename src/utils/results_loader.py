@@ -83,24 +83,14 @@ class IMCResultsLoader:
                 
             metadata = data['roi_metadata']
             
-            # Extract key metadata fields using config mappings
-            tracking = self.config.get('metadata_tracking', {})
-            
+            # Extract key metadata fields directly from JSON structure
             row = {
                 'roi_id': roi_id,
-                'condition': metadata.get(
-                    tracking.get('condition_column', 'Condition'), 'Unknown'
-                ),
-                'injury_day': metadata.get(
-                    tracking.get('timepoint_column', 'Injury Day'), 0
-                ),
-                'mouse': metadata.get(
-                    tracking.get('replicate_column', 'Mouse'), 'Unknown'
-                ),
-                'region': metadata.get(
-                    tracking.get('region_column', 'Details'), 'Unknown'
-                ),
-                'file_name': metadata.get('File Name', roi_id),
+                'condition': metadata.get('condition', 'Unknown'),
+                'injury_day': metadata.get('timepoint', 0),
+                'mouse': metadata.get('replicate_id', 'Unknown'),
+                'region': metadata.get('region', 'Unknown'),
+                'file_name': metadata.get('filename', roi_id),
                 'roi_number': metadata.get('ROI', 0)
             }
             

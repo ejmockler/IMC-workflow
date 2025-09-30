@@ -12,18 +12,18 @@ from .plotting import (
     plot_scale_comparison
 )
 
-from .loaders import (
-    load_roi_results,
-    load_multiscale_results,
-    load_batch_results
-)
+# Import comprehensive figures if available
+try:
+    from .comprehensive_figures import ComprehensiveFigureGenerator
+except ImportError:
+    ComprehensiveFigureGenerator = None
 
 __all__ = [
     'plot_roi_overview',
     'plot_protein_expression',
     'plot_cluster_map',
-    'plot_scale_comparison',
-    'load_roi_results',
-    'load_multiscale_results',
-    'load_batch_results'
+    'plot_scale_comparison'
 ]
+
+if ComprehensiveFigureGenerator is not None:
+    __all__.append('ComprehensiveFigureGenerator')

@@ -103,8 +103,16 @@ class TestSLICSegmentation:
             composite, target_bin_size_um=40.0
         )
         
-        # Smaller target size should create more superpixels
-        assert len(np.unique(labels_small)) > len(np.unique(labels_large))
+        # Smaller target size should create significantly more superpixels
+        n_small = len(np.unique(labels_small[labels_small >= 0]))
+        n_large = len(np.unique(labels_large[labels_large >= 0]))
+        
+        assert n_small > n_large, f"Small target (10µm) should create more superpixels than large (40µm): {n_small} vs {n_large}"
+        assert n_small >= n_large * 2, f"Small target should create at least 2x more superpixels: {n_small} vs {n_large}"
+        
+        # Validate reasonable ranges
+        assert 30 <= n_small <= 200, f"Small target should create 30-200 superpixels, got {n_small}"
+        assert 3 <= n_large <= 50, f"Large target should create 3-50 superpixels, got {n_large}"
         
     def test_perform_slic_empty(self):
         """Test handling of empty input."""
@@ -239,7 +247,7 @@ class TestSLICPipeline:
         # Run pipeline
         results = slic_pipeline(
             coords, ion_counts, dna1, dna2,
-            target_bin_size_um=20.0,
+            target_scale_um=20.0,
             resolution_um=2.0,
             compactness=10.0
         )
@@ -279,7 +287,7 @@ class TestSLICPipeline:
         for scale in scales:
             results = slic_pipeline(
                 coords, ion_counts, dna1, dna2,
-                target_bin_size_um=scale
+                target_scale_um=scale
             )
             n_superpixels = len(results['superpixel_coords'])
             n_superpixels_by_scale.append(n_superpixels)
@@ -335,7 +343,7 @@ class TestSLICPipeline:
         
         results = slic_pipeline(
             coords, ion_counts, dna1, dna2,
-            target_bin_size_um=20.0
+            target_scale_um=20.0
         )
         
         # Check that aggregation handles sparsity
@@ -346,9 +354,10 @@ class TestSLICPipeline:
         cd31_aggregated = results['superpixel_counts']['CD31']
         cd45_aggregated = results['superpixel_counts']['CD45']
         
-        # With spatial aggregation, we expect fewer zeros than original sparse data
-        # but still some variation in intensities
-        print(f"CD31 aggregated values: {cd31_aggregated}")
+        # Log aggregation statistics for debugging
+        cd31_stats = f"CD31: mean={np.mean(cd31_aggregated):.1f}, std={np.std(cd31_aggregated):.1f}, zeros={np.sum(cd31_aggregated == 0)}"
+        cd45_stats = f"CD45: mean={np.mean(cd45_aggregated):.1f}, std={np.std(cd45_aggregated):.1f}, zeros={np.sum(cd45_aggregated == 0)}"
+        print(f"Aggregation results - {cd31_stats}, {cd45_stats}")
         
         # More realistic test: check that there's variation in intensities
         assert len(cd31_aggregated) > 0

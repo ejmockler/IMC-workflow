@@ -527,8 +527,8 @@ class MemoryEfficientPipeline:
         # Create feature matrix and cluster
         feature_matrix, protein_names, valid_indices = create_feature_matrix(standardized_arrays)
         
-        cluster_labels, kmeans_model, optimization_results = perform_clustering(
-            feature_matrix, list(ion_counts.keys()), **kwargs
+        cluster_labels, clustering_info = perform_spatial_clustering(
+            feature_matrix, spatial_coords=None, **kwargs
         )
         
         # Create outputs
@@ -547,8 +547,7 @@ class MemoryEfficientPipeline:
             'cluster_labels': cluster_labels,
             'cluster_map': cluster_map,
             'cluster_centroids': cluster_centroids,
-            'kmeans_model': kmeans_model,
-            'optimization_results': optimization_results,
+            'clustering_info': clustering_info,
             'bin_edges_x': bin_edges_x,
             'bin_edges_y': bin_edges_y,
             'protein_names': protein_names,

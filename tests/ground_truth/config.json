@@ -1,0 +1,58 @@
+{
+  "data": {
+    "raw_data_dir": "tests/data"
+  },
+  "channels": {
+    "protein_channels": [
+      "CD45",
+      "CD11b",
+      "CD31",
+      "CD140a",
+      "CD140b"
+    ],
+    "dna_channels": [
+      "DNA1",
+      "DNA2"
+    ],
+    "coordinate_channels": [
+      "X",
+      "Y"
+    ]
+  },
+  "processing": {
+    "enable_parallel": false,
+    "dna_processing": {
+      "resolution_um": 1.0,
+      "arcsinh_transform": {
+        "enabled": true,
+        "cofactor_multiplier": 5
+      }
+    }
+  },
+  "segmentation": {
+    "slic": {
+      "n_segments": 20,
+      "compactness": 10
+    }
+  },
+  "analysis": {
+    "clustering": {
+      "method": "leiden",
+      "resolution_range": [
+        0.5,
+        1.5
+      ]
+    },
+    "multiscale": {
+      "scales_um": [
+        10,
+        20
+      ],
+      "enable": true
+    }
+  },
+  "output": {
+    "results_dir": "tests/ground_truth",
+    "save_intermediate": true
+  }
+}

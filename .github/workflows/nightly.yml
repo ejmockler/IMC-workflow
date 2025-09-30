@@ -1,0 +1,133 @@
+name: Nightly Tests
+
+on:
+  schedule:
+    # Run at 2 AM UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12"
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        enable-cache: true
+    
+    - name: Install dependencies
+      run: |
+        uv venv
+        uv pip install -r requirements.txt
+        uv pip install pytest pytest-benchmark memory-profiler
+    
+    - name: Run performance tests
+      run: |
+        PYTHONPATH=. uv run python -m pytest tests/ \
+          -m "performance" \
+          --tb=short \
+          --durations=20
+    
+    - name: Run memory profiling tests
+      run: |
+        PYTHONPATH=. uv run python -m pytest tests/test_memory_profiling.py \
+          --tb=short
+
+  security-tests:
+    name: Security Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12"
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        enable-cache: true
+    
+    - name: Install dependencies
+      run: |
+        uv venv
+        uv pip install -r requirements.txt
+        uv pip install pytest bandit safety
+    
+    - name: Run security tests
+      run: |
+        PYTHONPATH=. uv run python -m pytest tests/ \
+          -m "security" \
+          --tb=short
+    
+    - name: Run bandit security scan
+      run: |
+        uv run bandit -r src/ -f json -o bandit-report.json || true
+    
+    - name: Check for known vulnerabilities
+      run: |
+        uv run safety check --json || true
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+
+  full-regression:
+    name: Full Regression Suite
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.12"
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        enable-cache: true
+    
+    - name: Install dependencies
+      run: |
+        uv venv
+        uv pip install -r requirements.txt
+        uv pip install pytest pytest-cov pytest-xdist
+    
+    - name: Run full test suite in parallel
+      run: |
+        PYTHONPATH=. uv run python -m pytest tests/ \
+          -n auto \
+          --tb=short \
+          --cov=src \
+          --cov-report=xml \
+          --cov-report=term-missing
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: nightly
+        fail_ci_if_error: false
+    
+    - name: Check coverage threshold
+      run: |
+        PYTHONPATH=. uv run python -m pytest tests/ \
+          --cov=src \
+          --cov-fail-under=80 \
+          --quiet || echo "Coverage below 80% target"

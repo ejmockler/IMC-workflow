@@ -35,7 +35,6 @@
     "adhesion_markers": ["CD44"]
   },
   "processing": {
-    "enable_parallel": false,
     "background_correction": {
       "enabled": true,
       "method": "pixel_subtraction",
@@ -73,18 +72,13 @@
   },
   "segmentation": {
     "method": "slic",
-    "methods_to_compare": ["slic", "square"],
     "slic_input_channels": ["DNA1", "DNA2"],
     "slic_params": {
       "n_segments_per_mm2": 2500,
       "compactness": 10.0,
       "sigma": 1.5
     },
-    "square_params": {
-      "bin_sizes_um": [10.0, 20.0, 40.0]
-    },
-    "scales_um": [10.0, 20.0, 40.0],
-    "enable_comparison": false
+    "scales_um": [10.0, 20.0, 40.0]
   },
   "kidney_experiment": {
     "superpixel_scales": {
@@ -136,22 +130,18 @@
     "analyze_regions_separately": true,
     "anatomical_regions": ["Cortex", "Medulla"],
     "clustering": {
-      "n_clusters": 8,
-      "optimization_method": "comprehensive",
-      "k_range": [2, 12],
+      "method": "leiden",
+      "optimization_method": "stability",
+      "resolution_range": [0.5, 2.0],
       "random_state": 42,
-      "stability_testing": {
-        "enabled": false,
-        "subsample_ratios": [0.9, 1.0],
-        "n_iterations": 10
-      },
-      "morphology_validation": {
-        "enabled": false,
-        "known_markers": {
-          "immune": ["CD45", "CD11b", "Ly6G", "CD206"],
-          "stromal": ["CD140a", "CD140b"],
-          "vascular": ["CD31", "CD34"]
-        }
+      "use_coabundance_features": true,
+      "coabundance_options": {
+        "interaction_order": 2,
+        "include_ratios": true,
+        "include_products": true,
+        "include_spatial_covariance": true,
+        "neighborhood_radius": 20.0,
+        "min_expression_percentile": 25.0
       }
     },
     "batch_correction": {
@@ -214,17 +204,8 @@
     "save_format": "hdf5",
     "compression": true,
     "include_provenance": true,
-    "figures": {
-      "generate_comparison_plots": false,
-      "multi_scale_visualization": false,
-      "batch_effect_plots": false,
-      "clustering_validation_plots": false,
-      "temporal_progression_plots": false,
-      "cross_sectional_comparisons": false
-    },
     "reports": {
       "methods_summary": true,
-      "parameter_sensitivity": false,
       "computational_performance": true
     }
   },
@@ -232,8 +213,6 @@
     "parallel_processes": 1,
     "memory_limit_gb": 8.0,
     "chunk_size": 5000,
-    "enable_profiling": false,
-    "cache_intermediate": false,
     "process_sequentially": true,
     "garbage_collect_frequency": 1
   },
