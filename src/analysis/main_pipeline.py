@@ -405,9 +405,15 @@ class IMCAnalysisPipeline:
                 'analysis_date': pd.Timestamp.now().isoformat(),
                 'config_used': self.analysis_config.to_dict() if hasattr(self.analysis_config, 'to_dict') else {}
             },
-            'scale_consistency_summary': {},
+            'scale_consistency_summary': overall_stats if all_consistency_metrics else {
+                'status': 'no_consistency_data',
+                'note': 'No consistency metrics available across ROIs'
+            },
             'roi_summaries': {},
-            'validation_summary': self.validation_results
+            'validation_summary': self.validation_results if self.validation_results else {
+                'status': 'validation_not_run',
+                'note': 'Validation study was not executed - use run_validation_study() for detailed validation metrics'
+            }
         }
         
         # Aggregate scale consistency metrics across ROIs

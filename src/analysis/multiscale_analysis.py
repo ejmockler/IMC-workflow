@@ -179,24 +179,47 @@ def compute_scale_consistency(
     multiscale_results: Dict[float, Dict]
 ) -> Dict[str, Dict]:
     """
-    Validate hierarchical relationships between scales.
-    
-    With the new hierarchical approach, we check parent-child coherence
-    rather than arbitrary pairwise comparisons.
+    Validate relationships between scales using actual analysis results.
     
     Args:
         multiscale_results: Results from perform_multiscale_analysis
         
     Returns:
-        Dictionary of hierarchical validation metrics
+        Dictionary of scale consistency metrics
     """
-    from .hierarchical_multiscale import validate_hierarchy
-    
-    if 'hierarchy' in multiscale_results:
-        return validate_hierarchy(multiscale_results['hierarchy'])
+    # Extract scale-specific summaries if available
+    if 'scale_specific_summaries' in multiscale_results:
+        summaries = multiscale_results['scale_specific_summaries']
+        scales = sorted(summaries.keys())
+        
+        consistency_metrics = {
+            'scales_analyzed': scales,
+            'n_scales': len(scales),
+            'overall': {}
+        }
+        
+        # Compute consistency statistics across scales
+        if len(scales) >= 2:
+            cluster_counts = [summaries[scale].get('n_clusters_found', 0) for scale in scales]
+            bin_counts = [summaries[scale].get('n_spatial_bins', 0) for scale in scales]
+            
+            # Basic consistency metrics
+            consistency_metrics['overall'] = {
+                'cluster_count_stability': float(np.std(cluster_counts) / (np.mean(cluster_counts) + 1e-8)),
+                'spatial_coverage_consistency': float(np.std(bin_counts) / (np.mean(bin_counts) + 1e-8)),
+                'mean_clusters_per_scale': float(np.mean(cluster_counts)),
+                'mean_bins_per_scale': float(np.mean(bin_counts))
+            }
+        
+        return consistency_metrics
     else:
-        # Fallback for non-hierarchical results
-        return {'error': 'No hierarchy found - run hierarchical analysis first'}
+        # Fallback with basic structure
+        return {
+            'scales_analyzed': [],
+            'n_scales': 0,
+            'overall': {},
+            'note': 'No scale summaries available'
+        }
 
 
 # Old pairwise comparison functions removed - using hierarchical validation instead
