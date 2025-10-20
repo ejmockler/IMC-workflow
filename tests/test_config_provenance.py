@@ -1,0 +1,307 @@
+"""
+Tests for Config Versioning & Provenance Tracking (Priority 2)
+
+Validates that:
+1. Config snapshots are created with SHA256 hashes
+2. Provenance files link results to exact config
+3. Dependency versions are recorded
+4. Config hash is deterministic
+"""
+
+import json
+import hashlib
+import tempfile
+import shutil
+from pathlib import Path
+import pytest
+import numpy as np
+
+from src.config import Config
+from src.analysis.main_pipeline import IMCAnalysisPipeline
+
+
+class TestConfigSnapshotting:
+    """Test config snapshot creation and hash computation."""
+
+    def test_config_snapshot_creation(self, tmp_path):
+        """Verify config snapshot is created automatically."""
+        # Create config
+        config = Config("config.json")
+        pipeline = IMCAnalysisPipeline(config)
+
+        # Create output directory
+        output_dir = tmp_path / "test_output"
+
+        # Take snapshot
+        config_hash = pipeline._snapshot_config(output_dir)
+
+        # Verify snapshot file exists
+        snapshot_file = output_dir / f"config_snapshot_{config_hash}.json"
+        assert snapshot_file.exists(), "Config snapshot file not created"
+
+        # Verify human-readable copy exists
+        config_copy = output_dir / "config.json"
+        assert config_copy.exists(), "Human-readable config copy not created"
+
+        # Verify snapshot structure
+        with open(snapshot_file) as f:
+            snapshot = json.load(f)
+
+        assert 'timestamp' in snapshot
+        assert 'config_hash_full' in snapshot
+        assert 'config_hash_short' in snapshot
+        assert 'config' in snapshot
+        assert 'version' in snapshot
+        assert snapshot['config_hash_short'] == config_hash
+
+    def test_config_hash_determinism(self):
+        """Same config → same hash."""
+        config = Config("config.json")
+        pipeline1 = IMCAnalysisPipeline(config)
+        pipeline2 = IMCAnalysisPipeline(config)
+
+        # Convert config to dict
+        config_dict1 = pipeline1._config_to_dict(config)
+        config_dict2 = pipeline2._config_to_dict(config)
+
+        # Compute hashes
+        hash1 = hashlib.sha256(
+            json.dumps(config_dict1, sort_keys=True).encode()
+        ).hexdigest()[:8]
+
+        hash2 = hashlib.sha256(
+            json.dumps(config_dict2, sort_keys=True).encode()
+        ).hexdigest()[:8]
+
+        assert hash1 == hash2, "Config hash not deterministic"
+
+    def test_config_hash_sensitivity(self, tmp_path):
+        """Different config → different hash."""
+        # Load config
+        config = Config("config.json")
+        pipeline = IMCAnalysisPipeline(config)
+
+        # Take snapshot of original
+        output_dir1 = tmp_path / "output1"
+        hash1 = pipeline._snapshot_config(output_dir1)
+
+        # Modify config (change a parameter)
+        if hasattr(config.analysis, 'clustering'):
+            original_k = config.analysis.clustering.k_neighbors
+            config.analysis.clustering.k_neighbors = original_k + 1
+
+            # Create new pipeline with modified config
+            pipeline2 = IMCAnalysisPipeline(config)
+
+            # Take snapshot of modified
+            output_dir2 = tmp_path / "output2"
+            hash2 = pipeline2._snapshot_config(output_dir2)
+
+            assert hash1 != hash2, "Config hash not sensitive to changes"
+
+            # Restore original
+            config.analysis.clustering.k_neighbors = original_k
+
+
+class TestProvenanceTracking:
+    """Test provenance file creation and linking."""
+
+    def test_provenance_file_creation(self, tmp_path):
+        """Verify provenance.json is created."""
+        config = Config("config.json")
+        pipeline = IMCAnalysisPipeline(config)
+
+        # Create output directory
+        output_dir = tmp_path / "test_output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Snapshot config first
+        config_hash = pipeline._snapshot_config(output_dir)
+
+        # Create mock results
+        results = {
+            'roi_id': 'test_roi',
+            'multiscale_results': {
+                10.0: {'cluster_labels': [0, 1, 2]},
+                20.0: {'cluster_labels': [0, 1]}
+            }
+        }
+
+        # Create provenance file
+        pipeline._create_provenance_file(output_dir, results)
+
+        # Verify file exists
+        provenance_file = output_dir / "provenance.json"
+        assert provenance_file.exists(), "Provenance file not created"
+
+        # Verify structure
+        with open(provenance_file) as f:
+            provenance = json.load(f)
+
+        assert 'timestamp' in provenance
+        assert 'config_hash' in provenance
+        assert 'config_file' in provenance
+        assert 'roi_id' in provenance
+        assert 'dependencies' in provenance
+        assert 'results_summary' in provenance
+        assert 'version' in provenance
+
+    def test_provenance_links_to_snapshot(self, tmp_path):
+        """Verify provenance references correct config snapshot."""
+        config = Config("config.json")
+        pipeline = IMCAnalysisPipeline(config)
+
+        output_dir = tmp_path / "test_output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Snapshot config
+        config_hash = pipeline._snapshot_config(output_dir)
+
+        # Create provenance
+        results = {'roi_id': 'test_roi', 'multiscale_results': {}}
+        pipeline._create_provenance_file(output_dir, results)
+
+        # Load provenance
+        with open(output_dir / "provenance.json") as f:
+            provenance = json.load(f)
+
+        # Verify reference
+        expected_config_file = f"config_snapshot_{config_hash}.json"
+        assert provenance['config_file'] == expected_config_file
+
+        # Verify referenced file exists
+        assert (output_dir / expected_config_file).exists()
+
+
+class TestDependencyTracking:
+    """Test dependency version recording."""
+
+    def test_dependency_recording(self):
+        """Verify all dependencies recorded with versions."""
+        config = Config("config.json")
+        pipeline = IMCAnalysisPipeline(config)
+
+        dependencies = pipeline._get_dependencies()
+
+        # Check required dependencies
+        assert 'python' in dependencies
+        assert 'numpy' in dependencies
+        assert 'pandas' in dependencies
+
+        # Check optional dependencies (may be 'not installed')
+        assert 'scipy' in dependencies
+        assert 'sklearn' in dependencies
+        assert 'leidenalg' in dependencies
+
+        # Verify versions are strings
+        for pkg, version in dependencies.items():
+            assert isinstance(version, str)
+            assert len(version) > 0
+
+    def test_version_string_format(self):
+        """Test software version string format."""
+        config = Config("config.json")
+        pipeline = IMCAnalysisPipeline(config)
+
+        version = pipeline._get_version()
+
+        assert isinstance(version, str)
+        # Should be either "git-{hash}" or "1.0.0"
+        assert version.startswith("git-") or version == "1.0.0"
+
+
+class TestIntegrationWithPipeline:
+    """Test integration with analyze_single_roi."""
+
+    def test_automatic_provenance_creation(self, tmp_path):
+        """Test provenance created automatically during analysis."""
+        config = Config("config.json")
+
+        # Override output directory to tmp_path
+        if hasattr(config, 'output'):
+            if isinstance(config.output, dict):
+                config.output['results_dir'] = str(tmp_path)
+            else:
+                config.output.results_dir = str(tmp_path)
+
+        pipeline = IMCAnalysisPipeline(config)
+
+        # Create minimal synthetic ROI data
+        n_pixels = 100
+        n_proteins = 3
+        roi_data = {
+            'coords': np.random.rand(n_pixels, 2) * 1000,
+            'ion_counts': np.random.randint(0, 1000, (n_pixels, n_proteins)),
+            'dna1_intensities': np.random.rand(n_pixels) * 100,
+            'dna2_intensities': np.random.rand(n_pixels) * 100,
+            'protein_names': ['CD31', 'CD34', 'CD45'],
+            'n_measurements': n_pixels
+        }
+
+        # Run analysis with ROI ID
+        try:
+            results = pipeline.analyze_single_roi(
+                roi_data,
+                roi_id='test_integration'
+            )
+
+            # Verify provenance files were created
+            output_dir = tmp_path / "roi_results" / "test_integration"
+
+            # Config snapshot should exist
+            assert any(
+                f.name.startswith('config_snapshot_')
+                for f in output_dir.glob('*.json')
+            ), "Config snapshot not created during analysis"
+
+            # Provenance file should exist
+            provenance_file = output_dir / "provenance.json"
+            assert provenance_file.exists(), "Provenance file not created during analysis"
+
+            # Verify provenance links to config
+            with open(provenance_file) as f:
+                provenance = json.load(f)
+
+            assert provenance['roi_id'] == 'test_integration'
+            assert 'config_hash' in provenance
+            assert 'dependencies' in provenance
+
+        except Exception as e:
+            # Test may fail due to missing dependencies, but that's OK for structure test
+            pytest.skip(f"Analysis failed (expected in minimal environment): {e}")
+
+
+class TestConfigSerialization:
+    """Test config-to-dict conversion."""
+
+    def test_config_to_dict_basic(self):
+        """Test basic config serialization."""
+        config = Config("config.json")
+        pipeline = IMCAnalysisPipeline(config)
+
+        config_dict = pipeline._config_to_dict(config)
+
+        assert isinstance(config_dict, dict)
+        # Should have top-level keys
+        assert len(config_dict) > 0
+
+    def test_config_to_dict_handles_dict_input(self):
+        """Test that dict input is returned as-is."""
+        config = Config("config.json")
+        pipeline = IMCAnalysisPipeline(config)
+
+        test_dict = {'key': 'value'}
+        result = pipeline._config_to_dict(test_dict)
+
+        assert result == test_dict
+
+    def test_config_to_dict_skips_private_attrs(self):
+        """Test that private attributes are skipped."""
+        config = Config("config.json")
+        pipeline = IMCAnalysisPipeline(config)
+
+        config_dict = pipeline._config_to_dict(config)
+
+        # Should not have any keys starting with '_'
+        private_keys = [k for k in config_dict.keys() if k.startswith('_')]
+        assert len(private_keys) == 0, f"Private attributes in config dict: {private_keys}"

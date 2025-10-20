@@ -299,8 +299,18 @@ class IMCAnalysisPipeline:
 
         try:
             import leidenalg
-            dependencies['leidenalg'] = leidenalg.__version__
-        except ImportError:
+            # leidenalg doesn't have __version__, try version attribute or callable
+            if hasattr(leidenalg, '__version__'):
+                dependencies['leidenalg'] = leidenalg.__version__
+            elif hasattr(leidenalg, 'version'):
+                version_attr = getattr(leidenalg, 'version')
+                if callable(version_attr):
+                    dependencies['leidenalg'] = version_attr()
+                else:
+                    dependencies['leidenalg'] = str(version_attr)
+            else:
+                dependencies['leidenalg'] = 'installed (version unknown)'
+        except (ImportError, AttributeError, TypeError):
             dependencies['leidenalg'] = 'not installed'
 
         try:
@@ -337,13 +347,18 @@ class IMCAnalysisPipeline:
                 if callable(value):
                     continue
 
+                # Convert Path objects to strings
+                if isinstance(value, Path):
+                    config_dict[key] = str(value)
                 # Recursively convert nested objects
-                if hasattr(value, '__dict__') and not isinstance(value, (str, int, float, bool)):
+                elif hasattr(value, '__dict__') and not isinstance(value, (str, int, float, bool, Path)):
                     config_dict[key] = self._config_to_dict(value)
                 # Convert lists/tuples
                 elif isinstance(value, (list, tuple)):
                     config_dict[key] = [
-                        self._config_to_dict(item) if hasattr(item, '__dict__') else item
+                        str(item) if isinstance(item, Path)
+                        else self._config_to_dict(item) if hasattr(item, '__dict__')
+                        else item
                         for item in value
                     ]
                 else:
