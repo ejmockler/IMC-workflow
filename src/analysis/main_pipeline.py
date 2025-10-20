@@ -1371,11 +1371,22 @@ class IMCAnalysisPipeline:
             storage_config=storage_config,
             base_path=output_dir
         )
-        
+
         # Create plots directory if visualization is requested
+        # BUG FIX: Use config.output.results_dir (not output_dir param) for consistency
         plots_dir = None
         if generate_plots:
-            plots_dir = Path(output_dir).parent / "plots" / "validation"
+            # Get results_dir from config (same logic as analyze_single_roi)
+            if hasattr(self.analysis_config, 'output'):
+                output_config = self.analysis_config.output
+                if isinstance(output_config, dict):
+                    results_dir = output_config.get('results_dir', 'results')
+                else:
+                    results_dir = getattr(output_config, 'results_dir', 'results')
+            else:
+                results_dir = 'results'
+
+            plots_dir = Path(results_dir) / "plots" / "validation"
             plots_dir.mkdir(parents=True, exist_ok=True)
             plots_dir = str(plots_dir)
         
@@ -1768,9 +1779,15 @@ def run_complete_analysis(
         raise ValueError(f"No ROI files found in {roi_directory}")
     
     print(f"Found {len(roi_files)} ROI files")
-    
-    # Create output directory
-    output_path = Path(output_directory)
+
+    # Get output directory from config (respects experiment-specific paths)
+    # BUG FIX: Use config.output.results_dir instead of output_directory parameter
+    if hasattr(config, 'output') and hasattr(config.output, 'results_dir'):
+        output_path = Path(config.output.results_dir)
+    else:
+        # Fallback to parameter if config doesn't specify
+        output_path = Path(output_directory)
+
     output_path.mkdir(parents=True, exist_ok=True)
     
     # Run validation study first (after getting some analysis results)

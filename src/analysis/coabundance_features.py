@@ -183,20 +183,24 @@ def select_informative_coabundance_features(
     enriched_features: np.ndarray,
     feature_names: List[str],
     target_n_features: int = 50,
-    method: str = 'variance'
+    method: str = 'variance',
+    options: Optional[Dict] = None
 ) -> Tuple[np.ndarray, List[str]]:
     """
     Select most informative co-abundance features.
-    
+
     Args:
         enriched_features: Full feature matrix
         feature_names: Names of all features
         target_n_features: Number of features to select
         method: Selection method ('variance', 'mutual_info', 'lasso')
-        
+        options: Optional dict with method-specific options (e.g., lasso_max_iter)
+
     Returns:
         Tuple of (selected_features, selected_names)
     """
+    if options is None:
+        options = {}
     n_features = enriched_features.shape[1]
     
     if target_n_features >= n_features:
@@ -222,13 +226,16 @@ def select_informative_coabundance_features(
         # Use L1 regularization for feature selection
         from sklearn.linear_model import LassoCV
         from sklearn.decomposition import PCA
-        
+
         # Create target from first PCs
         pca = PCA(n_components=1)
         target = pca.fit_transform(enriched_features).ravel()
-        
+
+        # Get max_iter from options (default: 5000 for robust convergence)
+        max_iter = options.get('lasso_max_iter', 5000)
+
         # Fit Lasso with cross-validation
-        lasso = LassoCV(cv=5, max_iter=1000)
+        lasso = LassoCV(cv=5, max_iter=max_iter)
         lasso.fit(enriched_features, target)
         
         # Select features with non-zero coefficients
