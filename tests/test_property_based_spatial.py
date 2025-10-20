@@ -161,7 +161,10 @@ class TestArcSinhProperties:
         """arcsinh(ax) should preserve monotonicity for a > 0."""
         assume(len(values) >= 2)
         assume(scale_factor > 0)
-        
+        # Exclude pathological cases where all/most values are effectively zero
+        # (causes tie-breaking issues in argsort, not a real monotonicity violation)
+        assume(np.sum(np.abs(values) > 1e-10) >= len(values) * 0.1)
+
         # Scale values
         scaled_values = values * scale_factor
         

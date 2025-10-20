@@ -1,4 +1,0 @@
-# file: /Users/noot/Documents/IMC/src/analysis/multiscale_analysis.py
-# hypothesis_version: 6.140.2
-
-[0.0, 1e-10, 0.2, 0.4, 0.5, 1.0, 2.0, 10.0, 20.0, 40.0, 'Config', 'MultiscaleAnalysis', 'adjusted_rand_index', 'bin_edges_x', 'bin_edges_y', 'centroid_stability', 'cluster_centroids', 'cluster_labels', 'cluster_map', 'cluster_size_stats', 'clustering_info', 'consistency_summary', 'error', 'euclidean', 'feature_matrix', 'features', 'hierarchy', 'leiden', 'max', 'mean', 'mean_ari', 'mean_nmi', 'method', 'method_used', 'min', 'n_clusters_found', 'n_spatial_bins', 'nearest', 'optimal_resolution', 'overall', 'scale_progression', 'scale_um', 'scales_analyzed', 'slic', 'spatial_coherence', 'spatial_coords', 'square', 'stability_analysis', 'standardized_arrays', 'std', 'std_ari', 'std_nmi', 'superpixel_coords', 'superpixel_counts', 'unknown', 'valid_indices']

@@ -11,9 +11,20 @@ Results should be interpreted with appropriate statistical caution given n=2 pil
 
 import numpy as np
 from typing import Dict, Tuple, Optional, List, TYPE_CHECKING
-from skimage.segmentation import slic
-from skimage.measure import regionprops
-from scipy import ndimage
+
+try:
+    from skimage.segmentation import slic
+    from skimage.measure import regionprops
+    SKIMAGE_AVAILABLE = True
+except ImportError:
+    SKIMAGE_AVAILABLE = False
+    slic = None
+    regionprops = None
+
+try:
+    from scipy import ndimage
+except ImportError:
+    ndimage = None
 
 if TYPE_CHECKING:
     from ..config import Config
@@ -475,7 +486,8 @@ def slic_pipeline(
     dna2_intensities: np.ndarray,
     target_scale_um: float = 20.0,  # Renamed for consistency with multiscale
     resolution_um: float = 1.0,
-    compactness: float = 10.0,
+    compactness: Optional[float] = None,
+    sigma: Optional[float] = None,
     n_segments: Optional[int] = None,  # Proper SLIC parameter
     config: Optional['Config'] = None,
     cached_cofactors: Optional[Dict[str, float]] = None  # Added for consistency
@@ -504,7 +516,20 @@ def slic_pipeline(
             'composite_dna': np.array([]),
             'bounds': (0, 0, 0, 0)
         }
-    
+
+    # Read SLIC parameters from config if not provided
+    if compactness is None:
+        if config and hasattr(config, 'segmentation'):
+            compactness = config.segmentation.get('slic_params', {}).get('compactness', 10.0)
+        else:
+            compactness = 10.0
+
+    if sigma is None:
+        if config and hasattr(config, 'segmentation'):
+            sigma = config.segmentation.get('slic_params', {}).get('sigma', 1.5)
+        else:
+            sigma = 1.5
+
     # Step 1: Create composite DNA image at native resolution
     composite_dna, bounds = prepare_dna_composite(
         coords, dna1_intensities, dna2_intensities, resolution_um, config
@@ -520,7 +545,7 @@ def slic_pipeline(
         effective_n_segments = None  # Let perform_slic_segmentation calculate
     
     superpixel_labels = perform_slic_segmentation(
-        composite_dna, target_scale_um, resolution_um, compactness, 
+        composite_dna, target_scale_um, resolution_um, compactness, sigma,
         n_segments=effective_n_segments, config=config
     )
     
@@ -534,6 +559,26 @@ def slic_pipeline(
         superpixel_labels, composite_dna, resolution_um
     )
     
+    # Step 5: Apply arcsinh transformation to aggregated counts for visualization
+    from .ion_count_processing import apply_arcsinh_transform, estimate_optimal_cofactor
+    transformed_arrays = {}
+    cofactors_used = {}
+    
+    if superpixel_counts:
+        # Use cached cofactors if available, otherwise compute them
+        if cached_cofactors:
+            cofactors_used = cached_cofactors
+            # Apply transformation with cached cofactors
+            for protein_name, counts in superpixel_counts.items():
+                cofactor = cofactors_used.get(protein_name, 1.0)
+                transformed_arrays[protein_name] = np.arcsinh(counts / cofactor)
+        else:
+            # Compute optimal cofactors and apply transformation
+            for protein_name, counts in superpixel_counts.items():
+                cofactor = estimate_optimal_cofactor(counts)
+                cofactors_used[protein_name] = cofactor
+                transformed_arrays[protein_name] = np.arcsinh(counts / cofactor)
+    
     return {
         'superpixel_counts': superpixel_counts,
         'superpixel_coords': superpixel_coords,
@@ -543,5 +588,7 @@ def slic_pipeline(
         'bounds': bounds,
         'resolution_um': resolution_um,
         'target_scale_um': target_scale_um,
-        'n_segments_used': len(np.unique(superpixel_labels[superpixel_labels >= 0])) if superpixel_labels.size > 0 else 0
+        'n_segments_used': len(np.unique(superpixel_labels[superpixel_labels >= 0])) if superpixel_labels.size > 0 else 0,
+        'transformed_arrays': transformed_arrays,
+        'cofactors_used': cofactors_used
     }

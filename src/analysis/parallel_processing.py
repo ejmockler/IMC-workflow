@@ -142,22 +142,28 @@ def process_single_roi(
 ) -> Tuple[str, Dict, Optional[str]]:
     """
     Process a single ROI with error handling.
-    
+
     Args:
         roi_data: Tuple of (roi_id, roi_data_dict)
         analysis_function: Function to apply to ROI
-        analysis_params: Parameters for analysis function
-        
+        analysis_params: Parameters for analysis function (passed as override_config)
+
     Returns:
         Tuple of (roi_id, results_dict, error_message)
     """
     roi_id, data = roi_data
-    
+
     try:
         # Apply analysis function
-        result = analysis_function(data, **analysis_params)
+        # Pass analysis_params as override_config to maintain compatibility
+        # with analyze_single_roi(roi_data, override_config=None, plots_dir=None, roi_id=None)
+        result = analysis_function(
+            data,
+            override_config=analysis_params,
+            roi_id=roi_id
+        )
         return roi_id, result, None
-        
+
     except Exception as e:
         error_msg = f"ROI {roi_id} failed: {str(e)}\n{traceback.format_exc()}"
         return roi_id, {}, error_msg
@@ -215,41 +221,43 @@ def parallel_roi_analysis_files(
     result_files = []
     errors = []
     
-    # Process in batches to manage memory
-    n_batches = (n_rois + batch_size - 1) // batch_size
+    # Create partial function with fixed parameters
+    process_func = partial(
+        process_single_roi_file,
+        analysis_function=analysis_function,
+        analysis_params=analysis_params
+    )
     
-    for batch_idx in range(n_batches):
-        # Dynamically adjust workers if using scheduler
-        if scheduler:
-            scheduler.wait_for_memory(threshold_percent=80.0)
-            n_processes = scheduler.adjust_worker_count()
+    # Use single persistent pool for all processing to avoid thrashing
+    with Pool(processes=n_processes) as pool:
+        # Process in batches to manage memory, but use streaming with chunksize
+        n_batches = (n_rois + batch_size - 1) // batch_size
         
-        start_idx = batch_idx * batch_size
-        end_idx = min((batch_idx + 1) * batch_size, n_rois)
-        batch_items = roi_files[start_idx:end_idx]
-        
-        # Create partial function with fixed parameters
-        process_func = partial(
-            process_single_roi_file,
-            analysis_function=analysis_function,
-            analysis_params=analysis_params
-        )
-        
-        # Process batch in parallel with current worker count
-        with Pool(processes=n_processes) as pool:
-            batch_results = pool.map(process_func, batch_items)
-        
-        # Collect results
-        for result_file, error in batch_results:
-            if error is None:
-                result_files.append(result_file)
-            else:
-                errors.append(error)
-        
-        # Progress callback
-        if progress_callback:
-            progress = (batch_idx + 1) / n_batches
-            progress_callback(progress, f"Processed batch {batch_idx + 1}/{n_batches}")
+        for batch_idx in range(n_batches):
+            # Dynamically adjust memory monitoring if using scheduler
+            if scheduler:
+                scheduler.wait_for_memory(threshold_percent=80.0)
+                # Note: Can't change pool size mid-execution, but can throttle
+            
+            start_idx = batch_idx * batch_size
+            end_idx = min((batch_idx + 1) * batch_size, n_rois)
+            batch_items = roi_files[start_idx:end_idx]
+            
+            # Process batch with optimal chunksize for better load balancing
+            chunksize = max(1, len(batch_items) // n_processes)
+            batch_results = pool.map(process_func, batch_items, chunksize=chunksize)
+            
+            # Collect results
+            for result_file, error in batch_results:
+                if error is None:
+                    result_files.append(result_file)
+                else:
+                    errors.append(error)
+            
+            # Progress callback
+            if progress_callback:
+                progress = (batch_idx + 1) / n_batches
+                progress_callback(progress, f"Processed batch {batch_idx + 1}/{n_batches}")
     
     return result_files, errors
 
@@ -326,36 +334,38 @@ def parallel_roi_analysis(
     results = {}
     errors = []
     
-    # Process in batches to manage memory
-    n_batches = (n_rois + batch_size - 1) // batch_size
+    # Create partial function with fixed parameters
+    process_func = partial(
+        process_single_roi,
+        analysis_function=analysis_function,
+        analysis_params=analysis_params
+    )
     
-    for batch_idx in range(n_batches):
-        start_idx = batch_idx * batch_size
-        end_idx = min((batch_idx + 1) * batch_size, n_rois)
-        batch_items = roi_items[start_idx:end_idx]
+    # Use single persistent pool to avoid thrashing (even in deprecated function)
+    with Pool(processes=n_processes) as pool:
+        # Process in batches to manage memory
+        n_batches = (n_rois + batch_size - 1) // batch_size
         
-        # Create partial function with fixed parameters
-        process_func = partial(
-            process_single_roi,
-            analysis_function=analysis_function,
-            analysis_params=analysis_params
-        )
-        
-        # Process batch in parallel
-        with Pool(processes=n_processes) as pool:
-            batch_results = pool.map(process_func, batch_items)
-        
-        # Collect results
-        for roi_id, result, error in batch_results:
-            if error is None:
-                results[roi_id] = result
-            else:
-                errors.append(error)
-        
-        # Progress callback
-        if progress_callback:
-            progress = (batch_idx + 1) / n_batches
-            progress_callback(progress, f"Processed batch {batch_idx + 1}/{n_batches}")
+        for batch_idx in range(n_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min((batch_idx + 1) * batch_size, n_rois)
+            batch_items = roi_items[start_idx:end_idx]
+            
+            # Process batch with optimal chunksize
+            chunksize = max(1, len(batch_items) // n_processes)
+            batch_results = pool.map(process_func, batch_items, chunksize=chunksize)
+            
+            # Collect results
+            for roi_id, result, error in batch_results:
+                if error is None:
+                    results[roi_id] = result
+                else:
+                    errors.append(error)
+            
+            # Progress callback
+            if progress_callback:
+                progress = (batch_idx + 1) / n_batches
+                progress_callback(progress, f"Processed batch {batch_idx + 1}/{n_batches}")
     
     return results, errors
 
@@ -396,10 +406,10 @@ def save_parallel_results(
             if compress:
                 import gzip
                 with gzip.open(filepath, 'wt') as f:
-                    json.dump(json_results, f, indent=2)
+                    json.dump(json_results, f, indent=2, default=str)
             else:
                 with open(filepath, 'w') as f:
-                    json.dump(json_results, f, indent=2)
+                    json.dump(json_results, f, indent=2, default=str)
             
             created_files.append(filepath)
     
@@ -512,10 +522,16 @@ def load_parallel_results(
 def serialize_for_json(obj):
     """
     Convert numpy arrays and other non-JSON types for serialization.
+    Handles all NumPy scalar types robustly, including dictionary keys.
     """
     if isinstance(obj, dict):
-        return {k: serialize_for_json(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
+        # CRITICAL: Convert both keys AND values
+        # Dictionary keys can also be NumPy types (e.g., int64 indices)
+        return {
+            serialize_for_json(k): serialize_for_json(v)
+            for k, v in obj.items()
+        }
+    elif isinstance(obj, (list, tuple)):
         return [serialize_for_json(item) for item in obj]
     elif isinstance(obj, np.ndarray):
         return {
@@ -524,10 +540,12 @@ def serialize_for_json(obj):
             'shape': obj.shape,
             'data': obj.flatten().tolist()
         }
-    elif isinstance(obj, (np.integer, np.floating)):
-        return float(obj)
-    elif isinstance(obj, np.bool_):
-        return bool(obj)
+    elif isinstance(obj, np.generic):
+        # Handles all NumPy scalar types (int64, float64, bool_, etc.)
+        return obj.item()  # Convert to native Python type
+    elif hasattr(obj, 'tolist'):
+        # Fallback for any NumPy-like object with tolist()
+        return obj.tolist()
     else:
         return obj
 

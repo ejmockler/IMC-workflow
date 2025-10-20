@@ -1,4 +1,0 @@
-# file: /Users/noot/Documents/IMC/src/analysis/threshold_analysis.py
-# hypothesis_version: 6.140.2
-
-[0.0, 1.0, 50.0, 256, 'cluster_count', 'largest_cluster_size', 'mean_cluster_size', 'otsu', 'percentile']

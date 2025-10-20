@@ -1,4 +1,0 @@
-# file: /Users/noot/Documents/IMC/src/analysis/batch_correction.py
-# hypothesis_version: 6.140.2
-
-[0.0, 1e-10, 0.95, 1.0, 100, 1000, 'Condition', 'Injury Day', 'Sham', 'Unknown', 'batch_medians', 'condition', 'confidence_interval', 'effect_size', 'error', 'improvement_ratio', 'kruskal_wallis', 'mann_whitney_u', 'mean', 'n_batches', 'n_observations', 'n_proteins', 'normalized_mean', 'normalized_std', 'original_mean', 'original_std', 'overall_severity', 'p_value_bootstrap', 'per_batch_stats', 'point_estimate', 'protein_effects', 'quantile', 'reference_stats', 'severity_after', 'severity_before', 'sham_batches', 'sham_reference_mean', 'sham_reference_std', 'std', 'timepoint', 'two-sided', 'warning']

@@ -98,13 +98,14 @@ class PracticalValidationPipeline:
                 if dna_cols:
                     dna_signal = roi_data[dna_cols[0]].values
                     mean_signal = np.mean(dna_signal)
-                    min_signal = np.min(dna_signal)
-                    
-                    self.logger.info(f"  ✓ {dna}: Mean={mean_signal:.1f}, Min={min_signal:.1f}")
-                    
-                    if min_signal < 10:
-                        issues.append(f"Low DNA signal {dna}: {min_signal:.1f}")
-                        self.logger.warning(f"    ⚠️  Low DNA signal: {min_signal:.1f} < 10")
+                    median_signal = np.median(dna_signal)
+
+                    self.logger.info(f"  ✓ {dna}: Mean={mean_signal:.1f}, Median={median_signal:.1f}")
+
+                    # Check mean instead of min (min=0 is normal for background pixels)
+                    if mean_signal < 5.0:
+                        issues.append(f"Low DNA signal {dna}: mean={mean_signal:.1f}")
+                        self.logger.warning(f"    ⚠️  Low DNA signal: mean={mean_signal:.1f} < 5.0")
                 else:
                     issues.append(f"Missing {dna}")
                     self.logger.error(f"  ❌ Missing {dna}")

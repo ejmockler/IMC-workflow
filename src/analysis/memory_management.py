@@ -474,8 +474,13 @@ class MemoryEfficientPipeline:
                     coords, ion_counts, bin_size_um, **kwargs
                 )
             else:
-                # Use chunked processing
-                return self._process_with_chunks(
+                # Fallback to sparse processing for large datasets
+                # Chunked processing not yet implemented - use sparse instead
+                warnings.warn(
+                    "Chunked processing not implemented. Using sparse processing as fallback.",
+                    UserWarning
+                )
+                return self._process_with_sparse_methods(
                     coords, ion_counts, bin_size_um, **kwargs
                 )
         else:
@@ -519,6 +524,7 @@ class MemoryEfficientPipeline:
         from .ion_count_processing import apply_arcsinh_transform, standardize_features
         from .ion_count_processing import create_feature_matrix, perform_clustering
         from .ion_count_processing import create_cluster_map, compute_cluster_centroids
+        from .spatial_clustering import perform_spatial_clustering
         
         # Apply transformations
         transformed_arrays, cofactors_used = apply_arcsinh_transform(aggregated_counts)
@@ -557,18 +563,3 @@ class MemoryEfficientPipeline:
             'memory_report': self.processor.get_memory_report()
         }
     
-    def _process_with_chunks(
-        self, 
-        coords: np.ndarray, 
-        ion_counts: Dict[str, np.ndarray],
-        bin_size_um: float,
-        **kwargs
-    ) -> Dict:
-        """Process using chunked approach for large datasets."""
-        # For chunked processing, we need to carefully combine results
-        # This is more complex and would require significant refactoring
-        # For now, raise an informative error
-        raise NotImplementedError(
-            "Chunked processing for full pipeline not yet implemented. "
-            "Consider using smaller bin sizes or sparse processing for very large datasets."
-        )

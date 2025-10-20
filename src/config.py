@@ -84,6 +84,9 @@ class Config:
         # Analysis parameters
         self.analysis = self.raw.get('analysis', {})
         
+        # Optimization settings
+        self.optimization = self.raw.get('optimization', {})
+        
         # Quality control
         self.quality_control = self.raw.get('quality_control', {})
         

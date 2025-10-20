@@ -211,12 +211,23 @@ def _compute_sham_reference_stats(batch_data: Dict[str, Dict[str, np.ndarray]],
 
 @dataclass
 class BatchCorrectionConfig:
-    """Configuration for sham-anchored normalization parameters."""
+    """Configuration for batch normalization parameters."""
     sham_condition: str = 'Sham'
     sham_timepoint: Union[int, str] = 0
     bootstrap_samples: int = 1000
     confidence_level: float = 0.95
     min_samples_per_batch: int = 100
+    
+    # Bead normalization parameters
+    bead_channels: List[str] = None
+    bead_signal_threshold: float = 100.0
+    drift_correction_method: str = 'linear'  # 'linear', 'spline', 'robust'
+
+    def __post_init__(self):
+        # Bead channels must be provided from config - no hardcoded defaults
+        # Config should specify channels in analysis.batch_correction.bead_normalization.bead_channels
+        if self.bead_channels is None:
+            self.bead_channels = []  # Empty list if not configured
 
 
 # All deprecated quantile normalization methods have been removed.
@@ -475,4 +486,346 @@ def _compute_improvement_metrics(
         'severity_before': float(before_severity),
         'severity_after': float(after_severity),
         'improvement_ratio': float(improvement_ratio)
+    }
+
+
+def bead_anchored_normalize(
+    batch_data: Dict[str, Dict[str, np.ndarray]],
+    batch_metadata: Dict[str, Dict[str, any]],
+    config: BatchCorrectionConfig = None
+) -> Tuple[Dict[str, Dict[str, np.ndarray]], Dict[str, any]]:
+    """
+    Perform bead-anchored normalization for cross-run instrument standardization.
+    
+    Uses bead channels (e.g., 130Ba, 131Xe) to correct for instrument drift,
+    detector sensitivity changes, and cross-platform differences.
+    
+    Args:
+        batch_data: Dictionary mapping batch_id -> protein_name -> ion_counts
+        batch_metadata: Dictionary mapping batch_id -> metadata_dict
+        config: Batch correction configuration
+        
+    Returns:
+        Tuple of (normalized_data, normalization_statistics)
+    """
+    if config is None:
+        config = BatchCorrectionConfig()
+    
+    logger.info(f"Starting bead-anchored normalization with channels: {config.bead_channels}")
+    
+    # Validate inputs
+    validate_batch_structure(batch_data, batch_metadata)
+    
+    # Extract bead signals across all batches
+    bead_signals, valid_batches = _extract_bead_signals(batch_data, config)
+
+    if len(valid_batches) < 2:
+        error_msg = (
+            f"Bead normalization is enabled but insufficient bead signals were found "
+            f"({len(valid_batches)}/{len(batch_data)} batches valid). "
+            f"This is a critical data integrity failure. "
+            f"Check that bead channels {config.bead_channels} are: "
+            f"(1) present in the input data, "
+            f"(2) loaded by load_roi_data(), and "
+            f"(3) have median signal >= {config.bead_signal_threshold}."
+        )
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    
+    # Fit temporal drift model
+    drift_model = _fit_temporal_drift_model(bead_signals, batch_metadata, config)
+    
+    # Apply normalization to all batches
+    normalized_data = {}
+    normalization_stats = {
+        'method': 'bead_anchored',
+        'drift_correction_method': config.drift_correction_method,
+        'bead_channels': config.bead_channels,
+        'drift_model': drift_model,
+        'valid_batches': valid_batches,
+        'per_batch_stats': {}
+    }
+    
+    for batch_id, protein_data in batch_data.items():
+        if batch_id in valid_batches:
+            # Apply drift correction
+            normalized_batch, batch_stats = _apply_bead_normalization(
+                protein_data, drift_model[batch_id], config
+            )
+        else:
+            # Keep original data for batches without valid beads
+            normalized_batch = {k: v.copy() for k, v in protein_data.items()}
+            batch_stats = {'correction_applied': False, 'reason': 'insufficient_bead_signal'}
+        
+        normalized_data[batch_id] = normalized_batch
+        normalization_stats['per_batch_stats'][batch_id] = batch_stats
+    
+    logger.info(f"Bead normalization completed for {len(valid_batches)}/{len(batch_data)} batches")
+    
+    return normalized_data, normalization_stats
+
+
+def _extract_bead_signals(
+    batch_data: Dict[str, Dict[str, np.ndarray]],
+    config: BatchCorrectionConfig
+) -> Tuple[Dict[str, Dict[str, float]], List[str]]:
+    """Extract bead channel signals from each batch."""
+
+    bead_signals = {}
+    valid_batches = []
+
+    # Collect statistics for efficient reporting
+    missing_channels = {}  # bead_channel -> count
+    low_signal_channels = {}  # bead_channel -> count
+    failed_batches = []
+
+    for batch_id, protein_data in batch_data.items():
+        batch_bead_signals = {}
+        has_valid_beads = False
+
+        for bead_channel in config.bead_channels:
+            if bead_channel in protein_data:
+                # Use median signal as robust estimator
+                median_signal = np.median(protein_data[bead_channel])
+
+                if median_signal >= config.bead_signal_threshold:
+                    batch_bead_signals[bead_channel] = median_signal
+                    has_valid_beads = True
+                else:
+                    low_signal_channels[bead_channel] = low_signal_channels.get(bead_channel, 0) + 1
+            else:
+                missing_channels[bead_channel] = missing_channels.get(bead_channel, 0) + 1
+
+        if has_valid_beads:
+            bead_signals[batch_id] = batch_bead_signals
+            valid_batches.append(batch_id)
+        else:
+            failed_batches.append(batch_id)
+
+    # Log concise summary instead of per-batch messages
+    total_batches = len(batch_data)
+    logger.info(f"Bead Signal Extraction: {len(valid_batches)}/{total_batches} batches have valid signals")
+
+    if failed_batches:
+        logger.warning(f"{len(failed_batches)} batches failed bead extraction:")
+        if missing_channels:
+            for ch, count in missing_channels.items():
+                logger.warning(f"  - {count} batches missing channel '{ch}'")
+        if low_signal_channels:
+            for ch, count in low_signal_channels.items():
+                logger.warning(f"  - {count} batches have low signal for '{ch}' (threshold={config.bead_signal_threshold})")
+
+    return bead_signals, valid_batches
+
+
+def _fit_temporal_drift_model(
+    bead_signals: Dict[str, Dict[str, float]],
+    batch_metadata: Dict[str, Dict[str, any]],
+    config: BatchCorrectionConfig
+) -> Dict[str, Dict[str, float]]:
+    """Fit temporal drift correction model using bead signals."""
+    
+    # Extract temporal information if available
+    batch_times = []
+    batch_ids = []
+    
+    for batch_id in bead_signals.keys():
+        metadata = batch_metadata.get(batch_id, {})
+        
+        # Try to extract acquisition time/order
+        if 'acquisition_time' in metadata:
+            batch_times.append(metadata['acquisition_time'])
+        elif 'batch_order' in metadata:
+            batch_times.append(metadata['batch_order'])
+        else:
+            # Use batch ID order as fallback
+            batch_times.append(len(batch_times))
+        
+        batch_ids.append(batch_id)
+    
+    # Sort by temporal order
+    sorted_indices = np.argsort(batch_times)
+    sorted_batch_ids = [batch_ids[i] for i in sorted_indices]
+    
+    # Compute reference bead intensities (first batch or median)
+    reference_signals = {}
+    if config.drift_correction_method == 'median_reference':
+        # Use median across all batches as reference
+        for bead_channel in config.bead_channels:
+            channel_signals = []
+            for batch_id in sorted_batch_ids:
+                if bead_channel in bead_signals[batch_id]:
+                    channel_signals.append(bead_signals[batch_id][bead_channel])
+            
+            if channel_signals:
+                reference_signals[bead_channel] = np.median(channel_signals)
+    else:
+        # Use first batch as reference
+        first_batch = sorted_batch_ids[0]
+        reference_signals = bead_signals[first_batch].copy()
+    
+    # Compute correction factors for each batch
+    drift_model = {}
+    
+    for batch_id in bead_signals.keys():
+        batch_corrections = {}
+        
+        for bead_channel, reference_signal in reference_signals.items():
+            if bead_channel in bead_signals[batch_id]:
+                observed_signal = bead_signals[batch_id][bead_channel]
+                
+                # Correction factor: reference / observed
+                correction_factor = reference_signal / (observed_signal + 1e-10)
+                
+                # Bound correction factors to reasonable range
+                correction_factor = np.clip(correction_factor, 0.1, 10.0)
+                
+                batch_corrections[bead_channel] = correction_factor
+            else:
+                batch_corrections[bead_channel] = 1.0  # No correction
+        
+        drift_model[batch_id] = batch_corrections
+    
+    return drift_model
+
+
+def _apply_bead_normalization(
+    protein_data: Dict[str, np.ndarray],
+    batch_corrections: Dict[str, float],
+    config: BatchCorrectionConfig
+) -> Tuple[Dict[str, np.ndarray], Dict[str, any]]:
+    """Apply bead-based correction factors to protein data."""
+    
+    normalized_data = {}
+    batch_stats = {'correction_applied': True, 'correction_factors': {}}
+    
+    # Compute overall correction factor (median of bead corrections)
+    valid_corrections = [
+        factor for channel, factor in batch_corrections.items()
+        if channel in config.bead_channels and factor != 1.0
+    ]
+    
+    if valid_corrections:
+        overall_correction = np.median(valid_corrections)
+    else:
+        overall_correction = 1.0
+    
+    # Apply correction to all protein channels
+    for protein_name, ion_counts in protein_data.items():
+        
+        # Use channel-specific correction if available, otherwise use overall correction
+        if protein_name in batch_corrections:
+            correction_factor = batch_corrections[protein_name]
+        else:
+            correction_factor = overall_correction
+        
+        # Apply correction
+        normalized_counts = ion_counts * correction_factor
+        normalized_data[protein_name] = normalized_counts
+        
+        batch_stats['correction_factors'][protein_name] = correction_factor
+    
+    batch_stats['overall_correction_factor'] = overall_correction
+    batch_stats['n_bead_channels_used'] = len([
+        ch for ch in config.bead_channels if ch in batch_corrections and batch_corrections[ch] != 1.0
+    ])
+    
+    return normalized_data, batch_stats
+
+
+def detect_instrumental_drift(
+    batch_data: Dict[str, Dict[str, np.ndarray]],
+    batch_metadata: Dict[str, Dict[str, any]],
+    config: BatchCorrectionConfig = None
+) -> Dict[str, any]:
+    """
+    Detect instrumental drift using bead channel analysis.
+    
+    Args:
+        batch_data: Dictionary mapping batch_id -> protein_name -> ion_counts
+        batch_metadata: Dictionary mapping batch_id -> metadata_dict
+        config: Batch correction configuration
+        
+    Returns:
+        Dictionary with drift analysis results
+    """
+    if config is None:
+        config = BatchCorrectionConfig()
+    
+    # Extract bead signals
+    bead_signals, valid_batches = _extract_bead_signals(batch_data, config)
+    
+    if len(valid_batches) < 3:
+        return {
+            'drift_detected': False,
+            'reason': 'insufficient_data',
+            'n_valid_batches': len(valid_batches)
+        }
+    
+    # Analyze drift for each bead channel
+    drift_analysis = {}
+    overall_drift_score = 0
+    
+    for bead_channel in config.bead_channels:
+        channel_signals = []
+        batch_order = []
+        
+        # Extract signals in temporal order
+        for i, batch_id in enumerate(valid_batches):
+            if bead_channel in bead_signals[batch_id]:
+                channel_signals.append(bead_signals[batch_id][bead_channel])
+                batch_order.append(i)
+        
+        if len(channel_signals) < 3:
+            continue
+        
+        channel_signals = np.array(channel_signals)
+        batch_order = np.array(batch_order)
+        
+        # Compute drift metrics
+        # 1. Linear trend
+        if len(batch_order) > 1:
+            slope, intercept = np.polyfit(batch_order, channel_signals, 1)
+            relative_slope = slope / (np.mean(channel_signals) + 1e-10)
+        else:
+            slope, relative_slope = 0, 0
+        
+        # 2. Coefficient of variation
+        cv = np.std(channel_signals) / (np.mean(channel_signals) + 1e-10)
+        
+        # 3. Range relative to mean
+        signal_range = np.max(channel_signals) - np.min(channel_signals)
+        relative_range = signal_range / (np.mean(channel_signals) + 1e-10)
+        
+        # Drift score (higher = more drift)
+        drift_score = abs(relative_slope) + cv + relative_range
+        overall_drift_score += drift_score
+        
+        drift_analysis[bead_channel] = {
+            'n_batches': len(channel_signals),
+            'mean_signal': np.mean(channel_signals),
+            'cv': cv,
+            'linear_slope': slope,
+            'relative_slope': relative_slope,
+            'relative_range': relative_range,
+            'drift_score': drift_score,
+            'signals': channel_signals.tolist()
+        }
+    
+    # Overall drift assessment
+    n_channels = len(drift_analysis)
+    if n_channels > 0:
+        avg_drift_score = overall_drift_score / n_channels
+        drift_detected = avg_drift_score > 0.2  # Empirical threshold
+    else:
+        avg_drift_score = 0
+        drift_detected = False
+    
+    return {
+        'drift_detected': drift_detected,
+        'overall_drift_score': avg_drift_score,
+        'n_valid_batches': len(valid_batches),
+        'n_bead_channels': n_channels,
+        'per_channel_analysis': drift_analysis,
+        'recommendation': 'apply_bead_normalization' if drift_detected else 'no_correction_needed'
     }

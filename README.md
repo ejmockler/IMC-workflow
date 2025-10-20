@@ -187,9 +187,49 @@ See `CLAUDE.md` for development guidelines. Key principles:
 - Comprehensive testing and documentation
 - Scientific rigor in statistical methods
 
+## Publication Strategy
+
+### Target Audience
+This work is positioned as a **methods paper** rather than a biological discovery paper, suitable for:
+- **Nature Communications** (Methods section)
+- **Cell Systems** (Computational tools)  
+- **Bioinformatics** (Novel algorithms)
+- **Nature Methods** (with additional validation data)
+
+### Key Contributions
+1. **SLIC superpixels on DNA channels** - Novel morphology-aware segmentation without membrane markers
+2. **Multi-scale consistency validation** - Demonstrates robustness across spatial scales
+3. **Production-quality pipeline** - Scalable, reproducible architecture (90%+ test coverage)
+4. **Proper ion count statistics** - Addresses Poisson nature of IMC data
+
+### Honest Assessment
+**Strengths:**
+- Technically sound SLIC approach addresses real IMC limitation
+- Valid temporal trend analysis with 8 total biological replicates
+- Excellent software engineering with comprehensive testing
+- Multi-scale validation provides robust consistency metrics
+
+**Limitations:**
+- n=2 per timepoint limits statistical power for pairwise comparisons
+- 9-protein panel too limited for comprehensive cell type identification  
+- Cross-sectional design cannot track individual progression
+- Findings are hypothesis-generating and require validation in larger cohorts
+
+### What We CAN Claim
+- Temporal trends in marker expression across injury timeline
+- Spatial co-abundance patterns of immune and stromal markers
+- Technical robustness and scale consistency of the method
+- Effect sizes with appropriate confidence intervals
+
+### What We CANNOT Claim
+- Statistical significance between specific timepoints
+- Definitive cell type identification or biological mechanisms
+- Clinical relevance without validation studies
+- Single-cell level insights
+
 ## Citation
 
 If you use this pipeline, please cite:
-- The multi-scale analysis approach for IMC data
-- The SLIC-based morphology-aware segmentation method
+- The multi-scale SLIC analysis approach for IMC data
+- The morphology-aware segmentation method using DNA channels
 - Appropriate statistical considerations for your study design

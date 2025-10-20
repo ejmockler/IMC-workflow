@@ -1,4 +1,0 @@
-# file: /Users/noot/Documents/IMC/src/analysis/slic_segmentation.py
-# hypothesis_version: 6.140.2
-
-[1e-10, 0.0005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 1.5, 10.0, 20.0, 'Config', 'arcsinh_transform', 'area_um2', 'bounds', 'centroid_x_um', 'centroid_y_um', 'cofactor_multiplier', 'composite_dna', 'dna_processing', 'eccentricity', 'enabled', 'mean_dna_intensity', 'n_segments_used', 'perimeter_um', 'resolution_um', 'sigma_multiplier', 'slic_adjustments', 'solidity', 'superpixel_coords', 'superpixel_counts', 'superpixel_labels', 'superpixel_props', 'target_scale_um']

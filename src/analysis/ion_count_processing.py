@@ -8,7 +8,7 @@ Addresses discrete, sparse, zero-inflated nature of ion count measurements.
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, Tuple, Optional, List, Any, TYPE_CHECKING
 from scipy import sparse
 from .spatial_clustering import perform_spatial_clustering, stability_analysis
 from .memory_management import (
@@ -16,6 +16,9 @@ from .memory_management import (
     MemoryEfficientPipeline, get_memory_profile
 )
 import warnings
+
+if TYPE_CHECKING:
+    from ..config import Config
 
 
 def aggregate_ion_counts(
@@ -73,7 +76,7 @@ def aggregate_ion_counts(
             # Reshape to 2D
             agg_array = aggregated_1d.reshape(n_bins_y, n_bins_x)
         else:
-            agg_array = np.zeros((n_bins_y, n_bins_x), dtype=np.float64)
+            agg_array = np.zeros((n_bins_y, n_bins_x), dtype=np.float32)
         
         aggregated_counts[protein_name] = agg_array
     
@@ -182,7 +185,7 @@ def apply_arcsinh_transform(
     """
     if optimization_method == "cached" and cached_cofactors:
         # Use cached cofactors - skip computation for performance
-        cofactors = cached_cofactors.copy()
+        cofactors = cached_cofactors  # Use reference instead of copy
     else:
         # Compute cofactors for this dataset
         cofactors = {}
@@ -306,12 +309,25 @@ def create_feature_matrix(
     return feature_matrix, protein_names, valid_indices
 
 
+def _extract_stability_settings(config: Optional['Config']) -> Dict[str, Any]:
+    if config is None:
+        return {}
+    if hasattr(config, 'optimization'):
+        optimization_section = getattr(config, 'optimization', {})
+        if isinstance(optimization_section, dict):
+            return optimization_section.get('stability_analysis', {}) or {}
+    if isinstance(config, dict):
+        return config.get('optimization', {}).get('stability_analysis', {}) or {}
+    return {}
+
+
 def perform_clustering(
     feature_matrix: np.ndarray,
     spatial_coords: Optional[np.ndarray] = None,
     method: str = 'leiden',
     resolution: Optional[float] = None,
-    random_state: int = 42
+    random_state: int = 42,
+    config: Optional['Config'] = None
 ) -> Tuple[np.ndarray, None, Dict]:
     """
     Perform spatial-aware clustering using modern methods.
@@ -334,11 +350,20 @@ def perform_clustering(
     
     # If no resolution specified, use stability analysis
     if resolution is None:
+        stability_settings = _extract_stability_settings(config)
         stability_result = stability_analysis(
             feature_matrix, spatial_coords,
             method=method,
             resolution_range=(0.5, 2.0),
-            n_resolutions=15,
+            n_resolutions=stability_settings.get('n_resolutions', 15),
+            n_bootstrap=stability_settings.get('n_bootstrap_iterations', 5),
+            use_graph_caching=stability_settings.get('use_graph_caching', True),
+            parallel=stability_settings.get('parallel_execution', True),
+            n_workers=stability_settings.get('n_workers'),
+            adaptive_search=stability_settings.get('adaptive_search', False),
+            adaptive_target_stability=stability_settings.get('adaptive_target_stability', 0.6),
+            adaptive_tolerance=stability_settings.get('adaptive_tolerance', 0.05),
+            adaptive_max_evaluations=stability_settings.get('adaptive_max_evaluations'),
             random_state=random_state
         )
         resolution = stability_result['optimal_resolution']
@@ -448,24 +473,46 @@ def ion_count_pipeline(
 ) -> Dict:
     """
     Complete ion count processing pipeline with memory management.
-    
+
+    ⚠️ DEPRECATED: This function performs clustering with hardcoded resolution=1.0,
+    which bypasses stability analysis. This is scientifically invalid.
+
+    Use perform_multiscale_analysis() from multiscale_analysis.py instead, which:
+    - Runs proper stability analysis to find optimal resolution
+    - Supports coabundance feature generation
+    - Works at multiple spatial scales
+
+    BUG #8: The clustering results from this function (lines 562-567) use hardcoded
+    resolution=1.0 instead of data-driven optimization. These results should NOT
+    be used for scientific analysis.
+
     CRITICAL FIXES:
     - Automatic marker-specific arcsinh cofactor optimization
     - Data-driven clustering parameter selection
     - Memory-efficient processing for large datasets
-    
+
     Args:
         coords: Nx2 coordinate array
         ion_counts: Dictionary of protein ion counts
         bin_size_um: Spatial binning size in micrometers
-        n_clusters: Number of clusters (optimized if None)
+        n_clusters: Number of clusters (optimized if None) - IGNORED, uses resolution=1.0
         mask: Optional spatial mask for valid regions
         memory_limit_gb: Memory limit for processing
         use_memory_optimization: Whether to use memory-efficient processing
-        
+
     Returns:
         Dictionary containing all pipeline results
+
+    .. deprecated::
+        Clustering with hardcoded resolution. Use perform_multiscale_analysis() instead.
     """
+    warnings.warn(
+        "ion_count_pipeline() uses hardcoded resolution=1.0 for clustering, "
+        "bypassing stability analysis. Use perform_multiscale_analysis() instead "
+        "for scientifically valid clustering.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     if len(coords) == 0 or not ion_counts:
         return {
             'aggregated_counts': {},

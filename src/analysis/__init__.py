@@ -84,6 +84,26 @@ from .batch_correction import (
 
 # Note: Validation moved to src/validation/core for clean separation
 
+# Reproducibility framework
+from .reproducibility_framework import (
+    ReproducibilityFramework,
+    run_reproducibility_test,
+    EnvironmentFingerprint,
+    ReproducibilityResult
+)
+
+# Environment capture utilities
+from .environment_capture import (
+    capture_execution_environment,
+    save_environment_snapshot,
+    validate_environment_compatibility,
+    EnvironmentCapture,
+    EnvironmentFingerprint as EnvFingerprint,
+    SystemInfo,
+    ComputationalEnvironment,
+    DependencyVersions
+)
+
 # Parallel processing
 from .parallel_processing import (
     parallel_roi_analysis,
@@ -99,10 +119,35 @@ from .spatial_stats import (
     spatial_bootstrap
 )
 
+# Synthetic data generation for validation
+from .synthetic_data_generator import (
+    SyntheticDataGenerator,
+    SyntheticDataConfig,
+    SyntheticDataValidator,
+    ProteinProperties,
+    TissueRegion,
+    SpatialPattern,
+    TissueType,
+    create_example_datasets,
+    validate_synthetic_dataset
+)
+
 # Threshold analysis
 from .threshold_analysis import (
     extract_threshold_features,
     compute_spatial_clustering
+)
+
+# Multiple testing control framework
+from .multiple_testing_control import (
+    HierarchicalMultipleTestingControl,
+    HierarchicalTestingConfig,
+    HypothesisFamily,
+    HypothesisType,
+    BootstrapConfidenceInterval,
+    create_standard_hypothesis_families,
+    integrate_with_multiscale_analysis,
+    bootstrap_effect_size_testing
 )
 
 # Note: Validation metrics moved to src/validation/ framework
@@ -201,9 +246,46 @@ __all__ = [
     'compute_ripleys_k',
     'spatial_bootstrap',
     
+    # Synthetic Data Generation
+    'SyntheticDataGenerator',
+    'SyntheticDataConfig',
+    'SyntheticDataValidator',
+    'ProteinProperties',
+    'TissueRegion',
+    'SpatialPattern',
+    'TissueType',
+    'create_example_datasets',
+    'validate_synthetic_dataset',
+    
     # Threshold Analysis
     'extract_threshold_features',
     'compute_spatial_clustering',
+    
+    # Reproducibility Framework
+    'ReproducibilityFramework',
+    'run_reproducibility_test',
+    'EnvironmentFingerprint', 
+    'ReproducibilityResult',
+    
+    # Environment Capture
+    'capture_execution_environment',
+    'save_environment_snapshot',
+    'validate_environment_compatibility',
+    'EnvironmentCapture',
+    'EnvFingerprint',
+    'SystemInfo',
+    'ComputationalEnvironment',
+    'DependencyVersions',
+    
+    # Multiple Testing Control
+    'HierarchicalMultipleTestingControl',
+    'HierarchicalTestingConfig',
+    'HypothesisFamily',
+    'HypothesisType',
+    'BootstrapConfidenceInterval',
+    'create_standard_hypothesis_families',
+    'integrate_with_multiscale_analysis',
+    'bootstrap_effect_size_testing',
     
     # Note: Validation metrics moved to src/validation/ framework
     

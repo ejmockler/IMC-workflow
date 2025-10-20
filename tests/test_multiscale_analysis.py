@@ -73,7 +73,7 @@ class TestMultiscaleAnalysis:
             assert 'scale_um' in result
             assert result['scale_um'] == scale_um
             assert 'method' in result
-            assert result['method'] == 'square'  # We're using square binning
+            assert result['method'] == 'grid'  # We're using grid binning (use_slic=False)
             
             # Should have basic analysis components  
             # Check for actual keys that are commonly present
@@ -91,19 +91,19 @@ class TestMultiscaleAnalysis:
             scales_um=[20.0], use_slic=True
         )
         
-        # Test square binning method
-        square_results = perform_multiscale_analysis(
+        # Test grid binning method
+        grid_results = perform_multiscale_analysis(
             self.coords, self.ion_counts, self.dna1_intensities, self.dna2_intensities,
             scales_um=[20.0], use_slic=False
         )
-        
+
         # Both should complete successfully
         assert 20.0 in slic_results
-        assert 20.0 in square_results
-        
+        assert 20.0 in grid_results
+
         # Methods should be labeled correctly
         assert slic_results[20.0]['method'] == 'slic'
-        assert square_results[20.0]['method'] == 'square'
+        assert grid_results[20.0]['method'] == 'grid'
     
     def test_compute_scale_consistency(self):
         """Test scale consistency computation."""
@@ -282,15 +282,20 @@ class TestMultiscaleAnalysisEdgeCases:
         """Test consistency computation with insufficient scales."""
         # Single scale result
         single_scale_results = {
-            20.0: {'cluster_map': np.random.randint(0, 3, (10, 10))}
+            20.0: {
+                'cluster_labels': np.random.randint(0, 3, 100),
+                'clustering_info': {'n_clusters': 3}
+            }
         }
-        
+
         consistency = compute_scale_consistency(single_scale_results)
-        
+
         # Should handle gracefully
         assert isinstance(consistency, dict)
-        # For single scale, should get error message about no hierarchy
-        assert 'error' in consistency
+        assert 'scale_progression' in consistency
+        assert consistency['n_scales'] == 1
+        # For single scale, overall metrics should be empty
+        assert consistency['overall'] == {}
     
     def test_different_cluster_map_sizes(self):
         """Test consistency computation with different sized cluster maps."""

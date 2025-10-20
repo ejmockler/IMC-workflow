@@ -21,10 +21,59 @@ except ImportError:
 import warnings
 import logging
 try:
-    from ..analysis.spatial_utils import prepare_spatial_arrays_for_plotting, validate_plot_data
+    from ..analysis.spatial_utils import prepare_spatial_arrays_for_plotting
+    from ..analysis.spatial_utils import validate_plot_data as validate_spatial_data
 except ImportError:
-    prepare_spatial_arrays_for_plotting = None
-    validate_plot_data = None
+    # Fallback implementations
+    def validate_spatial_data(data, name="data"):
+        """Simple validation fallback for spatial data."""
+        if data is None:
+            raise ValueError(f"{name} cannot be None")
+        data = np.asarray(data)
+        if not np.isfinite(data).all():
+            data = np.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
+        return data
+
+# Generic validation for non-spatial data (coordinates, values, etc.)
+def validate_generic_data(data, name="data"):
+    """Simple validation for generic data arrays."""
+    if data is None:
+        raise ValueError(f"{name} cannot be None")
+    data = np.asarray(data)
+    if not np.isfinite(data).all():
+        data = np.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
+    return data
+    
+    def prepare_spatial_arrays_for_plotting(transformed_arrays, superpixel_labels, superpixel_coords, bounds):
+        """Fallback implementation for spatial array preparation."""
+        # Check if superpixel_labels is None or not a 2D array
+        if superpixel_labels is None or not hasattr(superpixel_labels, 'ndim'):
+            # Return empty dict if no valid labels
+            return {}
+            
+        if superpixel_labels.ndim != 2:
+            raise ValueError(f"superpixel_labels must be 2D, got {superpixel_labels.ndim}D")
+        
+        spatial_arrays = {}
+        
+        # Get unique superpixel labels (excluding background -1)
+        unique_labels = np.unique(superpixel_labels[superpixel_labels >= 0])
+        
+        for protein, values in transformed_arrays.items():
+            # Create spatial array initialized with NaN for background
+            spatial_array = np.full(superpixel_labels.shape, np.nan, dtype=float)
+            
+            # Map superpixel values to spatial positions
+            for i, superpixel_value in enumerate(values):
+                if i < len(unique_labels):
+                    superpixel_id = unique_labels[i]
+                    # Set all pixels belonging to this superpixel
+                    mask = superpixel_labels == superpixel_id
+                    spatial_array[mask] = superpixel_value
+            
+            spatial_arrays[protein] = spatial_array
+        
+        return spatial_arrays
 
 
 
@@ -39,8 +88,8 @@ def validate_coordinate_data(coords: np.ndarray, values: np.ndarray) -> Tuple[np
     Returns:
         Tuple of cleaned (coords, values)
     """
-    coords = validate_plot_data(coords, "coordinates")
-    values = validate_plot_data(values, "values")
+    coords = validate_generic_data(coords, "coordinates")
+    values = validate_generic_data(values, "values")
     
     if coords.ndim != 2 or coords.shape[1] != 2:
         raise ValueError("Coordinates must be (N, 2) array")
@@ -259,7 +308,7 @@ def plot_scale_comparison(
         Figure object
     """
     # Validate input data
-    coords = validate_plot_data(coords, "coordinates")
+    coords = validate_generic_data(coords, "coordinates")
     
     if not multiscale_results:
         raise ValueError("multiscale_results cannot be empty")
@@ -280,7 +329,7 @@ def plot_scale_comparison(
         if 'cluster_map' in scale_result:
             # Plot cluster map for this scale
             cluster_map = scale_result['cluster_map']
-            cluster_map = validate_plot_data(cluster_map, f"cluster_map_scale_{scale}")
+            cluster_map = validate_spatial_data(cluster_map, f"cluster_map_scale_{scale}")
             im = ax.imshow(cluster_map, cmap='tab20', origin='lower')
             ax.set_title(f"Scale: {scale}μm")
             ax.set_xlabel("X bins")
@@ -290,8 +339,8 @@ def plot_scale_comparison(
             sp_coords = scale_result['superpixel_coords']
             labels = scale_result['cluster_labels']
             # Validate superpixel data
-            sp_coords = validate_plot_data(sp_coords, f"superpixel_coords_scale_{scale}")
-            labels = validate_plot_data(labels, f"cluster_labels_scale_{scale}")
+            sp_coords = validate_generic_data(sp_coords, f"superpixel_coords_scale_{scale}")
+            labels = validate_generic_data(labels, f"cluster_labels_scale_{scale}")
             plot_cluster_map(sp_coords, labels, ax=ax, show_legend=False)
             ax.set_title(f"Scale: {scale}μm")
     
@@ -325,7 +374,7 @@ def plot_correlation_heatmap(
         Figure or Axes object
     """
     # Validate correlation matrix
-    correlation_matrix = validate_plot_data(correlation_matrix, "correlation_matrix")
+    correlation_matrix = validate_spatial_data(correlation_matrix, "correlation_matrix")
     
     if correlation_matrix.ndim != 2 or correlation_matrix.shape[0] != correlation_matrix.shape[1]:
         raise ValueError("Correlation matrix must be square")
@@ -395,7 +444,7 @@ def plot_segmentation_overlay(
         Figure object with config-driven biological validation layout
     """
     # Validate inputs
-    image = validate_plot_data(image, "DNA composite image")
+    image = validate_spatial_data(image, "DNA composite image")
     
     # Convert to spatial arrays using smart detection and validation
     logger = logging.getLogger('Visualization')
@@ -411,13 +460,31 @@ def plot_segmentation_overlay(
         logger.error(f"Failed to prepare spatial arrays: {e}")
         raise ValueError(f"Cannot prepare spatial arrays for plotting: {e}")
     
-    # Get visualization configuration
-    viz_config = config.visualization.get('validation_plots', {})
+    # Get visualization configuration with fallbacks
+    if hasattr(config, 'visualization'):
+        viz_config = config.visualization.get('validation_plots', {})
+    else:
+        # Fallback configuration
+        viz_config = {
+            'primary_markers': {'immune_markers': 'CD45', 'vascular_markers': 'CD31', 'stromal_markers': 'CD140a'},
+            'colormaps': {'immune_markers': 'Reds', 'vascular_markers': 'Blues', 'stromal_markers': 'Greens', 'default': 'viridis'},
+            'always_include': ['CD206', 'CD44'],
+            'max_additional_channels': 5
+        }
     layout_config = viz_config.get('layout', {})
     figsize = tuple(layout_config.get('figsize', [20, 12]))
     
-    # Get channel groups from config
-    channel_groups = config.channel_groups
+    # Get channel groups from config with fallback
+    if hasattr(config, 'channel_groups'):
+        channel_groups = config.channel_groups
+    else:
+        # Fallback channel groups
+        channel_groups = {
+            'immune_markers': {'pan_leukocyte': ['CD45'], 'myeloid': ['CD11b', 'Ly6G', 'CD206']},
+            'vascular_markers': ['CD31', 'CD34'],
+            'stromal_markers': ['CD140a', 'CD140b'],
+            'adhesion_markers': ['CD44']
+        }
     primary_markers = viz_config.get('primary_markers', {})
     colormaps = viz_config.get('colormaps', {})
     max_additional = viz_config.get('max_additional_channels', 5)
@@ -453,8 +520,16 @@ def plot_segmentation_overlay(
     extent = [x_min, x_max, y_min, y_max]
     
     # Apply proper transformation to DNA composite for visualization
-    from src.analysis.slic_segmentation import prepare_dna_for_visualization
-    img_normalized = prepare_dna_for_visualization(image)
+    try:
+        from src.analysis.slic_segmentation import prepare_dna_for_visualization
+        img_normalized = prepare_dna_for_visualization(image)
+    except ImportError:
+        # Fallback normalization
+        img_normalized = image.astype(float)
+        if img_normalized.max() > img_normalized.min():
+            img_normalized = (img_normalized - img_normalized.min()) / (img_normalized.max() - img_normalized.min())
+        else:
+            img_normalized = np.zeros_like(image, dtype=float)
     
     # Helper function to format cofactor text
     def format_cofactor(protein_name: str) -> str:
@@ -501,19 +576,28 @@ def plot_segmentation_overlay(
     im1 = ax1.imshow(img_normalized, extent=extent, origin='lower', cmap='gray')
     ax1.set_title("DNA Composite", fontsize=11, fontweight='bold')
     ax1.set_xlabel("X (μm)", fontsize=9)
-    ax1.set_ylabel("Y (μm)", fontsize=9) 
+    ax1.set_ylabel("Y (μm)", fontsize=9)
     ax1.set_aspect('equal')
+    ax1.grid(False)
     
     # Panel 2: Segmentation overlay (next to DNA composite)
     ax2 = fig.add_axes(top_positions[1])
     # Create thinner segmentation boundaries by dilating the labels minimally
-    from scipy.ndimage import binary_dilation
-    from skimage.segmentation import find_boundaries
-    
-    # Find boundaries and make them thinner
-    boundaries = find_boundaries(labels, mode='inner')
-    # Create minimal dilation for 0.5px effect (thinnest possible)
-    thin_boundaries = binary_dilation(boundaries, structure=np.ones((1,1)))
+    try:
+        from scipy.ndimage import binary_dilation
+        from skimage.segmentation import find_boundaries
+        
+        # Find boundaries and make them thinner
+        boundaries = find_boundaries(labels, mode='inner')
+        # Create minimal dilation for 0.5px effect (thinnest possible)
+        thin_boundaries = binary_dilation(boundaries, structure=np.ones((1,1)))
+    except ImportError:
+        # Fallback boundary detection
+        # Simple edge detection
+        dy = np.diff(labels, axis=0, prepend=labels[0:1,:])
+        dx = np.diff(labels, axis=1, prepend=labels[:,0:1])
+        boundaries = (dy != 0) | (dx != 0)
+        thin_boundaries = boundaries
     
     # Create overlay with custom thin yellow lines
     overlay_img = img_normalized.copy()
@@ -527,6 +611,7 @@ def plot_segmentation_overlay(
     ax2.set_xlabel("X (μm)", fontsize=9)
     ax2.set_yticklabels([])  # Remove y-axis labels since DNA composite already has them
     ax2.set_aspect('equal')
+    ax2.grid(False)
     
     # Add segment count
     n_segments = len(np.unique(labels[labels >= 0]))
@@ -564,9 +649,10 @@ def plot_segmentation_overlay(
             ax.set_ylabel("Y (μm)", fontsize=8)
         else:
             ax.set_yticklabels([])
-            
+
         ax.set_aspect('equal')
-    
+        ax.grid(False)
+
     # Fill empty primary panel slots if needed
     for panel_idx in range(max_primary_panels, len(top_positions) - protein_start_idx):
         if protein_start_idx + panel_idx < len(top_positions):
@@ -576,28 +662,56 @@ def plot_segmentation_overlay(
             ax.set_title("N/A", fontsize=10, fontweight='bold')
             ax.set_xlabel("X (μm)", fontsize=8)
             ax.set_aspect('equal')
+            ax.grid(False)
     
     
     # BOTTOM ROW - Additional available protein channels with prioritization
     # Get primary markers that were already shown
     shown_markers = set(marker for marker, _ in primary_panels[:max_primary_panels])
-    
+
+    # Get protein channels from config to filter out background/bead channels
+    if hasattr(config, 'channels'):
+        protein_channels_list = config.channels.get('protein_channels', [])
+        bead_channels_list = config.channels.get('calibration_channels', [])
+    else:
+        # Fallback: assume all channels are proteins
+        protein_channels_list = list(spatial_protein_arrays.keys())
+        bead_channels_list = []
+
     # Get critical markers that must be included
     always_include = viz_config.get('always_include', [])
     priority_markers = [m for m in always_include if m in spatial_protein_arrays and m not in shown_markers]
-    
-    # Get remaining proteins (not already shown, not in priority list)
-    remaining_proteins = [p for p in spatial_protein_arrays.keys() 
-                         if p not in shown_markers and p not in priority_markers]
-    
+
+    # Get remaining proteins - FILTER to only include actual protein channels
+    remaining_proteins = [p for p in spatial_protein_arrays.keys()
+                         if p not in shown_markers
+                         and p not in priority_markers
+                         and p in protein_channels_list]  # NEW: filter by protein channels
+
     # Combine priority markers first, then remaining
     available_proteins = priority_markers + remaining_proteins
-    max_panels = config.visualization.get('validation_plots', {}).get('max_additional_channels', 5)
-    
-    for i, protein in enumerate(available_proteins[:max_panels]):
+
+    # Get bead channels to plot separately
+    bead_channels_to_plot = [b for b in bead_channels_list if b in spatial_protein_arrays]
+
+    # Show ALL protein channels (no artificial limit)
+    max_panels = len(available_proteins)  # Changed from config limit
+
+    # Expand bottom_positions if we have more proteins than available slots
+    panels_per_row = 5
+    if max_panels > len(bottom_positions):
+        # Create additional rows for all protein channels
+        rows_needed = (max_panels + panels_per_row - 1) // panels_per_row
+        for row_idx in range(1, rows_needed):
+            y_pos = bottom_y - (row_idx * (panel_height + 0.02))  # Stack rows downward
+            for col_idx in range(panels_per_row):
+                x_pos = left_margin + col_idx * (panel_width + h_spacing)
+                bottom_positions.append((x_pos, y_pos, panel_width, panel_height))
+
+    for i, protein in enumerate(available_proteins):
         if i >= len(bottom_positions):
             break
-            
+
         ax = fig.add_axes(bottom_positions[i])
         protein_data = spatial_protein_arrays[protein]
         
@@ -617,9 +731,49 @@ def plot_segmentation_overlay(
             ax.set_ylabel("Y (μm)", fontsize=8)
         else:
             ax.set_yticklabels([])
-            
+
         ax.set_aspect('equal')
-    
+        ax.grid(False)
+
+    # BEAD/CALIBRATION CHANNELS - Display after all protein channels
+    if bead_channels_to_plot:
+        # Calculate starting position for bead channels (continuation from proteins)
+        bead_start_idx = len(available_proteins)
+
+        # Expand positions if needed for bead channels
+        total_channels = len(available_proteins) + len(bead_channels_to_plot)
+        while len(bottom_positions) < total_channels:
+            row_idx = len(bottom_positions) // panels_per_row
+            col_idx = len(bottom_positions) % panels_per_row
+            y_pos = bottom_y - (row_idx * (panel_height + 0.02))
+            x_pos = left_margin + col_idx * (panel_width + h_spacing)
+            bottom_positions.append((x_pos, y_pos, panel_width, panel_height))
+
+        for i, bead_channel in enumerate(bead_channels_to_plot):
+            panel_idx = bead_start_idx + i
+            if panel_idx >= len(bottom_positions):
+                break
+
+            ax = fig.add_axes(bottom_positions[panel_idx])
+            bead_data = spatial_protein_arrays[bead_channel]
+
+            # Use viridis colormap for bead channels
+            im = ax.imshow(bead_data, extent=extent, origin='lower', cmap='plasma')
+            plt.colorbar(im, ax=ax, fraction=0.035, pad=0.02, shrink=0.8)
+
+            cofactor_text = format_cofactor(bead_channel)
+            ax.set_title(f"{bead_channel} (Bead)\n{cofactor_text}", fontsize=10, fontweight='bold', color='purple')
+            ax.set_xlabel("X (μm)", fontsize=8)
+
+            # Only show y-axis labels on leftmost plot of each row
+            if panel_idx % panels_per_row == 0:
+                ax.set_ylabel("Y (μm)", fontsize=8)
+            else:
+                ax.set_yticklabels([])
+
+            ax.set_aspect('equal')
+            ax.grid(False)
+
     # Simplified main title
     roi_name = title.split(' - ')[1] if ' - ' in title else title
     scale_text = title.split(' - ')[-1] if ' - ' in title else ""

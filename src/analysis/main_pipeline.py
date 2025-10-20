@@ -1129,6 +1129,8 @@ class IMCAnalysisPipeline:
         if override_config:
             scales_um = override_config.get('scales_um', default_scales)
             use_slic = override_config.get('use_slic', default_use_slic)
+            # BUG FIX: Read plots_dir from override_config for parallel processing
+            plots_dir = override_config.get('plots_dir', plots_dir)
 
             # Log parameter deviations to manifest
             if 'scales_um' in override_config and override_config['scales_um'] != default_scales:
@@ -1455,8 +1457,10 @@ class IMCAnalysisPipeline:
             config_defaults['coabundance_options'] = cluster_config.get('coabundance_options', {})
 
         # Set defaults for missing parameters, preferring config over hardcoded
+        # BUG FIX: Include plots_dir in params for parallel processing
         final_analysis_params = {
             'scales_um': scales_um,
+            'plots_dir': plots_dir,  # Pass plots_dir to parallel workers
             **config_defaults,  # Apply config defaults first
             **analysis_params   # Override with explicitly provided params
         }

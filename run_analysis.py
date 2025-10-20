@@ -32,52 +32,20 @@ def main():
     )
     logger = logging.getLogger(__name__)
     
-    # Load configuration to get correct data directory
+    # Load actual configuration from config.json
     config = Config('config.json')
     data_dir = config.data_dir
-    
+
     if not data_dir.exists():
         logger.error(f"Data directory not found: {data_dir}")
         sys.exit(1)
-    
-    # Create robust configuration
-    config_data = {
-        "data": {
-            "raw_data_dir": str(data_dir)
-        },
-        "channels": {
-            "protein_channels": ["CD45", "CD11b", "CD31", "CD140a", "CD140b", "CD206"],
-            "dna_channels": ["DNA1", "DNA2"]
-        },
-        "analysis": {
-            "clustering": {
-                "method": "leiden",
-                "resolution_range": [0.5, 1.5]
-            },
-            "multiscale": {
-                "enable": True,
-                "scales_um": [10, 20, 40]
-            }
-        },
-        "output": {
-            "results_dir": "results",
-            "save_intermediate": True
-        },
-        "validation": {
-            "enable": True,
-            "fail_on_critical": True,
-            "quality_gates": True
-        }
-    }
-    
+
     # Create output directory
     output_dir = Path("results")
     output_dir.mkdir(exist_ok=True)
-    
-    # Save config file
-    config_path = output_dir / "analysis_config.json"
-    with open(config_path, 'w') as f:
-        json.dump(config_data, f, indent=2)
+
+    # Use the actual config.json as the source
+    config_path = Path('config.json')
     
     logger.info(f"Configuration saved to: {config_path}")
     logger.info(f"Data directory: {data_dir}")

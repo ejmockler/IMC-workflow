@@ -1,0 +1,297 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-09-29",
+  "description": "Performance baselines for IMC analysis pipeline regression testing",
+  "test_environment": {
+    "platform": "darwin",
+    "python_version": "3.9+",
+    "numpy_version": "1.21+",
+    "notes": "Baselines established on macOS, should be portable across platforms"
+  },
+  
+  "complexity_benchmarks": {
+    "description": "Expected algorithm complexity and scaling behavior",
+    
+    "data_size_scaling": {
+      "ion_count_processing": {
+        "expected_complexity": "O(n)",
+        "description": "Ion count aggregation should scale linearly with data points",
+        "baseline_times": {
+          "1000_points": {"max_seconds": 0.1, "typical_seconds": 0.05},
+          "5000_points": {"max_seconds": 0.5, "typical_seconds": 0.25},
+          "10000_points": {"max_seconds": 1.0, "typical_seconds": 0.5}
+        },
+        "scaling_tolerance": 2.0,
+        "notes": "Allow 2x overhead for linear scaling due to system variance"
+      },
+      
+      "coabundance_features": {
+        "expected_complexity": "O(n * p^2)",
+        "description": "Co-abundance features scale with points and protein pairs",
+        "baseline_feature_counts": {
+          "3_proteins": 21,
+          "5_proteins": 65,
+          "9_proteins": 153,
+          "formula": "p + p*(p-1)/2 + p*(p-1) + p*(p-1)/2 = p*(1 + p + 1)/2"
+        },
+        "baseline_times": {
+          "1000_points_9_proteins": {"max_seconds": 0.5, "typical_seconds": 0.2},
+          "5000_points_9_proteins": {"max_seconds": 2.5, "typical_seconds": 1.0}
+        },
+        "scaling_tolerance": 1.5,
+        "notes": "Feature generation is CPU-bound, should scale predictably"
+      },
+      
+      "slic_segmentation": {
+        "expected_complexity": "O(n * log(n))",
+        "description": "SLIC segmentation complexity with spatial indexing",
+        "baseline_times": {
+          "1000_points": {"max_seconds": 2.0, "typical_seconds": 1.0},
+          "5000_points": {"max_seconds": 8.0, "typical_seconds": 4.0},
+          "10000_points": {"max_seconds": 20.0, "typical_seconds": 10.0}
+        },
+        "scaling_tolerance": 2.0,
+        "notes": "Image processing operations can have higher variance"
+      },
+      
+      "spatial_clustering": {
+        "expected_complexity": "O(n^1.3)",
+        "description": "Spatial clustering with nearest neighbor computations",
+        "baseline_times": {
+          "1000_points": {"max_seconds": 1.0, "typical_seconds": 0.5},
+          "5000_points": {"max_seconds": 8.0, "typical_seconds": 4.0}
+        },
+        "scaling_tolerance": 2.5,
+        "notes": "Graph-based algorithms have higher complexity"
+      }
+    },
+    
+    "protein_count_scaling": {
+      "description": "How algorithms scale with number of proteins",
+      "coabundance_features": {
+        "expected_complexity": "O(p^2)",
+        "baseline_feature_counts": {
+          "2_proteins": 8,
+          "5_proteins": 65,
+          "10_proteins": 310,
+          "15_proteins": 680
+        },
+        "baseline_times": {
+          "1000_points_5_proteins": {"max_seconds": 0.3, "typical_seconds": 0.15},
+          "1000_points_10_proteins": {"max_seconds": 1.2, "typical_seconds": 0.6},
+          "1000_points_15_proteins": {"max_seconds": 2.7, "typical_seconds": 1.35}
+        },
+        "scaling_tolerance": 1.5
+      },
+      
+      "normalization": {
+        "expected_complexity": "O(p)",
+        "description": "Normalization should scale linearly with proteins",
+        "scaling_tolerance": 1.2,
+        "notes": "Vectorized operations should be very efficient"
+      }
+    }
+  },
+  
+  "memory_benchmarks": {
+    "description": "Expected memory usage patterns",
+    
+    "data_loading": {
+      "typical_memory_per_1k_points": "2MB",
+      "max_memory_per_1k_points": "5MB",
+      "description": "Memory usage for loading ROI data",
+      "notes": "Includes coordinates, ion counts, and metadata"
+    },
+    
+    "feature_generation": {
+      "coabundance_memory_multiplier": 17,
+      "description": "Co-abundance features use ~17x original data memory",
+      "example": "9 proteins, 1000 points: 9KB -> 153KB features",
+      "max_memory_overhead": "50x",
+      "notes": "Temporary arrays during computation can increase memory usage"
+    },
+    
+    "clustering": {
+      "graph_memory_multiplier": 10,
+      "description": "Spatial clustering creates neighbor graphs",
+      "max_memory_per_1k_points": "20MB",
+      "notes": "Graph algorithms have high memory requirements"
+    },
+    
+    "pipeline_memory": {
+      "max_total_memory_5k_points": "200MB",
+      "max_total_memory_10k_points": "500MB",
+      "description": "Total pipeline memory usage including intermediate results",
+      "memory_leak_threshold": "10%",
+      "notes": "Memory usage should be released after processing"
+    }
+  },
+  
+  "quality_benchmarks": {
+    "description": "Expected output quality metrics",
+    
+    "clustering_performance": {
+      "golden_dataset_ari": {
+        "minimum_acceptable": 0.3,
+        "good_performance": 0.7,
+        "excellent_performance": 0.9,
+        "description": "Adjusted Rand Index on synthetic golden dataset"
+      },
+      
+      "cluster_count_accuracy": {
+        "tolerance": 2,
+        "description": "Predicted clusters should be within 2 of true count",
+        "golden_dataset_true_clusters": 4
+      }
+    },
+    
+    "feature_quality": {
+      "coabundance_determinism": {
+        "description": "Features should be identical across runs",
+        "decimal_precision": 10,
+        "notes": "Deterministic algorithms should produce exact results"
+      },
+      
+      "feature_bounds": {
+        "extreme_value_threshold": 1000,
+        "max_extreme_fraction": 0.1,
+        "description": "Less than 10% of features should be extreme values",
+        "notes": "Helps detect numerical instabilities"
+      }
+    },
+    
+    "spatial_quality": {
+      "slic_superpixel_range": {
+        "min_superpixels": 5,
+        "max_superpixels_per_100_points": 20,
+        "description": "Reasonable superpixel count for segmentation quality"
+      }
+    }
+  },
+  
+  "regression_thresholds": {
+    "description": "Thresholds for detecting performance regressions",
+    
+    "performance_regression": {
+      "timing_degradation_threshold": 2.0,
+      "description": "Performance regression if >2x slower than baseline",
+      "memory_increase_threshold": 1.5,
+      "description_memory": "Memory regression if >1.5x more memory than baseline"
+    },
+    
+    "quality_regression": {
+      "ari_score_degradation_threshold": 0.1,
+      "description": "Quality regression if ARI drops by >0.1",
+      "feature_count_change_tolerance": 0,
+      "description_features": "Feature count must be exactly as expected"
+    },
+    
+    "stability_regression": {
+      "max_variance_across_runs": 0.01,
+      "description": "Results should be stable across multiple runs",
+      "determinism_tolerance": 1e-10,
+      "description_determinism": "Deterministic operations should be exact"
+    }
+  },
+  
+  "test_data_characteristics": {
+    "description": "Properties of standard test datasets",
+    
+    "golden_dataset": {
+      "n_points": 200,
+      "n_proteins": 9,
+      "expected_clusters": 4,
+      "expected_coabundance_features": 153,
+      "cluster_pattern": "four_corners",
+      "noise_level": 0.1,
+      "checksum": "to_be_calculated",
+      "notes": "Fixed synthetic dataset for regression testing"
+    },
+    
+    "performance_datasets": {
+      "small": {"n_points": 1000, "use_case": "unit tests"},
+      "medium": {"n_points": 5000, "use_case": "integration tests"},  
+      "large": {"n_points": 10000, "use_case": "performance tests"},
+      "xlarge": {"n_points": 50000, "use_case": "stress tests"}
+    },
+    
+    "edge_case_datasets": {
+      "empty": {"n_points": 0, "expected_behavior": "graceful_error"},
+      "single_point": {"n_points": 1, "expected_behavior": "minimal_processing"},
+      "sparse": {"sparsity": 0.9, "expected_behavior": "handle_zeros"},
+      "corrupted": {"corruption_types": ["nan", "inf", "negative"], "expected_behavior": "error_detection"}
+    }
+  },
+  
+  "ci_performance_limits": {
+    "description": "Conservative limits for CI/CD environments",
+    
+    "unit_tests": {
+      "max_time_per_test": "5 seconds",
+      "max_memory_per_test": "100MB",
+      "total_test_time_budget": "2 minutes"
+    },
+    
+    "integration_tests": {
+      "max_time_per_test": "30 seconds", 
+      "max_memory_per_test": "200MB",
+      "total_test_time_budget": "10 minutes"
+    },
+    
+    "performance_tests": {
+      "max_time_per_test": "60 seconds",
+      "max_memory_per_test": "500MB", 
+      "total_test_time_budget": "20 minutes",
+      "notes": "Performance tests may be skipped in fast CI runs"
+    }
+  },
+  
+  "validation_criteria": {
+    "description": "Criteria for validating baseline adherence",
+    
+    "timing_validation": {
+      "method": "complexity_analysis",
+      "description": "Use scaling ratios rather than absolute timing",
+      "min_data_points": 3,
+      "statistical_significance": 0.05
+    },
+    
+    "memory_validation": {
+      "method": "peak_memory_tracking",
+      "tools": ["tracemalloc", "psutil"],
+      "measurement_frequency": "per_major_operation"
+    },
+    
+    "quality_validation": {
+      "method": "golden_dataset_comparison",
+      "statistical_tests": ["adjusted_rand_index", "feature_correlation"],
+      "determinism_check": "exact_equality"
+    }
+  },
+  
+  "baseline_maintenance": {
+    "description": "Guidelines for maintaining performance baselines",
+    
+    "update_triggers": [
+      "algorithm_changes",
+      "dependency_updates", 
+      "hardware_upgrades",
+      "systematic_performance_improvements"
+    ],
+    
+    "update_process": [
+      "run_comprehensive_benchmarks",
+      "validate_improvements_not_regressions",
+      "update_baseline_values",
+      "document_changes_in_git_history"
+    ],
+    
+    "review_frequency": "quarterly",
+    "automated_monitoring": "enabled",
+    "alerts": {
+      "performance_degradation": "immediate",
+      "quality_regression": "immediate", 
+      "baseline_drift": "weekly_summary"
+    }
+  }
+}

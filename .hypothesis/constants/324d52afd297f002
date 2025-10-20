@@ -1,4 +1,0 @@
-# file: /Users/noot/Documents/IMC/src/analysis/hierarchical_multiscale.py
-# hypothesis_version: 6.140.2
-
-[0.0, 0.5, 1.0, 2.0, 10.0, 20.0, 255, 256, 'coherence', 'contrast', 'coords', 'correlation', 'energy', 'features', 'homogeneity', 'labels', 'monotonic_decrease', 'n_clusters_per_scale', 'parent_map', 'scale_0', 'scale_progression', 'scale_um', 'valid']

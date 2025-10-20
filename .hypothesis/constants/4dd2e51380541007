@@ -1,4 +1,0 @@
-# file: /Users/noot/Documents/IMC/src/analysis/coabundance_features.py
-# hypothesis_version: 6.140.2
-
-[-10.0, 0.0, 1e-10, 1.0, 10.0, 20.0, 25.0, 1000, '*', 'CD11b', 'CD163', 'CD19', 'CD20', 'CD3', 'CD4', 'CD45', 'CD45RA', 'CD45RO', 'CD68', 'CD8', 'Collagen', 'ECadherin', 'Ki67', 'PCNA', 'PanCK', 'SMA', 'Vimentin', 'b_cell', 'epithelial', 'ica', 'lasso', 'mutual_info', 'myeloid', 'nmf', 'nndsvda', 'pan_immune', 'proliferation', 'structural', 't_cell', 'variance']
