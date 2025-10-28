@@ -224,19 +224,52 @@ def analyze_roi_neighborhoods(
 
     return pd.DataFrame(results)
 
-def parse_roi_metadata(roi_id: str) -> dict:
-    """Extract metadata from ROI ID."""
-    parts = roi_id.split('_')
+def load_metadata() -> pd.DataFrame:
+    """Load experimental metadata with actual anatomical regions."""
+    metadata_file = Path('data/241218_IMC_Alun/Metadata-Table 1.csv')
+    metadata = pd.read_csv(metadata_file)
+    metadata.columns = metadata.columns.str.strip()
+    return metadata
 
-    if 'Sam' in roi_id:
-        timepoint = 'Sham'
-        region = None
-    elif 'Test' in roi_id:
-        timepoint = 'Test'
-        region = None
-    else:
-        timepoint = [p for p in parts if p.startswith('D')][0]
-        region = [p for p in parts if p.startswith('M')][0]
+_METADATA_CACHE = None
+
+def parse_roi_metadata(roi_id: str) -> dict:
+    """
+    Extract metadata from ROI ID using actual metadata CSV.
+
+    Note: M1/M2 in filename = Mouse 1/Mouse 2 (biological replicates), NOT regions!
+    Actual anatomical region comes from metadata "Details" column.
+    """
+    global _METADATA_CACHE
+
+    if _METADATA_CACHE is None:
+        _METADATA_CACHE = load_metadata()
+
+    # Remove 'roi_' prefix if present
+    file_name = roi_id.replace('roi_', '')
+
+    # Look up actual anatomical region from metadata
+    metadata_row = _METADATA_CACHE[_METADATA_CACHE['File Name'] == file_name]
+
+    if len(metadata_row) == 0:
+        # Fallback parsing for ROIs not in metadata
+        parts = roi_id.split('_')
+        if 'Sam' in roi_id:
+            timepoint = 'Sham'
+            region = None
+        elif 'Test' in roi_id:
+            timepoint = 'Test'
+            region = None
+        else:
+            timepoint = [p for p in parts if p.startswith('D')][0]
+            region = None  # Unknown without metadata
+
+        return {'timepoint': timepoint, 'region': region}
+
+    # Extract from metadata
+    row = metadata_row.iloc[0]
+    timepoint = 'Sham' if row['Injury Day'] == 0 else f"D{int(row['Injury Day'])}"
+    region = row['Details'].strip() if pd.notna(row['Details']) else None
 
     return {'timepoint': timepoint, 'region': region}
 
@@ -356,19 +389,18 @@ def main():
 
     # Aggregate by region
     print("\n" + "─"*80)
-    print("Regional Neighborhood Patterns")
+    print("Regional Neighborhood Patterns (Cortex vs Medulla)")
     print("─"*80)
 
     regional_agg = aggregate_across_rois(roi_results, groupby='region')
 
-    for region in ['M1', 'M2']:
+    for region in ['Cortex', 'Medulla']:
         reg_data = regional_agg[regional_agg['region'] == region]
 
         if len(reg_data) == 0:
             continue
 
-        region_name = 'Cortex (M1)' if region == 'M1' else 'Medulla (M2)'
-        print(f"\n{region_name} - Top Spatial Enrichments:")
+        print(f"\n{region} - Top Spatial Enrichments:")
 
         enriched = reg_data[
             (reg_data['enrichment_score'] > 1.5) &

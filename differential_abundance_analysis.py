@@ -18,54 +18,95 @@ from pathlib import Path
 from scipy import stats
 from typing import Dict, List, Tuple
 
+def load_metadata() -> pd.DataFrame:
+    """Load experimental metadata with actual anatomical regions."""
+    metadata_file = Path('data/241218_IMC_Alun/Metadata-Table 1.csv')
+    metadata = pd.read_csv(metadata_file)
+    metadata.columns = metadata.columns.str.strip()
+    return metadata
+
 def load_batch_summary() -> dict:
     """Load batch annotation summary."""
     summary_file = Path('results/biological_analysis/cell_type_annotations/batch_annotation_summary.json')
     with open(summary_file, 'r') as f:
         return json.load(f)
 
-def parse_roi_metadata(roi_id: str) -> dict:
+def parse_roi_metadata(roi_id: str, metadata_df: pd.DataFrame) -> dict:
     """
-    Extract metadata from ROI ID.
+    Extract metadata from ROI ID using actual metadata CSV.
 
-    Format: IMC_241218_Alun_ROI_{timepoint}_{region}_{replicate}_{index}
+    Format: IMC_241218_Alun_ROI_{timepoint}_{mouse}_{replicate}_{index}
     Examples:
-      - IMC_241218_Alun_ROI_D1_M1_01_9
+      - IMC_241218_Alun_ROI_D1_M1_01_9 (Mouse 1, could be Cortex OR Medulla)
       - IMC_241218_Alun_ROI_Sam1_01_2 (Sham timepoint)
-    """
-    parts = roi_id.split('_')
 
-    # Extract timepoint
+    Note: M1/M2 in filename = Mouse 1/Mouse 2 (biological replicates), NOT regions!
+    Actual anatomical region comes from metadata "Details" column.
+    """
+    # Remove 'roi_' prefix if present
+    file_name = roi_id.replace('roi_', '')
+
+    # Look up actual anatomical region from metadata
+    metadata_row = metadata_df[metadata_df['File Name'] == file_name]
+
+    if len(metadata_row) == 0:
+        # Fallback parsing for ROIs not in metadata
+        parts = roi_id.split('_')
+        if 'Sam' in roi_id:
+            timepoint = 'Sham'
+            sam_part = [p for p in parts if 'Sam' in p][0]
+            replicate = sam_part
+            region = None
+        elif 'Test' in roi_id:
+            timepoint = 'Test'
+            replicate = 'Test01'
+            region = None
+        else:
+            timepoint = [p for p in parts if p.startswith('D')][0]
+            mouse = [p for p in parts if p.startswith('M')][0]
+            replicate_idx = [i for i, p in enumerate(parts) if p.startswith('M')][0] + 1
+            replicate = f"{timepoint}_{mouse}_{parts[replicate_idx]}"
+            region = None  # Unknown without metadata
+
+        return {
+            'roi_id': roi_id,
+            'timepoint': timepoint,
+            'region': region,
+            'replicate': replicate
+        }
+
+    # Extract from metadata
+    row = metadata_row.iloc[0]
+    timepoint = 'Sham' if row['Injury Day'] == 0 else f"D{int(row['Injury Day'])}"
+    region = row['Details'].strip() if pd.notna(row['Details']) else None
+    mouse = row['Mouse']
+
+    # Create replicate ID
+    parts = roi_id.split('_')
     if 'Sam' in roi_id:
-        timepoint = 'Sham'
-        # Sam1, Sam2 format
-        sam_part = [p for p in parts if 'Sam' in p][0]
-        replicate = sam_part  # "Sam1" or "Sam2"
-        region = None  # Sham samples don't have cortex/medulla designation
-    elif 'Test' in roi_id:
-        timepoint = 'Test'
-        replicate = 'Test01'
-        region = None
+        replicate = mouse.replace('MS', 'Sam')  # MS1 -> Sam1, MS2 -> Sam2
     else:
-        # D1, D3, D7 format
-        timepoint = [p for p in parts if p.startswith('D')][0]
-        region = [p for p in parts if p.startswith('M')][0]
-        replicate_idx = [i for i, p in enumerate(parts) if p.startswith('M')][0] + 1
-        replicate = f"{timepoint}_{region}_{parts[replicate_idx]}"
+        # Extract replicate number from filename
+        replicate_num = [p for p in parts if p.isdigit() and len(p) == 2]
+        if replicate_num:
+            replicate = f"{timepoint}_{mouse}_{replicate_num[0]}"
+        else:
+            replicate = f"{timepoint}_{mouse}"
 
     return {
         'roi_id': roi_id,
         'timepoint': timepoint,
         'region': region,
-        'replicate': replicate
+        'replicate': replicate,
+        'mouse': mouse
     }
 
-def compute_abundances(batch_summary: dict) -> pd.DataFrame:
+def compute_abundances(batch_summary: dict, metadata_df: pd.DataFrame) -> pd.DataFrame:
     """
     Compute cell type abundances for each ROI.
 
     Returns DataFrame with columns:
-      - roi_id, timepoint, region, replicate
+      - roi_id, timepoint, region, replicate, mouse
       - n_total, n_assigned, assignment_rate
       - One column per cell type (counts)
       - One column per cell type (proportions)
@@ -73,7 +114,7 @@ def compute_abundances(batch_summary: dict) -> pd.DataFrame:
     rows = []
 
     for roi_id, summary in batch_summary['roi_summaries'].items():
-        metadata = parse_roi_metadata(roi_id)
+        metadata = parse_roi_metadata(roi_id, metadata_df)
 
         # Basic counts
         row = {
@@ -81,6 +122,7 @@ def compute_abundances(batch_summary: dict) -> pd.DataFrame:
             'timepoint': metadata['timepoint'],
             'region': metadata['region'],
             'replicate': metadata['replicate'],
+            'mouse': metadata.get('mouse', None),
             'n_total': summary['n_superpixels'],
             'n_assigned': summary['n_assigned'],
             'assignment_rate': summary['assignment_rate']
@@ -211,9 +253,12 @@ def perform_differential_abundance(df: pd.DataFrame, cell_types: List[str]) -> p
 
 def perform_regional_analysis(df: pd.DataFrame, cell_types: List[str]) -> pd.DataFrame:
     """
-    Compare cell type abundances between cortex (M1) and medulla (M2).
+    Compare cell type abundances between Cortex and Medulla (actual anatomical regions).
 
-    Stratified by timepoint (D1, D3, D7 only - Sham has no region info).
+    Stratified by timepoint (D1, D3, D7 only - Sham ROIs have region but small n).
+
+    Note: Previously this function incorrectly compared M1 vs M2 (which are mice, not regions).
+    Now uses actual 'Cortex' vs 'Medulla' from metadata "Details" column.
     """
     results = []
 
@@ -229,9 +274,9 @@ def perform_regional_analysis(df: pd.DataFrame, cell_types: List[str]) -> pd.Dat
             if prop_col not in df_tp.columns:
                 continue
 
-            # Get proportions for each region
-            cortex = df_tp[df_tp['region'] == 'M1'][prop_col].values
-            medulla = df_tp[df_tp['region'] == 'M2'][prop_col].values
+            # Get proportions for each ACTUAL anatomical region
+            cortex = df_tp[df_tp['region'] == 'Cortex'][prop_col].values
+            medulla = df_tp[df_tp['region'] == 'Medulla'][prop_col].values
 
             if len(cortex) == 0 or len(medulla) == 0:
                 continue
@@ -267,6 +312,11 @@ def main():
     print("Differential Abundance Analysis - Kidney Injury Time Course")
     print("="*80)
 
+    # Load metadata with actual anatomical regions
+    print("\nLoading experimental metadata...")
+    metadata_df = load_metadata()
+    print(f"✓ Loaded metadata for {len(metadata_df)} ROIs")
+
     # Load batch annotation results
     print("\nLoading batch annotation summary...")
     batch_summary = load_batch_summary()
@@ -275,11 +325,12 @@ def main():
 
     # Compute abundances
     print("\nComputing cell type abundances per ROI...")
-    abundance_df = compute_abundances(batch_summary)
+    abundance_df = compute_abundances(batch_summary, metadata_df)
 
     print(f"✓ Computed abundances for {len(abundance_df)} ROIs")
     print(f"  Timepoints: {sorted(abundance_df['timepoint'].unique())}")
     print(f"  Regions: {sorted([r for r in abundance_df['region'].unique() if r is not None])}")
+    print(f"  Mice: {sorted([m for m in abundance_df['mouse'].unique() if m is not None])}")
 
     # Get all cell types (excluding unassigned)
     cell_type_cols = [c for c in abundance_df.columns if c.endswith('_count') and not c.startswith('unassigned')]
