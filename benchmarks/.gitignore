@@ -1,0 +1,24 @@
+# Ignore large data files and outputs
+data/
+steinbock_outputs/
+our_outputs/
+
+# Keep directory structure
+!data/.gitkeep
+!steinbock_outputs/.gitkeep
+!our_outputs/.gitkeep
+
+# Keep metadata and small config files
+!data/dataset_metadata.json
+!data/**/metadata.csv
+!data/**/dataset_info.txt
+
+# Logs
+*.log
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Python cache
+__pycache__/
+*.pyc
