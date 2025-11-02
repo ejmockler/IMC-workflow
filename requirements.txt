@@ -1,46 +1,45 @@
 # Production IMC Analysis Pipeline Dependencies
-# Version ranges allow patch updates while preventing breaking changes
-# Format: >=min_version,<next_major (e.g., >=2.0.0,<2.2.0 allows 2.0.x and 2.1.x)
+# SECURITY: Exact versions pinned to prevent supply chain drift
 
 # Core scientific computing
-numpy>=2.0.0,<2.2.0  # As of Jan 2025, 2.1.x is latest stable
-pandas>=2.2.0,<2.3.0  # 2.2.x is current stable
-scipy>=1.14.0,<1.15.0  # 1.14.x is current stable
+numpy==2.3.0
+pandas==2.3.0
+scipy==1.16.0
 
 # Machine learning and clustering
-scikit-learn>=1.5.0,<1.6.0  # 1.5.x is current stable (1.7.0 doesn't exist)
-leidenalg>=0.10.0,<0.11.0  # Graph-based clustering
-igraph>=0.11.0,<0.12.0     # Required for Leiden algorithm
-hdbscan>=0.8.38,<0.9.0    # Density-based clustering
+scikit-learn==1.7.0
+leidenalg==0.10.2  # Graph-based clustering
+igraph==0.11.9     # Required for Leiden algorithm
+hdbscan==0.8.40    # Density-based clustering
 
 # Image processing and spatial analysis
-scikit-image>=0.24.0,<0.25.0  # 0.24.x is current stable
+scikit-image==0.25.0
 
 # Visualization
-matplotlib>=3.9.0,<3.10.0  # 3.9.x is current stable
-seaborn>=0.13.0,<0.14.0
+matplotlib==3.10.0
+seaborn==0.13.0
 
 # Statistical analysis
-statsmodels>=0.14.0,<0.15.0
-libpysal>=4.12.0,<4.13.0  # Spatial weights and autocorrelation analysis
+statsmodels==0.14.5
+libpysal==4.13.0  # Spatial weights and autocorrelation analysis
 
 # Testing framework
-pytest>=8.3.0,<8.4.0
-pytest-cov>=6.0.0,<7.0.0
+pytest==8.4.2
+pytest-cov==7.0.0
 
 # Performance monitoring
-psutil>=6.1.0,<7.0.0  # 6.x is current stable
-memory_profiler>=0.61.0,<0.62.0
+psutil==7.1.0
+memory_profiler==0.61.0
 
 # Configuration management
-pyyaml>=6.0.0,<7.0.0
+pyyaml==6.0.2
 
 # Data serialization (optional, fallback to JSON)
-h5py>=3.12.0,<4.0.0  # For HDF5 storage
-pyarrow>=18.0.0,<19.0.0  # For Parquet storage (21.0.0 doesn't exist)
+h5py==3.14.0  # For HDF5 storage
+pyarrow==21.0.0  # For Parquet storage
 
 # Progress bars and logging
-tqdm>=4.66.0,<4.67.0
+tqdm==4.67.0
 
 # Numerical optimization
-numba>=0.60.0,<0.61.0  # JIT compilation for performance-critical sections
+numba==0.62.0  # JIT compilation for performance-critical sections
