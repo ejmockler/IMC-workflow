@@ -70,6 +70,92 @@ Standardized = (Transformed - μ) / σ
 ```
 Applied per-channel across all pixels.
 
+## Discretization Trade-offs and Information Loss
+
+### Continuous Measurements vs Discrete Classifications
+IMC technology measures **continuous protein expression gradients** via ion counting. Our pipeline discretizes these measurements at multiple levels:
+
+1. **Boolean gating**: Continuous marker expression → marker+ vs marker- (binary)
+2. **Cluster assignment**: Gradient space → discrete clusters (hard assignment)
+3. **Cell type classification**: Multi-dimensional expression → categorical labels
+
+**Methodological Choice**: We prioritize biological interpretability and expert knowledge integration over data-driven optimization, accepting information loss as trade-off.
+
+### Information Loss Quantification
+Shannon entropy analysis quantifies information content before and after discretization:
+
+**Continuous expression** (via histogram binning):
+```
+H_continuous = -Σ p(x_i) log₂ p(x_i)
+```
+where x_i are histogram bins (n=50) of marker expression
+
+**Discrete gates** (binary):
+```
+H_discrete = -[p(+) log₂ p(+) + p(-) log₂ p(-)]
+```
+
+**Measured information loss**: ~70-80% across all markers (see `notebooks/methods_validation/01_gradient_discretization_analysis.ipynb`)
+
+### Biological Implications
+
+**What is preserved**:
+- Major expression patterns (high vs low expressors)
+- Cell type identity (discrete categorical labels)
+- Boolean logic gates (e.g., CD11b+ AND CD206+ = M2 macrophage)
+- Integration of domain expertise (known marker combinations)
+
+**What is lost**:
+- Gradient fine structure (expression levels within positive population)
+- Continuous transitions (cells near threshold arbitrarily classified)
+- Heterogeneity within cell types (all "neutrophils" treated identically)
+- Subtle expression differences (compressed by binary threshold)
+
+### Alternative Approaches
+We acknowledge that gradient-aware methods exist:
+- **Soft assignments**: Probabilistic cell typing (e.g., topic modeling, Gaussian mixtures)
+- **Fuzzy clustering**: Membership scores rather than hard labels
+- **UMAP/t-SNE**: Direct analysis in continuous embedding space
+- **Deep learning**: End-to-end gradient-aware classifiers
+
+**Our rationale for discretization**:
+1. Enables Boolean logic for cell type definitions (interpretable)
+2. Facilitates integration of biological knowledge (literature-defined markers)
+3. Provides categorical outputs suitable for spatial enrichment analysis
+4. Matches clinical/biological conventions (marker positive/negative)
+
+### Statistical Power Considerations (n=2 Pilot Study)
+
+**Sample size**: n=2 mice per timepoint severely limits statistical power for hypothesis testing.
+
+**Power analysis** (two-sample t-test, α=0.05):
+- For 80% power with n=2: Cohen's d ≥ 3.0 required (extreme effect)
+- Medium-large effects (d=0.8-1.5): Power <30% (undetectable)
+- Only **very large effects** (d>2.0) have adequate power
+
+**Observed effect sizes** in UUO dataset:
+- Median |d| ≈ 1.2 (most comparisons underpowered)
+- ~15-25% of comparisons exceed d=2.0 threshold
+- Confidence intervals ~5× wider than adequately powered study (n≥20)
+
+**Justified claims** (n=2):
+✅ Descriptive findings (patterns observed, trends noted)
+✅ Qualitative comparisons (higher/lower, present/absent)
+✅ Methods demonstration (pipeline functionality validated)
+✅ Hypothesis generation (what to test in powered study)
+✅ Very large effects (d>2.0) with explicit uncertainty
+
+**Unjustified claims** (n=2):
+❌ Statistical significance (p-values meaningless without power)
+❌ Causal inference (no statistical support)
+❌ Subtle effects (d<2.0 undetectable)
+❌ Population generalization (pilot data, not confirmatory)
+❌ Definitive biological conclusions
+
+**Study framing**: This pilot study demonstrates methods capability on real biological data with limited sample size. Findings are hypothesis-generating, not confirmatory. Validation in adequately powered cohorts (n≥10 per group) required for biological claims.
+
+See `notebooks/methods_validation/02_statistical_power_analysis.ipynb` for detailed power calculations.
+
 ## Multi-Scale Spatial Analysis
 
 ### SLIC Superpixel Segmentation
