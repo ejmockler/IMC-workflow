@@ -79,22 +79,34 @@ fi
 START_TIME=$(date +%s)
 
 # Run Steinbock preprocessing
-log_info "Step 1/5: Preprocessing images..."
+log_info "Step 1/5: Preprocessing - creating panel..."
 docker run --rm \
     -v "$STEINBOCK_WORK:/data" \
     $STEINBOCK_IMAGE \
-    steinbock preprocess imc panel \
-        --hpf 50 \
-        --out /data/panel.csv \
-        2>&1 | tee "$OUTPUT_DIR/steinbock_preprocess.log"
+    preprocess imc panel \
+        --txt /data/img \
+        -o /data/panel.csv \
+        2>&1 | tee "$OUTPUT_DIR/steinbock_preprocess_panel.log"
 
-# Run Steinbock segmentation (Cellpose by default)
+log_info "Step 1.5/5: Preprocessing - converting images to TIFF..."
+docker run --rm \
+    -v "$STEINBOCK_WORK:/data" \
+    $STEINBOCK_IMAGE \
+    preprocess imc images \
+        --txt /data/img \
+        --panel /data/panel.csv \
+        --imgout /data/img \
+        2>&1 | tee "$OUTPUT_DIR/steinbock_preprocess_images.log"
+
+# Run Steinbock segmentation (DeepCell/Mesmer)
 log_info "Step 2/5: Cell segmentation (this may take a while)..."
 docker run --rm \
     -v "$STEINBOCK_WORK:/data" \
     $STEINBOCK_IMAGE \
-    steinbock segment cellpose \
+    segment deepcell \
+        --app mesmer \
         --minmax \
+        --pixelsize 1.0 \
         2>&1 | tee "$OUTPUT_DIR/steinbock_segment.log"
 
 # Measure intensities
@@ -102,8 +114,8 @@ log_info "Step 3/5: Measuring cell intensities..."
 docker run --rm \
     -v "$STEINBOCK_WORK:/data" \
     $STEINBOCK_IMAGE \
-    steinbock measure intensities \
-        --type mean median \
+    measure intensities \
+        --aggr mean \
         2>&1 | tee "$OUTPUT_DIR/steinbock_intensities.log"
 
 # Measure region props
@@ -111,7 +123,7 @@ log_info "Step 4/5: Measuring region properties..."
 docker run --rm \
     -v "$STEINBOCK_WORK:/data" \
     $STEINBOCK_IMAGE \
-    steinbock measure regionprops \
+    measure regionprops \
         2>&1 | tee "$OUTPUT_DIR/steinbock_regionprops.log"
 
 # Measure neighbors
@@ -119,7 +131,7 @@ log_info "Step 5/5: Measuring spatial neighborhoods..."
 docker run --rm \
     -v "$STEINBOCK_WORK:/data" \
     $STEINBOCK_IMAGE \
-    steinbock measure neighbors \
+    measure neighbors \
         --type expansion \
         --dmax 4 \
         2>&1 | tee "$OUTPUT_DIR/steinbock_neighbors.log"
@@ -142,14 +154,17 @@ cat > "$OUTPUT_DIR/run_metadata.json" << EOF
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "parameters": {
     "preprocessing": {
-      "hpf": 50
+      "method": "imc_panel",
+      "txt_dir": "/data/img"
     },
     "segmentation": {
-      "method": "cellpose",
-      "minmax": true
+      "method": "deepcell",
+      "app": "mesmer",
+      "minmax": true,
+      "pixelsize": 1.0
     },
     "intensities": {
-      "type": ["mean", "median"]
+      "aggr": "mean"
     },
     "neighbors": {
       "type": "expansion",
