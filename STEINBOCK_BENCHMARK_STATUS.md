@@ -1,8 +1,8 @@
 # Steinbock Benchmark Execution Status
 
 **Date**: November 3, 2025
-**Status**: ⏳ IN PROGRESS
-**Expected Completion**: ~15-20 minutes from start
+**Status**: ✅ COMPLETED
+**Completion Time**: 1491s (~25 minutes)
 
 ---
 
@@ -13,8 +13,9 @@
 ./benchmarks/scripts/run_steinbock_docker.sh /Users/noot/Documents/IMC/benchmarks/data/bodenmiller_example/Patient1
 ```
 
-**Background Process ID**: 34c9b9
-**Started**: 2025-11-03 06:18 (approximately)
+**Background Process ID**: 99767c (final successful run)
+**Started**: 2025-11-03 14:59
+**Completed**: 2025-11-03 15:23
 
 ---
 
@@ -38,28 +39,28 @@
 ### ✅ Step 1.5: Preprocessing - Image Conversion
 - Command: `preprocess imc images --txt /data/raw --imgout /data/img`
 - Converts: IMC .txt → TIFF images
-- Status: Complete (converted 3 ROIs to TIFF)
+- Status: ✅ Complete (converted 3 ROIs to TIFF)
 
-### ⏳ Step 2: Cell Segmentation (DeepCell/Mesmer)
+### ✅ Step 2: Cell Segmentation (DeepCell/Mesmer)
 - Command: `segment deepcell --app mesmer --minmax --pixelsize 1.0`
 - Method: Mesmer (whole-cell nuclear+cytoplasm segmentation)
-- Expected: ~5-8 minutes for 3 ROIs
-- Status: Pending
+- Runtime: ~22 minutes for 3 ROIs
+- Status: ✅ Complete (3 masks created)
 
-### ⏳ Step 3: Intensity Measurement
+### ✅ Step 3: Intensity Measurement
 - Command: `measure intensities --aggr mean`
 - Extracts: Mean intensities per cell per channel
-- Status: Pending
+- Status: ✅ Complete (3 intensity files)
 
-### ⏳ Step 4: Region Properties
+### ✅ Step 4: Region Properties
 - Command: `measure regionprops`
 - Computes: Cell morphology metrics (area, perimeter, etc.)
-- Status: Pending
+- Status: ✅ Complete (3 regionprops files)
 
-### ⏳ Step 5: Spatial Neighborhoods
+### ✅ Step 5: Spatial Neighborhoods
 - Command: `measure neighbors --type expansion --dmax 4`
 - Computes: Spatial neighbor graphs (4-pixel expansion)
-- Status: Pending
+- Status: ✅ Complete (3 neighbor files)
 
 ---
 
@@ -137,6 +138,14 @@ steinbock_workdir/
 - **Problem**: `Error: Invalid value for '--mcd': Directory 'raw' does not exist`
 - **Root Cause**: Steinbock expects input files in `raw/` directory (default for both --mcd and --txt)
 - **Solution**: Create temporary `raw/` directory, copy .txt files, run conversion, clean up
+- **Status**: ✅ Resolved
+
+### Issue 9: Panel Missing DeepCell Configuration
+- **Problem**: `Invalid number of aggregated channels: expected 2, got 47`
+- **Root Cause**: Auto-generated panel.csv had empty `deepcell` column. DeepCell/Mesmer requires exactly 2 aggregated channels (nuclear=1, membrane=2)
+- **Solution**: Added Python script to panel creation step that sets:
+  - `deepcell=1` for nuclear markers (Histone H3, DNA1, DNA2)
+  - `deepcell=2` for membrane marker (E-Cadherin)
 - **Status**: ✅ Resolved
 
 ---

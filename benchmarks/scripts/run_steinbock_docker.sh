@@ -88,6 +88,40 @@ docker run --rm \
         -o /data/panel.csv \
         2>&1 | tee "$OUTPUT_DIR/steinbock_preprocess_panel.log"
 
+# Fix panel for DeepCell segmentation
+# DeepCell/Mesmer needs: deepcell=1 for nuclear markers, deepcell=2 for membrane markers
+log_info "Configuring panel for DeepCell segmentation..."
+python3 - "$STEINBOCK_WORK/panel.csv" <<'PYTHON_SCRIPT'
+import csv
+import sys
+
+panel_path = sys.argv[1]
+
+# Read panel
+rows = []
+fieldnames = None
+with open(panel_path, 'r') as f:
+    reader = csv.DictReader(f)
+    fieldnames = reader.fieldnames
+    for row in reader:
+        # Set nuclear markers (Histone H3, DNA1, DNA2) to deepcell=1
+        if 'Histone' in row['name'] or 'DNA1' in row['name'] or 'DNA2' in row['name']:
+            row['deepcell'] = '1'
+        # Set membrane marker (E-Cadherin) to deepcell=2
+        elif 'Cadhe' in row['name']:  # E-Cadherin
+            row['deepcell'] = '2'
+        rows.append(row)
+
+# Write back
+with open(panel_path, 'w', newline='') as f:
+    writer = csv.DictWriter(f, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+
+print("Panel configured: Nuclear markers (deepcell=1), Membrane markers (deepcell=2)")
+PYTHON_SCRIPT
+
+
 log_info "Step 1.5/5: Preprocessing - converting images to TIFF..."
 # Create temporary raw directory for .txt files (Steinbock expects 'raw' directory structure)
 mkdir -p "$STEINBOCK_WORK/raw"
