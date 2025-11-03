@@ -2,12 +2,14 @@
 # SECURITY: Exact versions pinned to prevent supply chain drift
 
 # Core scientific computing
-numpy==2.3.0
+numpy==2.3.4
 pandas==2.3.0
-scipy==1.16.0
+scipy==1.16.3
 
 # Machine learning and clustering
-scikit-learn==1.7.0
+scikit-learn==1.7.2
+umap-learn==0.5.9.post2  # Dimensionality reduction for gradient visualization
+pynndescent==0.5.13      # Required for UMAP
 leidenalg==0.10.2  # Graph-based clustering
 igraph==0.11.9     # Required for Leiden algorithm
 hdbscan==0.8.40    # Density-based clustering
@@ -39,7 +41,8 @@ h5py==3.14.0  # For HDF5 storage
 pyarrow==21.0.0  # For Parquet storage
 
 # Progress bars and logging
-tqdm==4.67.0
+tqdm==4.67.1
 
 # Numerical optimization
-numba==0.62.0  # JIT compilation for performance-critical sections
+numba==0.62.1  # JIT compilation for performance-critical sections
+llvmlite==0.45.1  # Required for numba
