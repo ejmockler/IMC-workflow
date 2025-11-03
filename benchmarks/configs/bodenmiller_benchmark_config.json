@@ -1,0 +1,368 @@
+{
+  "project_name": "steinbock_benchmark",
+  "project_id": "bodenmiller_patient1",
+  "project_version": "1.0",
+  "data": {
+    "raw_data_dir": "benchmarks/data/bodenmiller_example/Patient1",
+    "metadata_file": "benchmarks/data/bodenmiller_example/benchmark_metadata.csv",
+    "file_pattern": "*.txt"
+  },
+  "channels": {
+    "protein_channels": [
+      "CD3", "CD4", "CD8a", "CD20", "CD68", "CD14", "CD163", "CD206",
+      "CD45RA", "CD45RO", "FOXP3", "Ki67", "HLADR", "CD11c",
+      "PD1", "PDL1", "CD38", "CD40", "LAG3", "ICOS",
+      "MPO", "GrzB", "SMA", "PDGFRb", "Ecad", "HistoneH3"
+    ],
+    "dna_channels": ["DNA1", "DNA2"],
+    "background_channel": null,
+    "calibration_channels": [],
+    "carrier_gas_channel": null,
+    "excluded_channels": [],
+    "coordinate_channels": ["X", "Y"]
+  },
+  "channel_groups": {
+    "immune_markers": {
+      "pan_leukocyte": ["CD45RA", "CD45RO"],
+      "t_cells": ["CD3", "CD4", "CD8a", "FOXP3"],
+      "b_cells": ["CD20"],
+      "myeloid": ["CD68", "CD14", "CD163", "CD206", "CD11c"],
+      "checkpoint": ["PD1", "PDL1", "LAG3", "ICOS"],
+      "activation": ["HLADR", "CD38", "CD40", "Ki67"]
+    },
+    "stromal_markers": {
+      "fibroblasts": ["PDGFRb", "SMA"]
+    },
+    "epithelial_markers": ["Ecad"],
+    "functional_markers": {
+      "cytotoxic": ["GrzB"],
+      "granulocyte": ["MPO"]
+    }
+  },
+  "processing": {
+    "background_correction": {
+      "enabled": false,
+      "method": "pixel_subtraction",
+      "clip_negative": true,
+      "_comment": "Disabled - Bodenmiller dataset is pre-processed"
+    },
+    "dna_processing": {
+      "resolution_um": 1.0,
+      "arcsinh_transform": {
+        "enabled": true,
+        "noise_floor_method": "percentile",
+        "noise_floor_percentile": 10,
+        "cofactor_multiplier": 3,
+        "comment": "Conservative cofactor to preserve gradients while handling dynamic range"
+      },
+      "normalization": {
+        "enabled": false,
+        "comment": "Disabled - ArcSinh alone is sufficient"
+      },
+      "slic_adjustments": {
+        "compactness_multiplier": 1.0,
+        "sigma_multiplier": 1.0,
+        "comment": "No adjustment - trust SLIC with properly transformed data"
+      },
+      "tissue_threshold": 0.1,
+      "tissue_threshold_comment": "Threshold for tissue detection after ArcSinh transform"
+    },
+    "arcsinh_transform": {
+      "optimization_method": "percentile",
+      "percentile_threshold": 5.0
+    },
+    "normalization": {
+      "method": "standardize",
+      "per_channel": true
+    }
+  },
+  "segmentation": {
+    "method": "slic",
+    "_comment_slic_channels": "DNA-based segmentation matches Steinbock approach (Cellpose uses nuclear staining). Fair comparison via morphology-driven segmentation.",
+    "slic_input_channels": ["DNA1", "DNA2"],
+    "slic_params": {
+      "n_segments_per_mm2": 2500,
+      "compactness": 10.0,
+      "sigma": 1.5,
+      "_comment": "Matched to Steinbock approximate cell density: ~2500 cells/mm² typical for tissue"
+    },
+    "scales_um": [10.0, 20.0, 40.0],
+    "_comment_multiscale": "Multi-scale analysis is our unique contribution. Steinbock operates at single scale (cell-level). This demonstrates hierarchical tissue organization not captured by Steinbock."
+  },
+  "cell_type_annotation": {
+    "_comment": "Generic immune cell types for Bodenmiller dataset. Simplified from kidney-specific annotation.",
+    "enabled": true,
+    "method": "boolean_gating",
+    "positivity_threshold": {
+      "_comment": "60th percentile balanced threshold for immune panel",
+      "method": "percentile",
+      "percentile": 60,
+      "per_marker_override": {
+        "Ki67": {"method": "percentile", "percentile": 70, "_comment": "Proliferation marker: sparse in resting tissue"},
+        "FOXP3": {"method": "percentile", "percentile": 65, "_comment": "Treg marker: rare population"},
+        "PD1": {"method": "percentile", "percentile": 65, "_comment": "Checkpoint: activation-dependent"},
+        "PDL1": {"method": "percentile", "percentile": 65, "_comment": "Checkpoint: activation-dependent"}
+      }
+    },
+    "cell_types": {
+      "cd4_t_cell": {
+        "label": "CD4+ T cell",
+        "description": "Helper T cells",
+        "positive_markers": ["CD3", "CD4"],
+        "negative_markers": ["CD8a"],
+        "color": "#E63946"
+      },
+      "cd8_t_cell": {
+        "label": "CD8+ T cell",
+        "description": "Cytotoxic T cells",
+        "positive_markers": ["CD3", "CD8a"],
+        "negative_markers": ["CD4"],
+        "color": "#D62828"
+      },
+      "treg": {
+        "label": "Regulatory T cell",
+        "description": "FOXP3+ Tregs",
+        "positive_markers": ["CD3", "CD4", "FOXP3"],
+        "negative_markers": ["CD8a"],
+        "color": "#F77F00"
+      },
+      "b_cell": {
+        "label": "B cell",
+        "description": "CD20+ B lymphocytes",
+        "positive_markers": ["CD20"],
+        "negative_markers": ["CD3"],
+        "color": "#06AED5"
+      },
+      "macrophage": {
+        "label": "Macrophage",
+        "description": "CD68+ macrophages",
+        "positive_markers": ["CD68"],
+        "negative_markers": ["CD3", "CD20"],
+        "color": "#FCBF49"
+      },
+      "m2_macrophage": {
+        "label": "M2 Macrophage",
+        "description": "CD206+ M2-like macrophages",
+        "positive_markers": ["CD68", "CD206"],
+        "negative_markers": ["CD3", "CD20"],
+        "color": "#EAE2B7"
+      },
+      "dendritic_cell": {
+        "label": "Dendritic cell",
+        "description": "CD11c+/HLADR+ dendritic cells",
+        "positive_markers": ["CD11c", "HLADR"],
+        "negative_markers": ["CD3", "CD20", "CD68"],
+        "color": "#2A9D8F"
+      },
+      "epithelial": {
+        "label": "Epithelial",
+        "description": "E-Cadherin+ epithelial cells",
+        "positive_markers": ["Ecad"],
+        "negative_markers": ["CD3", "CD20", "CD68"],
+        "color": "#457B9D"
+      },
+      "fibroblast": {
+        "label": "Fibroblast",
+        "description": "PDGFRb+ stromal cells",
+        "positive_markers": ["PDGFRb"],
+        "negative_markers": ["CD3", "CD20", "CD68", "Ecad"],
+        "color": "#086788"
+      }
+    },
+    "hierarchical_annotation": {
+      "_comment": "Simplified hierarchy for generic immune panel",
+      "level_1_lineage": {
+        "t_cell": {"positive": ["CD3"], "negative": []},
+        "b_cell": {"positive": ["CD20"], "negative": ["CD3"]},
+        "myeloid": {"positive": ["CD68", "CD14"], "negative": ["CD3", "CD20"]},
+        "epithelial": {"positive": ["Ecad"], "negative": ["CD3", "CD20", "CD68"]},
+        "stromal": {"positive": ["PDGFRb", "SMA"], "negative": ["CD3", "CD20", "CD68", "Ecad"]}
+      }
+    }
+  },
+  "biological_analysis": {
+    "_comment": "No condition-based comparisons for Bodenmiller benchmark. Focus on spatial patterns and marker distributions.",
+    "differential_abundance": {
+      "enabled": false
+    },
+    "spatial_analysis": {
+      "enabled": true,
+      "metrics": [
+        "spatial_autocorrelation",
+        "nearest_neighbor_analysis",
+        "neighborhood_enrichment"
+      ],
+      "spatial_autocorrelation": {
+        "method": "morans_i",
+        "distance_threshold_um": 50,
+        "n_permutations": 999
+      },
+      "neighborhood_enrichment": {
+        "_comment": "Key validation metric: spatial enrichments should match Steinbock",
+        "radius_um": 50,
+        "n_permutations": 1000,
+        "aggregation": "mean"
+      }
+    },
+    "temporal_trajectory": {
+      "enabled": false,
+      "_comment": "No temporal data in Bodenmiller benchmark"
+    },
+    "niche_identification": {
+      "enabled": true,
+      "_comment": "Identify spatial microenvironments for comparison with Steinbock",
+      "method": "neighborhood_clustering",
+      "neighborhood_radius_um": 75,
+      "min_niche_frequency": 0.1,
+      "clustering_resolution": 0.5
+    },
+    "cluster_annotation": {
+      "enabled": true,
+      "enrichment_threshold": 1.5,
+      "min_marker_fraction": 0.3,
+      "consensus_threshold": 0.6
+    }
+  },
+  "analysis": {
+    "clustering": {
+      "_comment_method": "Leiden community detection",
+      "method": "leiden",
+      "optimization_method": "stability",
+      "resolution_range": [0.1, 3.0],
+      "n_resolutions": 40,
+      "n_bootstrap": 100,
+      "subsample_ratio": 0.85,
+      "random_state": 42,
+      "adaptive_search": true,
+      "adaptive_target_stability": 0.75,
+      "adaptive_tolerance": 0.02,
+      "adaptive_max_evaluations": 50,
+      "parallel": true,
+      "use_graph_caching": true,
+      "k_neighbors": 15,
+      "k_neighbors_by_scale": {
+        "10.0": 14,
+        "20.0": 12,
+        "40.0": 10
+      },
+      "spatial_weight": 0.3,
+      "use_coabundance_features": true,
+      "coabundance_options": {
+        "interaction_order": 2,
+        "include_ratios": true,
+        "include_products": true,
+        "include_spatial_covariance": true,
+        "neighborhood_radius": 20.0,
+        "min_expression_percentile": 25.0,
+        "use_feature_selection": true,
+        "target_n_features": 30,
+        "selection_method": "lasso",
+        "lasso_max_iter": 5000
+      }
+    },
+    "batch_correction": {
+      "enabled": false,
+      "_comment": "No batch effects in single-patient benchmark"
+    }
+  },
+  "quality_control": {
+    "monitor_calibration": false,
+    "calibration_cv_threshold": 0.2,
+    "monitor_carrier_gas": false,
+    "min_carrier_gas_signal": 100,
+    "generate_qc_plots": true,
+    "thresholds": {
+      "total_ion_counts": {
+        "min_tic_percentile": 10,
+        "max_low_tic_pixels_percent": 20,
+        "description": "TIC monitoring"
+      },
+      "segmentation_quality": {
+        "min_dna_signal": 1.0,
+        "min_tissue_coverage_percent": 10,
+        "dna_threshold_std_multiplier": 2.0,
+        "description": "DNA signal quality for SLIC segmentation"
+      },
+      "signal_to_background": {
+        "min_snr": 3.0,
+        "description": "Minimum signal-to-background ratio"
+      }
+    }
+  },
+  "output": {
+    "results_dir": "benchmarks/our_outputs/bodenmiller_example/Patient1",
+    "roi_results_dir": "roi_results",
+    "qc_dir": "quality_control",
+    "save_intermediate": true,
+    "save_format": "hdf5",
+    "compression": true,
+    "include_provenance": true,
+    "reports": {
+      "methods_summary": true,
+      "computational_performance": true
+    }
+  },
+  "performance": {
+    "parallel_processes": 1,
+    "memory_limit_gb": 8.0,
+    "chunk_size": 5000,
+    "process_sequentially": true,
+    "garbage_collect_frequency": 1
+  },
+  "validation": {
+    "method": "comprehensive",
+    "reference_channels": ["DNA1", "DNA2"],
+    "quality_metrics": [
+      "compactness",
+      "boundary_adherence",
+      "spatial_coherence",
+      "size_consistency"
+    ],
+    "biological_correspondence": {
+      "enabled": true,
+      "metrics": ["enrichment", "colocalization"]
+    },
+    "visual_validation": {
+      "enabled": true,
+      "generate_plots": true,
+      "plot_formats": ["png"],
+      "dpi": 150
+    }
+  },
+  "visualization": {
+    "validation_plots": {
+      "enabled": true,
+      "primary_markers": {
+        "immune_markers": "CD3",
+        "myeloid_markers": "CD68",
+        "stromal_markers": "PDGFRb"
+      },
+      "colormaps": {
+        "immune_markers": "Reds",
+        "myeloid_markers": "Oranges",
+        "stromal_markers": "Greens",
+        "epithelial_markers": "Blues",
+        "default": "viridis"
+      },
+      "always_include": ["CD206", "Ki67", "PD1"],
+      "show_bead_channels": false,
+      "show_background_channel": false,
+      "layout": {
+        "figsize": [20, 12],
+        "top_row_panels": 4,
+        "bottom_row_panels": 5
+      }
+    }
+  },
+  "metadata_tracking": {
+    "preserve_fields": [
+      "ROI", "Patient", "Position"
+    ],
+    "batch_definition": ["Patient"],
+    "stratification_fields": ["Position"],
+    "replicate_column": "Patient",
+    "timepoint_column": null,
+    "condition_column": null,
+    "region_column": "Position"
+  }
+}

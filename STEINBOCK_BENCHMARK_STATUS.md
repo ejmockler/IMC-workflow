@@ -13,8 +13,8 @@
 ./benchmarks/scripts/run_steinbock_docker.sh /Users/noot/Documents/IMC/benchmarks/data/bodenmiller_example/Patient1
 ```
 
-**Background Process ID**: 4e2a73
-**Started**: 2025-11-03 06:15 (approximately)
+**Background Process ID**: 34c9b9
+**Started**: 2025-11-03 06:18 (approximately)
 
 ---
 
@@ -35,10 +35,10 @@
 - Output: panel.csv with 54 marker channels
 - Status: Running
 
-### ⏳ Step 1.5: Preprocessing - Image Conversion
-- Command: `preprocess imc images --imgout /data/img`
+### ✅ Step 1.5: Preprocessing - Image Conversion
+- Command: `preprocess imc images --txt /data/raw --imgout /data/img`
 - Converts: IMC .txt → TIFF images
-- Status: Pending
+- Status: Complete (converted 3 ROIs to TIFF)
 
 ### ⏳ Step 2: Cell Segmentation (DeepCell/Mesmer)
 - Command: `segment deepcell --app mesmer --minmax --pixelsize 1.0`
@@ -133,6 +133,12 @@ steinbock_workdir/
 - **Solution**: Changed `-o` to `--imgout`
 - **Status**: ✅ Resolved
 
+### Issue 8: Missing Raw Directory
+- **Problem**: `Error: Invalid value for '--mcd': Directory 'raw' does not exist`
+- **Root Cause**: Steinbock expects input files in `raw/` directory (default for both --mcd and --txt)
+- **Solution**: Create temporary `raw/` directory, copy .txt files, run conversion, clean up
+- **Status**: ✅ Resolved
+
 ---
 
 ## Next Steps After Completion
@@ -171,7 +177,7 @@ steinbock_workdir/
 
 ```bash
 # Check background process status
-BashOutput tool with ID: 4e2a73
+BashOutput tool with ID: 34c9b9
 
 # Check output directory
 ls -lh /Users/noot/Documents/IMC/benchmarks/data/bodenmiller_example/steinbock_outputs/Patient1/steinbock_workdir/

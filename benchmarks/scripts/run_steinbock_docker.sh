@@ -89,14 +89,21 @@ docker run --rm \
         2>&1 | tee "$OUTPUT_DIR/steinbock_preprocess_panel.log"
 
 log_info "Step 1.5/5: Preprocessing - converting images to TIFF..."
+# Create temporary raw directory for .txt files (Steinbock expects 'raw' directory structure)
+mkdir -p "$STEINBOCK_WORK/raw"
+cp "$STEINBOCK_WORK/img"/*.txt "$STEINBOCK_WORK/raw/" 2>/dev/null || true
+
 docker run --rm \
     -v "$STEINBOCK_WORK:/data" \
     $STEINBOCK_IMAGE \
     preprocess imc images \
-        --txt /data/img \
+        --txt /data/raw \
         --panel /data/panel.csv \
         --imgout /data/img \
         2>&1 | tee "$OUTPUT_DIR/steinbock_preprocess_images.log"
+
+# Clean up temporary raw directory
+rm -rf "$STEINBOCK_WORK/raw"
 
 # Run Steinbock segmentation (DeepCell/Mesmer)
 log_info "Step 2/5: Cell segmentation (this may take a while)..."
