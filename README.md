@@ -1,14 +1,35 @@
 # IMC Analysis Pipeline
 
-Multi-scale spatial proteomics framework for Imaging Mass Cytometry data. Implements arcsinh-transformed ion count statistics, DNA-guided SLIC superpixel segmentation, Leiden clustering with spatial weighting, and coabundance feature engineering across configurable spatial scales.
+Multi-scale spatial proteomics framework for Imaging Mass Cytometry data, applied to murine acute kidney injury (AKI). Implements arcsinh-transformed ion count statistics, DNA-guided SLIC superpixel segmentation, Leiden clustering with spatial weighting, and coabundance feature engineering across configurable spatial scales.
+
+**Study scope**: Hypothesis-generating pilot (n=2 mice/timepoint, 9 markers, 25 ROIs, 4 timepoints: Sham/D1/D3/D7). Effect sizes are provided for follow-up study design; no confirmatory statistical claims are made.
+
+## Quick Start
+
+```bash
+# 1. Core pipeline (SLIC segmentation + clustering)
+.venv/bin/python run_analysis.py
+
+# 2. Biological analysis scripts
+.venv/bin/python differential_abundance_analysis.py    # Mouse-level, FDR-corrected
+.venv/bin/python spatial_neighborhood_analysis.py      # Permutation-based enrichment
+
+# 3. INDRA knowledge context
+.venv/bin/python build_indra_evidence_table.py         # Panel context + finding annotations
+
+# 4. Figures
+.venv/bin/python generate_spatial_figures.py            # Representative IMC images (4 timepoints)
+.venv/bin/python generate_enrichment_heatmaps.py       # Temporal neighborhood heatmaps
+.venv/bin/python generate_power_analysis.py             # Effect size forest plot + sample size table
+.venv/bin/python run_bodenmiller_benchmark.py           # Steinbock concordance validation
+```
 
 ## Entry Points
 
-- **Run the pipeline**: `python run_analysis.py` (reads `config.json`)
-- **Biological findings**: `notebooks/biological_narratives/kidney_injury_spatial_analysis.ipynb`
-- **Methods**: `METHODS.md`
+- **Methods**: `METHODS.md` (includes panel justification, ablation results, limitations)
 - **Result schema**: `docs/DATA_SCHEMA.md`
 - **Loading results**: `src/utils/canonical_loader.py`
+- **INDRA knowledge base**: `results/biological_analysis/indra_panel_context.json`
 
 ## Pipeline
 
@@ -28,9 +49,9 @@ All parameters live in `config.json`. The `Config` class (`src/config.py`) is th
 | `slic_segmentation.py` | DNA-guided superpixel segmentation |
 | `multiscale_analysis.py` | Multi-scale consistency analysis |
 | `spatial_clustering.py` | Leiden clustering, resolution optimization, stability |
-| `coabundance_features.py` | Product/ratio/covariance features, LASSO selection |
+| `coabundance_features.py` | Product/ratio/covariance features, variance-based selection |
 | `batch_correction.py` | Sham-anchored z-score normalization |
-| `spatial_stats.py` | Moran's I, spatial coherence |
+| `spatial_stats.py` | Spatial coherence, coordinate correlations |
 | `hierarchical_multiscale.py` | Hierarchical tissue organization |
 | `quality_control.py` | QC metrics |
 
@@ -65,7 +86,8 @@ Result files are documented in `docs/DATA_SCHEMA.md`.
 
 ## Limitations
 
-- 9-protein panel limits cell type identification
-- n=2 per timepoint limits statistical power for pairwise comparisons
-- 1μm pixel resolution with ~4μm tissue thickness; co-localization means co-abundance in tissue volume
-- Cross-sectional design; findings are hypothesis-generating
+- **n=2 per group**: Zero FDR-significant findings. Effect sizes reported for follow-up study design.
+- **9-marker panel**: ~79% of tissue unassigned. Coarse lineage identification only.
+- **Near-zero clustering stability**: Bootstrap ARI near zero at all scales.
+- **Cross-sectional design**: Temporal patterns inferred from different subjects.
+- See `METHODS.md` for full limitations discussion.

@@ -33,6 +33,28 @@ IMC data channels classified into functional groups:
 4. **Calibration Channels** (n=2): 130Ba, 131Xe — instrument stability monitoring
 5. **Carrier Gas Channel**: 80ArAr — plasma stability monitoring
 
+## Panel Design and Biological Coverage
+
+### Marker Panel
+Nine protein markers selected to capture the principal cellular axes of acute kidney injury:
+
+| Marker | Gene | Biological Axis |
+|--------|------|----------------|
+| CD45 | PTPRC | Pan-leukocyte (immune infiltration) |
+| CD11b | ITGAM | Myeloid cells (neutrophils, macrophages) |
+| Ly6G | — | Murine neutrophils (no human ortholog in INDRA) |
+| CD140a | PDGFRA | Fibroblasts, mesenchymal cells |
+| CD140b | PDGFRB | Pericytes, vascular mural cells |
+| CD31 | PECAM1 | Endothelial cells |
+| CD34 | CD34 | Endothelial progenitors, hematopoietic stem cells |
+| CD206 | MRC1 | M2/alternatively activated macrophages |
+| CD44 | CD44 | Tissue injury, hyaluronan receptor |
+
+### Knowledge-Grounded Panel Justification
+Panel biological coverage was assessed against the INDRA/CoGEx knowledge graph (queried 2026-02-20). The 8 groundable markers (Ly6G excluded as murine-specific) encode genes with 32 known intra-panel causal relationships, spanning immune infiltration (PTPRC, ITGAM), tissue injury/adhesion (CD44), vascular integrity (PECAM1, CD34), stromal/fibrotic response (PDGFRA, PDGFRB), and anti-inflammatory resolution (MRC1). Five of 8 genes are regulated by TGF-beta, the master regulator of renal fibrosis; 4/8 by VEGF. The panel was not designed for pathway enrichment analysis (n=8 genes precludes meaningful ORA).
+
+CD44 is the only panel gene with a direct AKI disease association in INDRA (MESH:D058186). CD34 and PECAM1 share the kidney-specific GO process "glomerular endothelium development" (GO:0072011). PDGFRA and PDGFRB both participate in the nephrogenesis pathway (WP4823). All 8 grounded genes are expressed in metanephros cortex (UBERON:0010533). See `results/biological_analysis/indra_panel_context.json` for the full INDRA knowledge base.
+
 ## Data Processing Pipeline
 
 ### 1. Background Correction
@@ -159,8 +181,10 @@ With n=2 per group, most comparisons are expected to be non-significant. Effect 
 ### Spatial Neighborhood Enrichment
 - k-nearest neighbors (k=10) neighborhood composition per superpixel
 - Permutation test (n=500): shuffle cell type labels, compare observed vs null neighbor proportions
-- BH FDR correction within each ROI across all focal x neighbor pairs
+- BH FDR correction within each ROI across all focal × neighbor pairs
 - Aggregation: fraction of ROIs with FDR-significant enrichment
+
+**Spatial weight ablation**: Enrichment scores are identical (Pearson r=1.000) between spatial_weight=0.3 (default, coordinates contribute to clustering) and spatial_weight=0 (expression only). This confirms that self-clustering and cross-type enrichment patterns reflect marker co-expression via boolean gating, not spatial weighting artifacts in the clustering step.
 
 ### Spatial Autocorrelation
 Spatial coherence assessed via Spearman correlation of marker expression with spatial coordinates. Moran's I is configured but not currently implemented in the analysis pipeline.
@@ -192,11 +216,11 @@ When multiple acquisition batches detected:
 
 ## Limitations
 
-1. **Sample size (n=2)**: Insufficient for frequentist hypothesis testing. Effect sizes reported with wide CIs that typically cross zero. All findings are hypothesis-generating.
-2. **Marker panel (n=9)**: Limited to coarse lineage identification. ~79% of tissue unassigned. Cannot identify specific T cell subsets, B cells, or full macrophage polarization spectrum.
-3. **Clustering stability**: Near-zero bootstrap stability at all scales. Cluster assignments should be interpreted cautiously.
-4. **Cross-sectional design**: No longitudinal tracking. Temporal patterns are inferred from different subjects.
-5. **Spatial enrichment and spatial weighting**: Clustering uses spatial coordinates as partial input (weight=0.3). Spatial enrichment results should be interpreted alongside ablation results with spatial_weight=0.
+1. **Sample size (n=2 per group)**: Insufficient for frequentist hypothesis testing. Zero FDR-significant differential abundance findings. Effect sizes (Hedges' g) reported with wide CIs that typically cross zero. Pilot power analysis indicates most observed effects require n>=20 per group for 80% power. All findings are hypothesis-generating; effect sizes are provided for follow-up study design, not for confirmatory claims.
+2. **Marker panel (n=9)**: Limited to coarse lineage identification. ~79% of tissue is unassigned (lacks marker combination for annotation). Cannot identify specific T cell subsets, B cells, dendritic cells, or full macrophage polarization spectrum. The panel precludes pathway enrichment analysis (n=8 groundable genes).
+3. **Clustering stability**: Near-zero bootstrap ARI stability at all scales and resolutions. Cluster assignments should be interpreted cautiously; downstream analyses carry this uncertainty.
+4. **Cross-sectional design**: No longitudinal tracking. Temporal patterns are inferred from different subjects at each timepoint.
+5. **INDRA knowledge context**: The INDRA/CoGEx-derived biological context (shared regulators, mediated paths, mechanistic narratives) contextualizes spatial findings against known biology. It does not validate that specific spatial patterns are statistically real — it provides Discussion-level interpretation, not Results-level evidence.
 
 ## Software and Dependencies
 
