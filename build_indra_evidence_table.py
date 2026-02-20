@@ -1,5 +1,5 @@
 """
-INDRA/CoGEx Knowledge-Grounded Evidence Framework
+INDRA/CoGEx Biological Context Layer
 
 Provides mechanistic biological context for IMC spatial proteomics findings
 by integrating multi-layer knowledge from the INDRA/CoGEx knowledge graph.
@@ -9,12 +9,14 @@ Knowledge layers (all pre-queried via CoGEx MCP tools, 2026-02-20):
   2. Gene pairs: INDRA causal statements (Complex, Activation, Inhibition, Phosphorylation)
   3. Shared biology: GO processes shared between co-localizing marker pairs
   4. Kidney-specific: tissue expression in kidney structures, kidney-relevant pathways
-  5. Mechanistic narratives: per-finding biological interpretations
+  5. Shared upstream regulators: common regulators of panel gene subsets (Cypher-queried)
+  6. Mediated paths: key intermediaries connecting panel genes through third parties
+  7. Mechanistic narratives: per-finding biological interpretations
 
 Input: Analysis outputs from differential_abundance and spatial_neighborhoods
 Output:
-  - results/biological_analysis/indra_evidence_table.csv  (enriched findings)
-  - results/biological_analysis/indra_knowledge_base.json  (full knowledge graph)
+  - results/biological_analysis/indra_panel_context.json   (static biological context)
+  - results/biological_analysis/indra_finding_annotations.csv  (filtered annotated findings)
 
 NOTE: All INDRA data was pre-queried via the CoGEx MCP server. This script
 does not make live API calls — it structures pre-queried knowledge.
@@ -376,7 +378,7 @@ INDRA_STATEMENTS = [
      'note': 'CD34+ cells upregulate CD44'},
     # CD44 ↔ MRC1: macrophage biology
     {'source': 'CD44', 'target': 'MRC1', 'type': 'Complex', 'evidence': 3, 'belief': 0.648,
-     'note': 'Physical interaction on macrophage surface — validates CD44+/CD206+ phenotype'},
+     'note': 'Physical interaction on macrophage surface — consistent with CD44+/CD206+ co-expression'},
     # PDGFRB ↔ MRC1
     {'source': 'PDGFRB', 'target': 'MRC1', 'type': 'Complex', 'evidence': 3, 'belief': 0.423,
      'note': 'Pericyte-macrophage interaction complex'},
@@ -515,6 +517,76 @@ KIDNEY_CONTEXT = {
     'metanephros_cortex': ['CD44', 'PDGFRA', 'PDGFRB', 'ITGAM', 'MRC1', 'PTPRC', 'PECAM1', 'CD34'],
     'metanephric_glomerulus': ['PDGFRB', 'ITGAM', 'MRC1', 'CD34'],
 }
+
+
+# ============================================================================
+# LAYER 5: SHARED UPSTREAM REGULATORS
+# Pre-queried via Cypher from INDRA/CoGEx: regulators with targets in panel
+# Identifies common upstream drivers of panel gene subsets
+# ============================================================================
+
+SHARED_UPSTREAM_REGULATORS = {
+    'TGFB1': {
+        'targets': ['PECAM1', 'PDGFRB', 'MRC1', 'CD44', 'CD34'],
+        'count': 5,
+        'relevance': 'Master regulator of renal fibrosis. Regulates 5/8 panel genes spanning endothelial, stromal, immune, and injury axes.'
+    },
+    'VEGFA': {
+        'targets': ['PECAM1', 'PDGFRB', 'CD44', 'CD34'],
+        'count': 4,
+        'relevance': 'Vascular homeostasis and angiogenesis. Regulates both endothelial markers and injury/stromal markers.'
+    },
+    'KDR': {
+        'targets': ['PECAM1', 'PDGFRB', 'PDGFRA', 'CD34'],
+        'count': 4,
+        'relevance': 'VEGFR2 — connects VEGF signaling to endothelial and pericyte biology.'
+    },
+    'LPS': {
+        'targets': ['PECAM1', 'MRC1', 'CD44', 'CD34'],
+        'count': 4,
+        'relevance': 'Innate immune activation. Relevant to DAMP-mediated sterile inflammation in AKI.'
+    },
+    'TNF': {
+        'targets': ['PECAM1', 'CD44', 'CD34'],
+        'count': 3,
+        'relevance': 'Pro-inflammatory cytokine central to AKI pathogenesis.'
+    },
+    'IL6': {
+        'targets': ['MRC1', 'CD44', 'CD34'],
+        'count': 3,
+        'relevance': 'Inflammatory cytokine; CD44 and MRC1 as targets connects injury to resolution.'
+    },
+}
+
+
+# ============================================================================
+# LAYER 6: MEDIATED PATHS
+# Key intermediaries connecting panel genes through third parties
+# Pre-queried via Cypher from INDRA/CoGEx knowledge graph
+# ============================================================================
+
+MEDIATED_PATHS = [
+    {
+        'source': 'CD44', 'intermediary': 'CD74', 'target': 'PDGFRB',
+        'source_evidence': 288, 'target_evidence': 29,
+        'interpretation': 'MIF receptor axis: CD44-CD74 complex mediates MIF signaling to pericytes/fibroblasts.'
+    },
+    {
+        'source': 'CD44', 'intermediary': 'EGFR', 'target': 'PDGFRA',
+        'source_evidence': 218, 'target_evidence': 45,
+        'interpretation': 'RTK crosstalk: CD44 activates EGFR, which cross-talks with PDGFRA signaling.'
+    },
+    {
+        'source': 'CD44', 'intermediary': 'ITGB1', 'target': 'PECAM1',
+        'source_evidence': 238, 'target_evidence': 16,
+        'interpretation': 'Adhesion cascade: CD44-integrin complex mediates leukocyte-endothelial interaction.'
+    },
+    {
+        'source': 'PDGFRB', 'intermediary': 'PDGFB', 'target': 'PDGFRA',
+        'source_evidence': 236, 'target_evidence': 37,
+        'interpretation': 'Ligand-receptor: PDGFRB sequesters PDGF-BB, controlling availability for PDGFRA.'
+    },
+]
 
 
 # ============================================================================
@@ -718,6 +790,25 @@ def count_kidney_contexts(genes: List[str]) -> Dict:
     }
 
 
+def panel_coherence_summary() -> str:
+    """Generate panel coherence summary for Methods section."""
+    grounded = sum(1 for v in MARKER_GENE_MAP.values() if v['grounded'])
+    n_stmts = len(INDRA_STATEMENTS)
+    tgfb_targets = len(SHARED_UPSTREAM_REGULATORS.get('TGFB1', {}).get('targets', []))
+    vegf_targets = len(SHARED_UPSTREAM_REGULATORS.get('VEGFA', {}).get('targets', []))
+
+    return (
+        f"Panel biological coverage was assessed against the INDRA/CoGEx knowledge graph "
+        f"(queried 2026-02-20). The {grounded} groundable markers (Ly6G excluded as murine-specific) "
+        f"encode genes with {n_stmts} known intra-panel causal relationships, spanning immune "
+        f"infiltration (PTPRC, ITGAM), tissue injury/adhesion (CD44), vascular integrity "
+        f"(PECAM1, CD34), stromal/fibrotic response (PDGFRA, PDGFRB), and anti-inflammatory "
+        f"resolution (MRC1). {tgfb_targets}/8 genes are regulated by TGF-beta, the master "
+        f"regulator of renal fibrosis; {vegf_targets}/8 by VEGF. The panel was not designed "
+        f"for pathway enrichment analysis (n=8 genes precludes meaningful ORA)."
+    )
+
+
 # ============================================================================
 # EVIDENCE TABLE BUILDERS
 # ============================================================================
@@ -774,10 +865,10 @@ def build_evidence_for_da_results(da_file: Path) -> List[Dict]:
             'indra_evidence_count': max_evidence,
             'indra_max_belief': round(max_belief, 3),
             'indra_statement_types': ', '.join(sorted(set(all_stmt_types))),
-            'evidence_tier': classify_evidence_tier(max_evidence, max_belief),
+            'indra_context_tier': classify_evidence_tier(max_evidence, max_belief),
             'kidney_context_count': kidney['kidney_context_count'],
             'kidney_contexts': '; '.join(kidney['kidney_contexts']),
-            'mechanistic_note': all_notes[0] if all_notes else '',
+            'biological_context': all_notes[0] if all_notes else '',
         })
 
     return rows
@@ -850,26 +941,35 @@ def build_evidence_for_neighborhood_results(nb_file: Path) -> List[Dict]:
                 'indra_evidence_count': max_evidence,
                 'indra_max_belief': round(max_belief, 3),
                 'indra_statement_types': ', '.join(sorted(set(all_stmt_types))),
-                'evidence_tier': classify_evidence_tier(max_evidence, max_belief),
+                'indra_context_tier': classify_evidence_tier(max_evidence, max_belief),
                 'shared_go_processes': '; '.join(set(shared_procs)),
                 'kidney_context_count': kidney['kidney_context_count'],
                 'kidney_contexts': '; '.join(kidney['kidney_contexts']),
                 'mechanistic_narrative': narrative[:300] if narrative else '',
-                'mechanistic_note': all_notes[0] if all_notes else '',
+                'biological_context': all_notes[0] if all_notes else '',
             })
 
     return rows
 
 
-def build_knowledge_base() -> Dict:
-    """Export full INDRA knowledge base as JSON."""
+def build_panel_context() -> Dict:
+    """Export full INDRA biological context layer as JSON.
+
+    This is static biological context that does NOT depend on analysis results.
+    It captures pre-queried knowledge from the INDRA/CoGEx knowledge graph.
+    """
+    coherence_text = panel_coherence_summary()
     return {
         'metadata': {
             'query_date': '2026-02-20',
             'source': 'INDRA/CoGEx via MCP tools',
             'panel_size': 9,
-            'grounded_genes': 8,
+            'grounded_genes': sum(1 for v in MARKER_GENE_MAP.values() if v['grounded']),
             'total_indra_statements': len(INDRA_STATEMENTS),
+            'shared_biology_entries': len(SHARED_BIOLOGY),
+            'mechanistic_narrative_entries': len(MECHANISTIC_NARRATIVES),
+            'shared_upstream_regulators': len(SHARED_UPSTREAM_REGULATORS),
+            'mediated_paths': len(MEDIATED_PATHS),
             'note': 'All data pre-queried from CoGEx knowledge graph. '
                     'This is biological CONTEXT, not validation.',
         },
@@ -880,9 +980,12 @@ def build_knowledge_base() -> Dict:
             f"{k[0]}_{k[1]}": v for k, v in SHARED_BIOLOGY.items()
         },
         'kidney_context': KIDNEY_CONTEXT,
+        'shared_upstream_regulators': SHARED_UPSTREAM_REGULATORS,
+        'mediated_paths': MEDIATED_PATHS,
         'mechanistic_narratives': {
             f"{k[0]}_{k[1]}": v for k, v in MECHANISTIC_NARRATIVES.items()
         },
+        'panel_coherence_summary': coherence_text,
     }
 
 
@@ -892,22 +995,34 @@ def build_knowledge_base() -> Dict:
 
 def main():
     print("=" * 80)
-    print("INDRA/CoGEx Knowledge-Grounded Evidence Framework")
+    print("INDRA/CoGEx Biological Context Layer")
     print("=" * 80)
 
     output_dir = Path('results/biological_analysis')
 
-    # 1. Export full knowledge base
-    kb = build_knowledge_base()
-    kb_file = output_dir / 'indra_knowledge_base.json'
-    with open(kb_file, 'w') as f:
-        json.dump(kb, f, indent=2, default=str)
-    print(f"\n  Knowledge base: {kb_file}")
+    # 1. Panel coherence summary
+    coherence = panel_coherence_summary()
+    print(f"\n  Panel Coherence Summary (for Methods section):")
+    print(f"  {'─' * 76}")
+    # Wrap at ~76 chars for readability
+    import textwrap
+    for line in textwrap.wrap(coherence, width=76):
+        print(f"  {line}")
+    print(f"  {'─' * 76}")
+
+    # 2. Export static biological context JSON
+    panel_ctx = build_panel_context()
+    ctx_file = output_dir / 'indra_panel_context.json'
+    with open(ctx_file, 'w') as f:
+        json.dump(panel_ctx, f, indent=2, default=str)
+    print(f"\n  Static biological context: {ctx_file}")
     print(f"    {len(INDRA_STATEMENTS)} intra-panel INDRA statements")
     print(f"    {len(SHARED_BIOLOGY)} shared biology entries")
+    print(f"    {len(SHARED_UPSTREAM_REGULATORS)} shared upstream regulators")
+    print(f"    {len(MEDIATED_PATHS)} mediated paths")
     print(f"    {len(MECHANISTIC_NARRATIVES)} mechanistic narratives")
 
-    # 2. Differential abundance evidence
+    # 3. Differential abundance evidence
     da_file = output_dir / 'differential_abundance' / 'temporal_differential_abundance.csv'
     da_rows = []
     if da_file.exists():
@@ -917,7 +1032,7 @@ def main():
     else:
         print(f"\n  Skipping DA (file not found): {da_file}")
 
-    # 3. Neighborhood enrichment evidence
+    # 4. Neighborhood enrichment evidence
     nb_file = output_dir / 'spatial_neighborhoods' / 'temporal_neighborhood_enrichments.csv'
     nb_rows = []
     if nb_file.exists():
@@ -927,46 +1042,62 @@ def main():
     else:
         print(f"\n  Skipping neighborhoods (file not found): {nb_file}")
 
-    # 4. Combine and save evidence table
+    # 5. Filter and save finding annotations CSV
+    # Only keep rows WHERE indra_evidence_count > 0 OR aki_gene_association is True
     all_rows = da_rows + nb_rows
+    original_count = len(all_rows)
 
     if all_rows:
         import pandas as pd
-        evidence_df = pd.DataFrame(all_rows)
-        output_file = output_dir / 'indra_evidence_table.csv'
-        evidence_df.to_csv(output_file, index=False)
-        print(f"\n  Evidence table: {output_file}")
-        print(f"    Total findings: {len(all_rows)}")
+        filtered_rows = [
+            r for r in all_rows
+            if r.get('indra_evidence_count', 0) > 0 or r.get('aki_gene_association', False)
+        ]
+        filtered_count = len(filtered_rows)
+        dropped_count = original_count - filtered_count
 
-        # Summary statistics
-        print(f"\n  Evidence tier distribution:")
-        for tier in ['high', 'medium', 'low', 'none']:
-            count = len([r for r in all_rows if r.get('evidence_tier') == tier])
-            print(f"    {tier}: {count}")
+        annotations_file = output_dir / 'indra_finding_annotations.csv'
+        if filtered_rows:
+            annotations_df = pd.DataFrame(filtered_rows)
+            annotations_df.to_csv(annotations_file, index=False)
+            print(f"\n  Finding annotations: {annotations_file}")
+        else:
+            print(f"\n  No qualifying findings — annotations file not written.")
 
-        aki_count = len([r for r in all_rows if r.get('aki_gene_association')])
-        print(f"  Findings with AKI gene association: {aki_count}")
+        print(f"    Original findings: {original_count}")
+        print(f"    With INDRA evidence or AKI association: {filtered_count}")
+        print(f"    Dropped (indra_evidence_count=0 AND aki_gene_association=False): {dropped_count}")
 
-        # INDRA statement type distribution
-        all_types = []
-        for r in all_rows:
-            if r.get('indra_statement_types'):
-                all_types.extend(r['indra_statement_types'].split(', '))
-        if all_types:
-            from collections import Counter
-            type_counts = Counter(all_types)
-            print(f"\n  INDRA statement types across findings:")
-            for t, c in type_counts.most_common():
-                print(f"    {t}: {c}")
+        # Summary statistics on filtered set
+        if filtered_rows:
+            print(f"\n  Context tier distribution (filtered set):")
+            for tier in ['high', 'medium', 'low', 'none']:
+                count = len([r for r in filtered_rows if r.get('indra_context_tier') == tier])
+                print(f"    {tier}: {count}")
 
-        # Kidney context coverage
-        with_kidney = len([r for r in all_rows if r.get('kidney_context_count', 0) > 0])
-        print(f"\n  Findings with kidney-specific context: {with_kidney}/{len(all_rows)}")
+            aki_count = len([r for r in filtered_rows if r.get('aki_gene_association')])
+            print(f"  Findings with AKI gene association: {aki_count}")
+
+            # INDRA statement type distribution
+            all_types = []
+            for r in filtered_rows:
+                if r.get('indra_statement_types'):
+                    all_types.extend(r['indra_statement_types'].split(', '))
+            if all_types:
+                from collections import Counter
+                type_counts = Counter(all_types)
+                print(f"\n  INDRA statement types across filtered findings:")
+                for t, c in type_counts.most_common():
+                    print(f"    {t}: {c}")
+
+            # Kidney context coverage
+            with_kidney = len([r for r in filtered_rows if r.get('kidney_context_count', 0) > 0])
+            print(f"\n  Findings with kidney-specific context: {with_kidney}/{filtered_count}")
 
     else:
         print("\n  No findings to annotate.")
 
-    # 5. Marker grounding reference
+    # 6. Marker grounding reference
     print(f"\n{'─' * 80}")
     print("Marker Grounding Reference (INDRA/CoGEx)")
     print(f"{'─' * 80}")
@@ -1000,12 +1131,14 @@ def main():
         "PDGFRA-PDGFRB complex (151 evidence, belief=0.89) — strongest intra-panel relationship",
         "ITGAM + PECAM1 share leukocyte adhesion (GO:0007159) — transendothelial migration axis",
         "All 8 grounded genes are expressed in metanephros cortex (UBERON:0010533)",
+        "TGFB1 regulates 5/8 panel genes — master regulator of renal fibrosis context",
+        "VEGFA regulates 4/8 panel genes — vascular homeostasis axis",
     ]
     for i, s in enumerate(summaries, 1):
         print(f"  {i:2d}. {s}")
 
     print(f"\n{'=' * 80}")
-    print("Evidence framework complete.")
+    print("Biological context layer complete.")
     print("This provides MECHANISTIC CONTEXT grounded in the INDRA knowledge graph.")
     print("It contextualizes spatial patterns against known biology —")
     print("it does not validate that specific patterns are statistically real.")
