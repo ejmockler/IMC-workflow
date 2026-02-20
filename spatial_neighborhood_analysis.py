@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 from scipy.spatial import distance_matrix
 from scipy import stats
+from statsmodels.stats.multitest import multipletests
 from collections import Counter
 
 def load_roi_annotations(roi_id: str) -> pd.DataFrame:
@@ -222,7 +223,23 @@ def analyze_roi_neighborhoods(
                 'n_focal_cells': int(np.sum(cell_types == focal_ct))
             })
 
-    return pd.DataFrame(results)
+    results_df = pd.DataFrame(results)
+
+    # Apply BH FDR within this ROI across all focal×neighbor pairs
+    if len(results_df) > 0:
+        valid_mask = results_df['p_value'].notna()
+        if valid_mask.sum() > 0:
+            reject, pvals_corrected, _, _ = multipletests(
+                results_df.loc[valid_mask, 'p_value'],
+                method='fdr_bh'
+            )
+            results_df.loc[valid_mask, 'p_value_fdr'] = pvals_corrected
+            results_df.loc[valid_mask, 'significant_fdr'] = reject
+        else:
+            results_df['p_value_fdr'] = np.nan
+            results_df['significant_fdr'] = False
+
+    return results_df
 
 def load_metadata() -> pd.DataFrame:
     """Load experimental metadata with actual anatomical regions."""
@@ -298,18 +315,25 @@ def aggregate_across_rois(
     # Group and aggregate
     group_cols = ['focal_cell_type', 'neighbor_cell_type', groupby]
 
-    aggregated = combined.groupby(group_cols).agg({
+    agg_dict = {
         'observed_proportion': 'mean',
         'expected_proportion': 'mean',
         'enrichment_score': 'mean',
         'log2_enrichment': 'mean',
-        'p_value': lambda x: np.mean(x < 0.05),  # Fraction significant
+        'p_value': lambda x: np.mean(x < 0.05),  # Fraction raw significant (for comparison)
         'n_focal_cells': 'sum',
         'roi_id': 'count'
-    }).reset_index()
+    }
+
+    # Use FDR-corrected significance if available
+    if 'significant_fdr' in combined.columns:
+        agg_dict['significant_fdr'] = lambda x: np.mean(x)  # Fraction FDR-significant
+
+    aggregated = combined.groupby(group_cols).agg(agg_dict).reset_index()
 
     aggregated.rename(columns={
-        'p_value': 'fraction_significant',
+        'p_value': 'fraction_significant_raw',
+        'significant_fdr': 'fraction_significant_fdr',
         'roi_id': 'n_rois'
     }, inplace=True)
 
@@ -373,16 +397,18 @@ def main():
 
         print(f"\n{timepoint} - Top Spatial Enrichments:")
 
-        # Filter for strong enrichments (>1.5x, fraction_significant >0.5)
+        # Filter for strong enrichments (>1.5x, FDR-significant in >50% of ROIs)
+        fdr_col = 'fraction_significant_fdr' if 'fraction_significant_fdr' in tp_data.columns else 'fraction_significant_raw'
         enriched = tp_data[
             (tp_data['enrichment_score'] > 1.5) &
-            (tp_data['fraction_significant'] > 0.5) &
+            (tp_data[fdr_col] > 0.5) &
             (tp_data['neighbor_cell_type'] != 'unassigned')
         ].sort_values('enrichment_score', ascending=False)
 
         for idx, row in enriched.head(5).iterrows():
-            print(f"  {row['focal_cell_type']:35s} ← {row['neighbor_cell_type']:35s}")
-            print(f"    {row['enrichment_score']:.2f}x enriched | {row['fraction_significant']:.0%} ROIs significant | {row['n_rois']} ROIs")
+            fdr_frac = row.get('fraction_significant_fdr', row.get('fraction_significant_raw', 0))
+            print(f"  {row['focal_cell_type']:35s} <- {row['neighbor_cell_type']:35s}")
+            print(f"    {row['enrichment_score']:.2f}x enriched | {fdr_frac:.0%} ROIs FDR-sig | {row['n_rois']} ROIs")
 
         if len(enriched) == 0:
             print("  (No strong enrichments detected)")
@@ -402,15 +428,17 @@ def main():
 
         print(f"\n{region} - Top Spatial Enrichments:")
 
+        fdr_col = 'fraction_significant_fdr' if 'fraction_significant_fdr' in reg_data.columns else 'fraction_significant_raw'
         enriched = reg_data[
             (reg_data['enrichment_score'] > 1.5) &
-            (reg_data['fraction_significant'] > 0.5) &
+            (reg_data[fdr_col] > 0.5) &
             (reg_data['neighbor_cell_type'] != 'unassigned')
         ].sort_values('enrichment_score', ascending=False)
 
         for idx, row in enriched.head(5).iterrows():
-            print(f"  {row['focal_cell_type']:35s} ← {row['neighbor_cell_type']:35s}")
-            print(f"    {row['enrichment_score']:.2f}x enriched | {row['fraction_significant']:.0%} ROIs significant | {row['n_rois']} ROIs")
+            fdr_frac = row.get('fraction_significant_fdr', row.get('fraction_significant_raw', 0))
+            print(f"  {row['focal_cell_type']:35s} <- {row['neighbor_cell_type']:35s}")
+            print(f"    {row['enrichment_score']:.2f}x enriched | {fdr_frac:.0%} ROIs FDR-sig | {row['n_rois']} ROIs")
 
         if len(enriched) == 0:
             print("  (No strong enrichments detected)")
