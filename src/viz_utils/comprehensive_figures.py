@@ -558,18 +558,10 @@ class ComprehensiveFigureGenerator:
             ax.legend(title='Condition')
             ax.grid(axis='y', alpha=0.3)
             
-            # Add significance testing
-            y_max = ax.get_ylim()[1]
-            for j, protein in enumerate(self.protein_names):
-                sham_data = df[(df['Condition'] == 'Sham') & (df['Protein'] == protein)]['Heterogeneity']
-                injury_data = df[(df['Condition'] == 'Injury') & (df['Protein'] == protein)]['Heterogeneity']
-                
-                if len(sham_data) > 2 and len(injury_data) > 2:
-                    _, p_value = stats.mannwhitneyu(sham_data, injury_data)
-                    if p_value < 0.05:
-                        ax.text(j, y_max * 0.95, '*', ha='center', fontsize=12)
-                    if p_value < 0.01:
-                        ax.text(j, y_max * 0.95, '**', ha='center', fontsize=12)
+            # Note: Significance annotations removed. With n=2 mice per condition,
+            # Mann-Whitney on superpixel-level data is pseudoreplicated.
+            # Effect sizes should be computed at mouse level; see
+            # differential_abundance_analysis.py for correct statistical tests.
         else:
             ax.text(0.5, 0.5, 'Insufficient data for heterogeneity analysis',
                    ha='center', va='center')

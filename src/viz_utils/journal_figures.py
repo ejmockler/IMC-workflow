@@ -360,36 +360,38 @@ class FigureGenerator:
         ax.grid(True, alpha=0.3)
     
     def _plot_significance_heatmap(self, ax, expression_df, proteins, title):
-        """Plot statistical significance heatmap."""
-        # Calculate p-values between timepoints
+        """Plot effect-size heatmap (log2 fold change between consecutive timepoints).
+
+        Note: Does NOT display p-values. With n=2 mice per timepoint, p-values
+        from pixel-level tests are pseudoreplicated and misleading. Effect sizes
+        (fold changes) are descriptive and honest at any sample size.
+        """
         timepoints = sorted(expression_df['injury_day'].unique())
         n_timepoints = len(timepoints)
-        
-        pvalue_matrix = np.ones((len(proteins), n_timepoints - 1))
-        
+
+        fc_matrix = np.zeros((len(proteins), n_timepoints - 1))
+
         for i, protein in enumerate(proteins):
             if protein not in expression_df.columns:
                 continue
-            
+
             for j in range(n_timepoints - 1):
                 t1_data = expression_df[expression_df['injury_day'] == timepoints[j]][protein].dropna()
                 t2_data = expression_df[expression_df['injury_day'] == timepoints[j+1]][protein].dropna()
-                
+
                 if len(t1_data) > 0 and len(t2_data) > 0:
-                    _, pval = stats.ttest_ind(t1_data, t2_data)
-                    pvalue_matrix[i, j] = pval
-        
-        # Plot heatmap
-        im = ax.imshow(pvalue_matrix, cmap='RdYlBu_r', aspect='auto', vmin=0, vmax=0.1)
+                    eps = 1e-6
+                    fc_matrix[i, j] = np.log2((t2_data.mean() + eps) / (t1_data.mean() + eps))
+
+        im = ax.imshow(fc_matrix, cmap='RdBu_r', aspect='auto', vmin=-2, vmax=2)
         ax.set_xticks(range(n_timepoints - 1))
-        ax.set_xticklabels([f'D{timepoints[i]} vs D{timepoints[i+1]}' 
+        ax.set_xticklabels([f'D{timepoints[i]} vs D{timepoints[i+1]}'
                            for i in range(n_timepoints - 1)], rotation=45, ha='right')
         ax.set_yticks(range(len(proteins)))
         ax.set_yticklabels(proteins)
-        ax.set_title(f'{title} Significance', fontweight='bold')
-        
-        # Add colorbar
-        plt.colorbar(im, ax=ax, label='p-value')
+        ax.set_title(f'{title} Log2 Fold Change', fontweight='bold')
+
+        plt.colorbar(im, ax=ax, label='Log2 FC')
     
     def _plot_regional_expression(self, ax, region_df, region_name):
         """Plot expression patterns for a specific region."""
@@ -435,39 +437,38 @@ class FigureGenerator:
         ax.grid(True, alpha=0.3, axis='y')
     
     def _plot_regional_statistics(self, ax, expression_df, proteins, title):
-        """Plot statistical tests for regional differences."""
-        pvalues = []
+        """Plot regional fold-change bar chart (no p-values).
+
+        Displays log2 fold change (Medulla/Cortex) for each protein.
+        P-values removed: with nested ROIs within n=2 mice, t-tests on
+        pixel-level data are pseudoreplicated.
+        """
         fold_changes = []
-        
+        valid_proteins = []
+
         for protein in proteins:
             if protein not in expression_df.columns:
                 continue
-            
+
             cortex_data = expression_df[expression_df['region'] == 'Cortex'][protein].dropna()
             medulla_data = expression_df[expression_df['region'] == 'Medulla'][protein].dropna()
-            
+
             if len(cortex_data) > 0 and len(medulla_data) > 0:
-                _, pval = stats.ttest_ind(cortex_data, medulla_data)
-                pvalues.append(pval)
-                
-                fc = np.log2((medulla_data.mean() + 1) / (cortex_data.mean() + 1))
+                eps = 1e-6
+                fc = np.log2((medulla_data.mean() + eps) / (cortex_data.mean() + eps))
                 fold_changes.append(fc)
-        
-        if pvalues:
-            # Volcano plot
-            ax.scatter(fold_changes, -np.log10(pvalues))
-            ax.axhline(y=-np.log10(0.05), color='red', linestyle='--', alpha=0.5)
+                valid_proteins.append(protein)
+
+        if fold_changes:
+            colors = ['#E63946' if fc > 0 else '#457B9D' for fc in fold_changes]
+            ax.barh(range(len(valid_proteins)), fold_changes, color=colors, alpha=0.8)
+            ax.set_yticks(range(len(valid_proteins)))
+            ax.set_yticklabels(valid_proteins)
             ax.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
-            
-            # Add labels for significant proteins
-            for i, (protein, fc, pval) in enumerate(zip(proteins, fold_changes, pvalues)):
-                if pval < 0.05:
-                    ax.annotate(protein, (fc, -np.log10(pval)), fontsize=7)
-        
-        ax.set_xlabel('Log2 Fold Change')
-        ax.set_ylabel('-Log10(p-value)')
+
+        ax.set_xlabel('Log2 Fold Change (Medulla / Cortex)')
         ax.set_title(f'{title} Regional Differences', fontweight='bold')
-        ax.grid(True, alpha=0.3)
+        ax.grid(True, alpha=0.3, axis='x')
     
     def _get_colormap_for_protein(self, protein: str) -> str:
         """Get appropriate colormap for protein based on its function."""
