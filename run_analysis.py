@@ -61,8 +61,12 @@ def main():
     
     # --- CRITICAL: Pre-analysis validation with practical pipeline ---
     logger.info("=== Starting Pre-Analysis Validation (Practical Approach) ===")
-    
-    practical_pipeline = create_practical_pipeline()
+
+    # Get expected proteins from config for experiment-agnostic validation
+    validation_markers = config.proteins[:6] if len(config.proteins) >= 6 else config.proteins
+    logger.info(f"Validating presence of markers: {validation_markers}")
+
+    practical_pipeline = create_practical_pipeline(expected_proteins=validation_markers)
     validation_report = practical_pipeline.validate_dataset(roi_files)
     
     can_proceed = validation_report.get('can_proceed', False)

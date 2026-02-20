@@ -342,8 +342,14 @@ class ColumnMatcher:
         # For each marker, get simple regex matches only (skip expensive fuzzy matching)
         for marker_name in marker_names:
             # Direct regex pattern match - O(m) per marker
-            pattern = re.compile(f'^{re.escape(marker_name)}\\s*\\([^)]+\\)$', re.IGNORECASE)
-            
+            # Fixed pattern: Insert optional hyphens BEFORE digits to match Ki67 -> Ki-67
+            # Pattern: Ki-?67[_-]?\d*... matches both Ki67_... AND Ki-67_...
+            # But CD3[_-]?\d*... matches CD3_1841... but NOT CD38_...
+            escaped_marker = re.escape(marker_name)
+            # Insert optional hyphen before any digit in the marker name
+            flexible_marker = re.sub(r'(\d)', r'-?\1', escaped_marker)
+            pattern = re.compile(f'^{flexible_marker}[_-]?\\d*[_-]?\\([^)]+\\)', re.IGNORECASE)
+
             for col in available_columns:
                 if pattern.match(col):
                     all_candidates.append(ColumnMatch(

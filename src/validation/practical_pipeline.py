@@ -17,9 +17,11 @@ from scipy import stats
 
 class PracticalValidationPipeline:
     """Simple, practical validation pipeline with transparent logging."""
-    
-    def __init__(self):
+
+    def __init__(self, expected_proteins: Optional[List[str]] = None):
         self.logger = logging.getLogger(__name__)
+        # Default to kidney markers if not specified, but allow config override
+        self.expected_proteins = expected_proteins or ['CD45', 'CD11b', 'CD31', 'CD140a', 'CD140b', 'CD206']
         
     def validate_single_roi(self, roi_file: Path) -> Dict[str, Any]:
         """Validate single ROI with clear metric logging."""
@@ -59,11 +61,10 @@ class PracticalValidationPipeline:
                 self.logger.info(f"  ✓ Cell density: {density:.3f} cells/μm²")
             
             # 3. Protein channel checks
-            expected_proteins = ['CD45', 'CD11b', 'CD31', 'CD140a', 'CD140b', 'CD206']
             found_proteins = []
             missing_proteins = []
-            
-            for protein in expected_proteins:
+
+            for protein in self.expected_proteins:
                 matching_cols = [col for col in roi_data.columns if protein in col]
                 if matching_cols:
                     found_proteins.append((protein, matching_cols[0]))
@@ -211,6 +212,11 @@ class PracticalValidationPipeline:
         }
 
 
-def create_practical_pipeline() -> PracticalValidationPipeline:
-    """Factory function for practical validation pipeline."""
-    return PracticalValidationPipeline()
+def create_practical_pipeline(expected_proteins: Optional[List[str]] = None) -> PracticalValidationPipeline:
+    """Factory function for practical validation pipeline.
+
+    Args:
+        expected_proteins: Optional list of protein markers to validate.
+                          If None, defaults to kidney panel.
+    """
+    return PracticalValidationPipeline(expected_proteins=expected_proteins)

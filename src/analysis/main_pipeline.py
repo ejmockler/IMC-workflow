@@ -474,19 +474,24 @@ class IMCAnalysisPipeline:
             # Extract coordinates (assuming X and Y columns)
             coords = df[['X', 'Y']].values
             
-            # Extract protein channels
-            ion_counts = {}
-            
-            for protein_name in protein_names:
-                # Find matching column (allowing for channel suffix)
-                matching_cols = [col for col in df.columns if protein_name in col]
+            # Extract protein channels using robust column matching
+            from ..utils.column_matching import match_imc_columns
 
-                if matching_cols:
-                    ion_counts[protein_name] = df[matching_cols[0]].values
+            ion_counts = {}
+
+            # Use robust column matching utility
+            protein_matches = match_imc_columns(protein_names, list(df.columns))
+
+            for protein_name in protein_names:
+                matched_col = protein_matches.get(protein_name)
+
+                if matched_col:
+                    ion_counts[protein_name] = df[matched_col].values
                 else:
-                    raise ValueError(f"Critical error: Protein {protein_name} not found in {roi_file_path}. "
-                                   f"Analysis cannot proceed with incomplete data. "
-                                   f"Available columns: {list(df.columns)}")
+                    # Warn but don't fail - allow analysis to proceed with available proteins
+                    warnings.warn(f"Protein {protein_name} not found in {roi_file_path}. "
+                                f"This marker will be excluded from analysis. "
+                                f"Available columns: {list(df.columns)[:10]}...")
 
             # Also load bead/calibration channels for normalization
             if hasattr(self, 'batch_config') and self.batch_config and hasattr(self.batch_config, 'bead_channels'):
