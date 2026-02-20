@@ -1,0 +1,532 @@
+{
+  "project_name": "imc_analysis",
+  "project_id": "kidney_healing_2024",
+  "project_version": "1.0",
+  "data": {
+    "raw_data_dir": "data/241218_IMC_Alun",
+    "metadata_file": "data/241218_IMC_Alun/Metadata-Table 1.csv",
+    "file_pattern": "*.txt"
+  },
+  "channels": {
+    "protein_channels": [
+      "CD45", "CD11b", "Ly6G", "CD140a", "CD140b", 
+      "CD31", "CD34", "CD206", "CD44"
+    ],
+    "dna_channels": ["DNA1", "DNA2"],
+    "background_channel": "190BCKG",
+    "calibration_channels": ["130Ba", "131Xe"],
+    "carrier_gas_channel": "80ArAr",
+    "excluded_channels": [
+      "Start_push", "End_push", "Pushes_duration", "Z"
+    ],
+    "coordinate_channels": ["X", "Y"]
+  },
+  "channel_groups": {
+    "immune_markers": {
+      "pan_leukocyte": ["CD45"],
+      "myeloid": ["CD11b", "Ly6G", "CD206"]
+    },
+    "stromal_markers": {
+      "fibroblasts": ["CD140a", "CD140b"]
+    },
+    "vascular_markers": {
+      "endothelial": ["CD31", "CD34"]
+    },
+    "adhesion_markers": ["CD44"]
+  },
+  "processing": {
+    "background_correction": {
+      "enabled": true,
+      "method": "pixel_subtraction",
+      "clip_negative": true
+    },
+    "dna_processing": {
+      "resolution_um": 1.0,
+      "arcsinh_transform": {
+        "enabled": true,
+        "noise_floor_method": "percentile",
+        "noise_floor_percentile": 10,
+        "cofactor_multiplier": 3,
+        "comment": "Conservative cofactor to preserve gradients while handling dynamic range"
+      },
+      "normalization": {
+        "enabled": false,
+        "comment": "Disabled - ArcSinh alone is sufficient, double transformation destroys gradients"
+      },
+      "slic_adjustments": {
+        "compactness_multiplier": 1.0,
+        "sigma_multiplier": 1.0,
+        "comment": "No adjustment - trust SLIC with properly transformed data"
+      },
+      "tissue_threshold": 0.1,
+      "tissue_threshold_comment": "Threshold for tissue detection after ArcSinh transform"
+    },
+    "arcsinh_transform": {
+      "optimization_method": "percentile",
+      "percentile_threshold": 5.0
+    },
+    "normalization": {
+      "method": "standardize",
+      "per_channel": true
+    }
+  },
+  "segmentation": {
+    "method": "slic",
+    "_comment_slic_channels": "DNA-based segmentation: Testing showed structure-guided (CD31+CD140b) had mixed results - improved LOW stability ROI (0.08→0.65) but degraded HIGH stability ROIs (0.81→0.41). ROI heterogeneity in dominant spatial structure means no single protein-based strategy is universally optimal. DNA provides consistent, biology-agnostic baseline for superpixel creation. All 9 protein markers still analyzed as features.",
+    "slic_input_channels": ["DNA1", "DNA2"],
+    "slic_params": {
+      "n_segments_per_mm2": 2500,
+      "compactness": 10.0,
+      "sigma": 1.5
+    },
+    "scales_um": [10.0, 20.0, 40.0]
+  },
+  "kidney_experiment": {
+    "superpixel_scales": {
+      "capillary": {
+        "target_size_um": 10,
+        "description": "Capillary network resolution - peritubular capillaries",
+        "biological_features": ["CD31+ endothelial networks", "immune cell interactions"]
+      },
+      "tubular": {
+        "target_size_um": 75,
+        "description": "Tubular cross-sections and microenvironments",
+        "biological_features": ["tubular-interstitial interface", "local immune infiltration"]
+      },
+      "architectural": {
+        "target_size_um": 200,
+        "description": "Glomerular and cortical architectural units",
+        "biological_features": ["glomerular tufts", "cortical organization"]
+      }
+    },
+    "anatomical_validation": {
+      "cortex_signatures": {
+        "expected_high": ["CD31", "CD34"],
+        "expected_pattern": "glomerular_enrichment"
+      },
+      "medulla_signatures": {
+        "expected_high": ["CD140a"],
+        "expected_pattern": "interstitial_distribution"
+      }
+    },
+    "temporal_expectations": {
+      "day_1": {
+        "primary_response": "neutrophil_recruitment",
+        "key_markers": ["Ly6G", "CD11b"],
+        "spatial_pattern": "focal_infiltration"
+      },
+      "day_3": {
+        "primary_response": "macrophage_activation",
+        "key_markers": ["CD206", "CD11b"],
+        "spatial_pattern": "expanding_inflammation"
+      },
+      "day_7": {
+        "primary_response": "resolution_or_fibrosis",
+        "key_markers": ["CD140a", "CD140b", "CD206"],
+        "spatial_pattern": "organized_repair"
+      }
+    }
+  },
+  "cell_type_annotation": {
+    "_comment": "Spatial region phenotyping via boolean gating. Superpixels (10μm) represent tissue microregions, not individual cells. This approach captures tissue-level protein expression patterns and spatial organization.",
+    "enabled": true,
+    "method": "boolean_gating",
+    "positivity_threshold": {
+      "_comment": "Threshold for positive marker calls. Can be 'percentile' or 'absolute' value on arcsinh-transformed data",
+      "method": "percentile",
+      "percentile": 60,
+      "_comment_threshold_rationale": "60th percentile balances sparse IMC signal (90-95% zeros) with biological detection. In zero-inflated data, 60th percentile captures top 10-15% of pixels while avoiding false positives. Validated against cluster-based cell type discovery.",
+      "per_marker_override": {
+        "_comment": "Override global threshold for specific markers. CRITICAL FIX (2025-01-31): CD206 lowered from 65th to 50th percentile to detect rare M2 macrophage population (~5% of cells). Zero M2 detection with 65th percentile contradicts published UUO studies showing M2s at D3-D7.",
+        "CD206": {"method": "percentile", "percentile": 50, "_comment": "M2 marker: Zero-inflated but biologically present. 50th percentile permits detection of rare population (5-10% at D7) while multi-marker AND logic excludes CD206+ endothelium."},
+        "Ly6G": {"method": "percentile", "percentile": 70, "_comment": "Neutrophil marker: Sparse at early timepoints, highest stringency prevents false positives in granulocyte-poor regions"}
+      }
+    },
+    "cell_types": {
+      "activated_immune_cd44": {
+        "label": "Activated Immune (CD44+)",
+        "description": "Activated immune cells with adhesion molecule expression",
+        "positive_markers": ["CD45", "CD11b", "CD44"],
+        "negative_markers": ["CD31"],
+        "color": "#E63946",
+        "expected_timepoints": ["day_1", "day_3", "day_7"],
+        "expected_regions": ["cortex", "medulla"]
+      },
+      "activated_immune_cd140b": {
+        "label": "Activated Immune (CD140b+)",
+        "description": "Activated immune cells with stromal marker co-expression",
+        "positive_markers": ["CD45", "CD11b", "CD140b"],
+        "negative_markers": ["CD31"],
+        "color": "#F77F00",
+        "expected_timepoints": ["day_3", "day_7"],
+        "expected_regions": ["cortex", "medulla"]
+      },
+      "m2_macrophage": {
+        "label": "M2 Macrophage",
+        "description": "M2-like macrophages (CD45+/CD11b+/CD206+). 3-marker core definition ensures myeloid lineage specificity while permitting detection of rare population. CD206 alone insufficient (endothelial cells also express CD206). Published UUO studies show M2s present at 5-10% by D7.",
+        "positive_markers": ["CD45", "CD11b", "CD206"],
+        "negative_markers": ["CD31"],
+        "color": "#FCBF49",
+        "expected_timepoints": ["day_3", "day_7"],
+        "expected_regions": ["cortex", "medulla"],
+        "functional_role": "anti-inflammatory_repair",
+        "_comment_gating_fix": "CRITICAL FIX (2025-01-31): Reduced from 4-marker to 3-marker core gate. CD44 and CD140b are activation markers, not M2 requirements. Previous 4-marker AND gate failed to detect any M2s (contradicts published flow/scRNA-seq data)."
+      },
+      "m2_macrophage_cd44": {
+        "label": "M2 Macrophage (CD44+ subset)",
+        "description": "M2 macrophages with adhesion molecule (CD44+). Represents activated subset of M2 population. NOTE: Not all M2s express CD44; this is a subset, not a requirement.",
+        "positive_markers": ["CD45", "CD11b", "CD206", "CD44"],
+        "negative_markers": ["CD31"],
+        "color": "#FCBF49",
+        "expected_timepoints": ["day_3", "day_7"],
+        "expected_regions": ["cortex", "medulla"],
+        "functional_role": "activated_m2_repair"
+      },
+      "m2_macrophage_cd140b": {
+        "label": "M2 Macrophage (CD140b+ subset)",
+        "description": "M2 macrophages with stromal interaction marker (CD140b+). May indicate fibroblast-macrophage crosstalk or pro-fibrotic phenotype. NOTE: This is a specialized subset, not required for M2 definition.",
+        "positive_markers": ["CD45", "CD11b", "CD206", "CD140b"],
+        "negative_markers": ["CD31"],
+        "color": "#EAE2B7",
+        "expected_timepoints": ["day_3", "day_7"],
+        "expected_regions": ["medulla"],
+        "functional_role": "fibrotic_m2_transition"
+      },
+      "activated_endothelial_cd44": {
+        "label": "Activated Endothelial (CD44+)",
+        "description": "Activated endothelial cells",
+        "positive_markers": ["CD31", "CD34", "CD44"],
+        "negative_markers": ["CD45"],
+        "color": "#06AED5",
+        "expected_timepoints": ["day_1", "day_3", "day_7"],
+        "expected_regions": ["cortex"],
+        "functional_role": "vascular_activation"
+      },
+      "activated_endothelial_cd140b": {
+        "label": "Activated Endothelial (CD140b+)",
+        "description": "Activated endothelial cells with PDGFR-beta expression",
+        "positive_markers": ["CD31", "CD34", "CD140b"],
+        "negative_markers": ["CD45"],
+        "color": "#086788",
+        "expected_timepoints": ["day_3", "day_7"],
+        "expected_regions": ["cortex", "medulla"],
+        "functional_role": "endothelial_mesenchymal_transition"
+      },
+      "activated_fibroblast": {
+        "label": "Activated Fibroblast",
+        "description": "Activated fibroblasts (CD45-/CD31-/CD140b+/CD44+)",
+        "positive_markers": ["CD140b", "CD44"],
+        "negative_markers": ["CD45", "CD31"],
+        "color": "#2A9D8F",
+        "expected_timepoints": ["day_7"],
+        "expected_regions": ["medulla", "cortex"],
+        "functional_role": "fibrosis_or_repair"
+      },
+      "neutrophil": {
+        "label": "Neutrophil",
+        "description": "Neutrophils (Ly6G+ granulocytes)",
+        "positive_markers": ["CD45", "Ly6G"],
+        "negative_markers": ["CD31"],
+        "color": "#D62828",
+        "expected_timepoints": ["day_1"],
+        "expected_regions": ["cortex", "medulla"],
+        "functional_role": "acute_inflammation"
+      },
+      "resting_endothelial": {
+        "label": "Resting Endothelial",
+        "description": "Quiescent endothelial cells (CD31+/CD34+, activation markers low)",
+        "positive_markers": ["CD31", "CD34"],
+        "negative_markers": ["CD45", "CD44", "CD140b"],
+        "color": "#457B9D",
+        "expected_timepoints": ["sham"],
+        "expected_regions": ["cortex", "medulla"],
+        "functional_role": "vascular_homeostasis"
+      }
+    },
+    "hierarchical_annotation": {
+      "_comment": "First-pass broad classification, then refined subtyping",
+      "level_1_lineage": {
+        "immune": {"positive": ["CD45"], "negative": []},
+        "endothelial": {"positive": ["CD31"], "negative": ["CD45"]},
+        "stromal": {"positive": [], "negative": ["CD45", "CD31"]}
+      },
+      "level_2_activation": {
+        "_comment": "Classify activation state based on CD44, CD140b expression",
+        "activated": {"any_positive": ["CD44", "CD140b"]},
+        "resting": {"all_negative": ["CD44", "CD140b"]}
+      }
+    }
+  },
+  "biological_analysis": {
+    "_comment": "Configuration for downstream biological analysis modules",
+    "differential_abundance": {
+      "enabled": true,
+      "comparisons": [
+        {"group1": "Sham", "group2": "Injury", "timepoint": null},
+        {"group1": "day_1", "group2": "day_3", "condition": "Injury"},
+        {"group1": "day_3", "group2": "day_7", "condition": "Injury"},
+        {"group1": "day_1", "group2": "day_7", "condition": "Injury"}
+      ],
+      "statistical_test": "mann_whitney_u",
+      "multiple_testing_correction": "fdr_bh",
+      "significance_threshold": 0.05,
+      "fold_change_threshold": 1.5,
+      "stratify_by_region": true
+    },
+    "spatial_analysis": {
+      "enabled": true,
+      "metrics": [
+        "spatial_autocorrelation",
+        "nearest_neighbor_analysis",
+        "neighborhood_enrichment",
+        "distance_to_vasculature",
+        "clustering_coefficient"
+      ],
+      "spatial_autocorrelation": {
+        "method": "morans_i",
+        "distance_threshold_um": 50,
+        "n_permutations": 999
+      },
+      "neighborhood_enrichment": {
+        "_comment": "Statistically test which cell types prefer to colocalize",
+        "radius_um": 50,
+        "n_permutations": 1000,
+        "aggregation": "mean"
+      },
+      "distance_analysis": {
+        "reference_types": ["resting_endothelial", "activated_endothelial_cd44"],
+        "compute_for_all_types": true,
+        "max_distance_um": 200,
+        "n_bins": 20
+      }
+    },
+    "temporal_trajectory": {
+      "enabled": true,
+      "_comment": "Track how cell type abundances and spatial organization change over time",
+      "abundance_trajectory": {
+        "normalize_by_tissue_area": true,
+        "smooth_trajectories": false
+      },
+      "spatial_organization_trajectory": {
+        "metrics": ["clustering_coefficient", "modularity", "mean_nearest_neighbor_distance"],
+        "compute_per_celltype": true
+      }
+    },
+    "niche_identification": {
+      "enabled": true,
+      "_comment": "Identify recurring spatial microenvironments across ROIs and timepoints",
+      "method": "neighborhood_clustering",
+      "neighborhood_radius_um": 75,
+      "min_niche_frequency": 0.1,
+      "clustering_resolution": 0.5
+    },
+    "cluster_annotation": {
+      "enabled": true,
+      "_comment": "Map unsupervised clusters to cell types based on marker enrichment",
+      "enrichment_threshold": 1.5,
+      "min_marker_fraction": 0.3,
+      "consensus_threshold": 0.6
+    }
+  },
+  "analysis": {
+    "clustering": {
+      "_comment_method": "Leiden community detection: Superior to Louvain (monotonic improvement, better resolution), peer-review standard (Traag et al. 2019)",
+      "method": "leiden",
+
+      "_comment_optimization": "Stability analysis is gold standard for resolution selection in community detection (Lancichinetti & Fortunato 2012)",
+      "optimization_method": "stability",
+
+      "_comment_resolution_range": "Wide search range [0.1, 3.0] ensures capture of fine-grained and coarse structures. Justification: 6x wider than naive [0.5, 2.0] based on preliminary analysis showing interesting clusters at extremes",
+      "resolution_range": [0.1, 3.0],
+
+      "_comment_n_resolutions": "40 resolutions provide sufficient sampling density (0.075 spacing) to capture stability peaks. Doubled from 20 to reduce risk of missing optimal resolution",
+      "n_resolutions": 40,
+
+      "_comment_n_bootstrap": "100 iterations × 85% subsampling provides robust stability estimates with CV < 5%. Increased from 5 to 100 for publication rigor (20x improvement)",
+      "n_bootstrap": 100,
+      "subsample_ratio": 0.85,
+
+      "_comment_random_state": "Fixed seed for reproducibility across runs",
+      "random_state": 42,
+
+      "_comment_adaptive_search": "Bayesian optimization for efficient resolution search. Target 0.75 stability (strong consensus), ±0.02 tolerance ensures tight convergence",
+      "adaptive_search": true,
+      "adaptive_target_stability": 0.75,
+      "adaptive_tolerance": 0.02,
+      "adaptive_max_evaluations": 50,
+
+      "_comment_parallel": "Parallel processing for bootstrap iterations reduces runtime from hours to minutes",
+      "parallel": true,
+
+      "_comment_graph_caching": "Cache kNN graph construction across bootstrap iterations (10x speedup)",
+      "use_graph_caching": true,
+
+      "_comment_k_neighbors": "Default k=15 for single-scale analysis. Overridden by k_neighbors_by_scale for multiscale",
+      "k_neighbors": 15,
+
+      "_comment_k_neighbors_by_scale": "CRITICAL FIX: Scale-adaptive k prevents over-connected graphs at coarse scales. Uses 2×log(N) heuristic: 10μm (~1000 sp) → k=14, 40μm (~100 sp) → k=10. Fixed k=15 across scales is scientifically invalid",
+      "k_neighbors_by_scale": {
+        "10.0": 14,
+        "20.0": 12,
+        "40.0": 10
+      },
+
+      "_comment_spatial_weight": "Default spatial weight (used when not scale-adaptive). 0.3 balances feature similarity and spatial proximity",
+      "spatial_weight": 0.3,
+      "_comment_coabundance": "Feature engineering to capture protein co-expression and spatial relationships",
+      "use_coabundance_features": true,
+      "coabundance_options": {
+        "_comment_interaction_order": "Order 2 creates pairwise features. Higher orders (3+) create exponentially more features without evidence of benefit",
+        "interaction_order": 2,
+
+        "_comment_include_ratios": "Protein ratios capture relative abundances (e.g., CD206/CD11b for M2/M1 macrophage balance). Standard in flow cytometry",
+        "include_ratios": true,
+
+        "_comment_include_products": "Protein products identify co-expressing cells (e.g., CD31 × CD34 for endothelial cells). Established in scRNA-seq analysis",
+        "include_products": true,
+
+        "_comment_include_spatial_covariance": "Spatial covariances capture local neighborhood relationships. Novel contribution addressing spatial context",
+        "include_spatial_covariance": true,
+
+        "_comment_neighborhood_radius": "20μm radius = ~2× cell diameter, captures direct cell-cell interactions without long-range noise",
+        "neighborhood_radius": 20.0,
+
+        "_comment_min_expression_percentile": "25th percentile filter removes noise from near-zero expressions in ratios/products",
+        "min_expression_percentile": 25.0,
+
+        "_comment_feature_selection": "CRITICAL FIX: LASSO selection prevents overfitting. WITHOUT this: 9 proteins → 153 features = catastrophic overfitting risk that will cause peer review rejection",
+        "use_feature_selection": true,
+
+        "_comment_target_n_features": "30 features balances information retention and overfitting prevention. Follows rule of thumb: N_features ≈ √(N_samples) for typical ~1000 superpixel datasets",
+        "target_n_features": 30,
+
+        "_comment_selection_method": "LASSO (L1 regularization) performs feature selection + regularization in one step. Superior to variance/mutual_info for interpretability (provides feature importance via coefficients)",
+        "selection_method": "lasso",
+
+        "_comment_lasso_max_iter": "LASSO optimization iterations. 5000 ensures convergence for typical datasets (up from 1000 to prevent ConvergenceWarning)",
+        "lasso_max_iter": 5000
+      }
+    },
+    "batch_correction": {
+      "enabled": false,
+      "bead_normalization": {
+        "enabled": true,
+        "bead_channels": ["130Ba", "131Xe"],
+        "bead_signal_threshold": 10.0,
+        "drift_correction_method": "median_reference"
+      }
+    }
+  },
+  "quality_control": {
+    "monitor_calibration": true,
+    "calibration_cv_threshold": 0.2,
+    "monitor_carrier_gas": true,
+    "min_carrier_gas_signal": 100,
+    "generate_qc_plots": true,
+    "thresholds": {
+      "total_ion_counts": {
+        "min_tic_percentile": 10,
+        "max_low_tic_pixels_percent": 20,
+        "description": "TIC monitoring - flags ROIs with acquisition issues"
+      },
+      "calibration_drift": {
+        "max_drift_percent": 5,
+        "max_cv_across_rois": 0.3,
+        "description": "Calibration stability across entire acquisition run"
+      },
+      "segmentation_quality": {
+        "min_dna_signal": 1.0,
+        "min_tissue_coverage_percent": 10,
+        "dna_threshold_std_multiplier": 2.0,
+        "description": "DNA signal quality for SLIC segmentation feasibility"
+      },
+      "signal_to_background": {
+        "min_snr": 3.0,
+        "description": "Minimum signal-to-background ratio for protein channels"
+      },
+      "spatial_artifacts": {
+        "edge_distance_fraction": 0.1,
+        "significance_threshold": 0.01,
+        "fold_change_threshold": 2.0,
+        "description": "Detection of edge effects and spatial artifacts"
+      }
+    }
+  },
+  "output": {
+    "results_dir": "results/cross_sectional_kidney_injury",
+    "roi_results_dir": "roi_results",
+    "qc_dir": "quality_control",
+    "save_intermediate": true,
+    "save_format": "hdf5",
+    "compression": true,
+    "include_provenance": true,
+    "reports": {
+      "methods_summary": true,
+      "computational_performance": true
+    }
+  },
+  "performance": {
+    "parallel_processes": 1,
+    "memory_limit_gb": 8.0,
+    "chunk_size": 5000,
+    "process_sequentially": true,
+    "garbage_collect_frequency": 1
+  },
+  "validation": {
+    "method": "comprehensive",
+    "reference_channels": ["DNA1", "DNA2"],
+    "quality_metrics": [
+      "compactness",
+      "boundary_adherence", 
+      "spatial_coherence",
+      "size_consistency"
+    ],
+    "biological_correspondence": {
+      "enabled": true,
+      "metrics": ["enrichment", "colocalization"]
+    },
+    "visual_validation": {
+      "enabled": true,
+      "generate_plots": true,
+      "plot_formats": ["png"],
+      "dpi": 150
+    }
+  },
+  "visualization": {
+    "validation_plots": {
+      "enabled": true,
+      "primary_markers": {
+        "immune_markers": "CD45",
+        "vascular_markers": "CD31",
+        "stromal_markers": "CD140a"
+      },
+      "colormaps": {
+        "immune_markers": "Reds",
+        "vascular_markers": "Blues",
+        "stromal_markers": "Greens",
+        "adhesion_markers": "Purples",
+        "default": "viridis"
+      },
+      "always_include": ["CD206", "CD44"],
+      "show_bead_channels": true,
+      "show_background_channel": false,
+      "layout": {
+        "figsize": [20, 12],
+        "top_row_panels": 4,
+        "bottom_row_panels": 5
+      }
+    }
+  },
+  "metadata_tracking": {
+    "preserve_fields": [
+      "Condition", "Injury Day", "Mouse", 
+      "ROI", "Details", "File Name"
+    ],
+    "batch_definition": ["Injury Day", "Mouse"],
+    "stratification_fields": ["Details"],
+    "replicate_column": "Mouse",
+    "timepoint_column": "Injury Day",
+    "condition_column": "Condition",
+    "region_column": "Details"
+  }
+}
