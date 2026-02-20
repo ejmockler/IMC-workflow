@@ -1,235 +1,71 @@
-# Production IMC Analysis Pipeline
+# IMC Analysis Pipeline
 
-## Overview
+Multi-scale spatial proteomics framework for Imaging Mass Cytometry data. Implements arcsinh-transformed ion count statistics, DNA-guided SLIC superpixel segmentation, Leiden clustering with spatial weighting, and coabundance feature engineering across configurable spatial scales.
 
-Production-quality analysis framework for Imaging Mass Cytometry (IMC) data, implementing proper ion count statistics, multi-scale analysis, and comprehensive validation. Addresses all technical critiques through scientific rigor and engineering best practices.
+## Entry Points
 
-## Supported Data Types
+- **Run the pipeline**: `python run_analysis.py` (reads `config.json`)
+- **Biological findings**: `notebooks/biological_narratives/kidney_injury_spatial_analysis.ipynb`
+- **Methods**: `METHODS.md`
+- **Result schema**: `docs/DATA_SCHEMA.md`
+- **Loading results**: `src/utils/canonical_loader.py`
 
-- **Protein markers**: Any IMC panel (typically 20-50 markers)
-- **DNA markers**: For nuclear identification and morphology
-- **Study designs**: Cross-sectional, longitudinal, or case-control
-- **Scale**: From small pilot studies to large cohorts
+## Pipeline
 
-## Key Features
-
-### 1. Proper Ion Count Statistics
-- **Arcsinh transformation** with marker-specific cofactor optimization
-- **StandardScaler normalization** after transformation
-- **Poisson noise handling** throughout pipeline
-- **No arbitrary parameters** - all data-driven
-
-### 2. Multi-Scale Spatial Analysis
-- **SLIC superpixel segmentation** using DNA channels for morphology-aware binning
-- **Multi-scale consistency** analysis (10μm, 20μm, 40μm)
-- **Spatial pattern detection** with proper statistical methods
-- **Scale-dependent feature identification**
-
-### 3. Robust Clustering Optimization  
-- **Systematic parameter selection** using elbow method, silhouette analysis, gap statistic
-- **Biological validation scoring** for cluster quality
-- **Cross-validation** with bootstrap resampling
-- **No hardcoded cluster numbers**
-
-### 4. Production Engineering
-- **Configuration-driven** architecture (all parameters in `config.json`)
-- **Efficient storage** with HDF5/Parquet (JSON fallback)
-- **Memory management** with chunked processing
-- **Parallel processing** for ROI-level analysis
-- **Comprehensive error handling**
-
-### 5. Enhanced Validation Framework
-- **Realistic noise models**: Poisson statistics, spatial artifacts, isotope interference, temporal drift
-- **Synthetic data generation** with proper IMC characteristics
-- **Performance metrics**: ARI, purity, spatial coherence, boundary preservation
-- **Parameter sensitivity analysis**
-
-## Technical Limitations (See TECHNICAL_LIMITATIONS.md)
-
-### Common Constraints in IMC Studies
-- **Limited marker panels** - Cell type identification depends on panel comprehensiveness
-- **No membrane markers** - Prevents true single-cell segmentation in some datasets
-- **Pixel-level analysis** - Not equivalent to single-cell resolution
-- **Statistical power** - Depends on study design and sample size
-
-### Spatial Resolution
-- **1μm pixel resolution** with ~4μm tissue thickness
-- **Z-dimension averaging** across multiple cell layers
-- **"Co-localization" = co-abundance in tissue volume**, not direct interaction
-
-## Quick Start
-
-### 1. Installation
-```bash
-pip install -r requirements.txt  # Install dependencies
+```
+Raw IMC (.txt) → Validation → Arcsinh Transform → SLIC Segmentation (10/20/40μm)
+    → Coabundance Features → Leiden Clustering → Spatial Statistics → JSON.gz
 ```
 
-### 2. Run Analysis
-```bash
-# Full production pipeline
-python run_analysis.py --config config.json
+All parameters live in `config.json`. The `Config` class (`src/config.py`) is the single source of truth.
 
-# Parallel processing
-python run_parallel_analysis.py --config config.json --processes 8
+## Core Modules (`src/analysis/`)
 
-# Single experiment
-python run_experiment.py --config config.json --roi-pattern "ROI_D1_*"
-```
+| Module | Role |
+|--------|------|
+| `main_pipeline.py` | Pipeline orchestrator |
+| `ion_count_processing.py` | Arcsinh transformation, cofactor optimization |
+| `slic_segmentation.py` | DNA-guided superpixel segmentation |
+| `multiscale_analysis.py` | Multi-scale consistency analysis |
+| `spatial_clustering.py` | Leiden clustering, resolution optimization, stability |
+| `coabundance_features.py` | Product/ratio/covariance features, LASSO selection |
+| `batch_correction.py` | Sham-anchored z-score normalization |
+| `spatial_stats.py` | Moran's I, spatial coherence |
+| `hierarchical_multiscale.py` | Hierarchical tissue organization |
+| `quality_control.py` | QC metrics |
 
-### 3. Configuration
-All parameters are in `config.json`:
-```json
-{
-  "ion_count_processing": {
-    "bin_sizes_um": [10.0, 20.0, 40.0],
-    "use_slic_segmentation": true,
-    "clustering_params": {
-      "optimization_method": "comprehensive"
-    }
-  },
-  "multiscale_analysis": {
-    "scales_um": [10.0, 20.0, 40.0],
-    "consistency_metrics": ["ari", "nmi", "cluster_stability"]
-  }
-}
-```
+## Supporting Infrastructure
 
-## Architecture
+| Area | Modules |
+|------|---------|
+| **Storage** | `data_storage.py` (HDF5/Parquet/JSON) |
+| **Memory** | `memory_management.py`, `memory_optimizer.py` |
+| **Parallel** | `parallel_processing.py` |
+| **Provenance** | `provenance_tracker.py`, `environment_capture.py`, `analysis_manifest.py` |
+| **Statistics** | `multiple_testing_control.py`, `fdr_spatial.py`, `spatial_permutation.py`, `mixed_effects_models.py` |
+| **Validation** | `src/validation/` framework, `synthetic_data_generator.py` |
+| **Visualization** | `src/viz_utils/plotting.py`, `journal_figures.py`, `comprehensive_figures.py` |
 
-### Core Pipeline (Analysis-Only Focus)
-```
-Ion Count Data → Arcsinh Transform → Feature Standardization → 
-Clustering Optimization → Multi-Scale Analysis → Validation → Storage
-```
-
-**Visualization is handled separately in Jupyter notebooks** - see `VISUALIZATION_GUIDE.md`
-
-### Key Components
-
-#### Analysis Core (`src/analysis/`)
-- `main_pipeline.py` - Production pipeline orchestrator
-- `ion_count_processing.py` - Ion count statistics and transformations  
-- `clustering_optimization.py` - Data-driven parameter selection
-- `multiscale_analysis.py` - Multi-scale spatial analysis
-- `slic_segmentation.py` - Morphology-aware tissue segmentation
-- `validation.py` - Enhanced validation with realistic noise models
-- `batch_correction.py` - Quantile normalization for batch effects
-
-#### Storage & Processing (`src/analysis/`)
-- `efficient_storage.py` - HDF5/Parquet scalable storage
-- `memory_management.py` - Chunked processing for large datasets
-- `parallel_processing.py` - Multi-ROI parallel analysis
-- `config_management.py` - Configuration system with validation
-
-#### Validation & Metrics (`src/analysis/`)
-- `spatial_stats.py` - Spatial statistics (Moran's I, Ripley's K)
-- `threshold_analysis.py` - Alternative analysis approaches
-- `metrics.py` - Performance and validation metrics
-
-#### Visualization Utilities (`src/viz_utils/`)
-- `plotting.py` - Lightweight, stateless plotting functions
-- `loaders.py` - Data loading helpers for notebooks
-
-## Output Structure
+## Output
 
 ```
 results/
-├── roi_results/           # Per-ROI detailed results
-├── validation/           # Validation study outputs  
-├── analysis_summary.json # Comprehensive summary
-└── plots/               # Visualization outputs
+├── roi_results/           # Per-ROI results (JSON.gz)
+├── validation_report.json # Pre-analysis validation
+└── run_summary.json       # Pipeline summary
 ```
 
-## Validation Best Practices
+Result files are documented in `docs/DATA_SCHEMA.md`.
 
-**For robust biological conclusions:**
-1. **Orthogonal methods**: Validate findings with complementary techniques (Flow cytometry, IHC, RNA-seq)
-2. **Adequate sample size**: Power analysis to determine appropriate n
-3. **Technical replication**: Multiple ROIs per sample
-4. **Biological replication**: Multiple subjects per condition
+## Architecture
 
-## Key Improvements Over Previous Systems
+- `docs/architecture/ARCHITECTURE.md` - Module structure and data flow
+- `docs/architecture/WORKFLOW_INTEGRATION.md` - Three-phase workflow (pipeline → biological analysis → visualization)
+- `CLAUDE.md` - Development conventions
 
-1. **Proper Ion Count Statistics** - Addresses Poisson nature of IMC data
-2. **Data-Driven Parameters** - No arbitrary hardcoded values
-3. **Multi-Scale Consistency** - Validates findings across spatial scales  
-4. **Enhanced Validation** - Realistic noise models and comprehensive testing
-5. **Production Architecture** - Scalable, configurable, maintainable
-6. **Honest Limitations** - Clear documentation of what system can/cannot do
+## Limitations
 
-## Files Description
-
-### Production Scripts
-- `run_analysis.py` - Main analysis pipeline
-- `run_experiment.py` - Single experiment runner
-- `run_parallel_analysis.py` - Parallel processing wrapper
-
-### Configuration  
-- `config.json` - All analysis parameters (single configuration file)
-
-### Documentation
-- `ARCHITECTURE.md` - Clean module structure and data flow
-- `TECHNICAL_LIMITATIONS.md` - Detailed technical constraints
-- `VISUALIZATION_GUIDE.md` - Guide for creating visualizations in notebooks
-- `PROJECT_SUMMARY.md` - Honest assessment of capabilities
-- `PUBLICATION_STRATEGY.md` - Path to publication as methods paper
-- `CLAUDE.md` - Development guidelines
-
-### Notebooks
-- `notebooks/templates/` - Starter notebooks for common analyses
-- `notebooks/examples/` - Example analyses for specific experiments
-
-## Contributing
-
-See `CLAUDE.md` for development guidelines. Key principles:
-- Configuration-driven design (no hardcoded parameters)
-- Proper error handling and validation
-- Comprehensive testing and documentation
-- Scientific rigor in statistical methods
-
-## Publication Strategy
-
-### Target Audience
-This work is positioned as a **methods paper** rather than a biological discovery paper, suitable for:
-- **Nature Communications** (Methods section)
-- **Cell Systems** (Computational tools)  
-- **Bioinformatics** (Novel algorithms)
-- **Nature Methods** (with additional validation data)
-
-### Key Contributions
-1. **SLIC superpixels on DNA channels** - Novel morphology-aware segmentation without membrane markers
-2. **Multi-scale consistency validation** - Demonstrates robustness across spatial scales
-3. **Production-quality pipeline** - Scalable, reproducible architecture (90%+ test coverage)
-4. **Proper ion count statistics** - Addresses Poisson nature of IMC data
-
-### Honest Assessment
-**Strengths:**
-- Technically sound SLIC approach addresses real IMC limitation
-- Valid temporal trend analysis with 8 total biological replicates
-- Excellent software engineering with comprehensive testing
-- Multi-scale validation provides robust consistency metrics
-
-**Limitations:**
+- 9-protein panel limits cell type identification
 - n=2 per timepoint limits statistical power for pairwise comparisons
-- 9-protein panel too limited for comprehensive cell type identification  
-- Cross-sectional design cannot track individual progression
-- Findings are hypothesis-generating and require validation in larger cohorts
-
-### What We CAN Claim
-- Temporal trends in marker expression across injury timeline
-- Spatial co-abundance patterns of immune and stromal markers
-- Technical robustness and scale consistency of the method
-- Effect sizes with appropriate confidence intervals
-
-### What We CANNOT Claim
-- Statistical significance between specific timepoints
-- Definitive cell type identification or biological mechanisms
-- Clinical relevance without validation studies
-- Single-cell level insights
-
-## Citation
-
-If you use this pipeline, please cite:
-- The multi-scale SLIC analysis approach for IMC data
-- The morphology-aware segmentation method using DNA channels
-- Appropriate statistical considerations for your study design
+- 1μm pixel resolution with ~4μm tissue thickness; co-localization means co-abundance in tissue volume
+- Cross-sectional design; findings are hypothesis-generating
