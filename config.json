@@ -400,8 +400,8 @@
         "_comment_target_n_features": "30 features balances information retention and overfitting prevention. Follows rule of thumb: N_features ≈ √(N_samples) for typical ~1000 superpixel datasets",
         "target_n_features": 30,
 
-        "_comment_selection_method": "LASSO (L1 regularization) performs feature selection + regularization in one step. Superior to variance/mutual_info for interpretability (provides feature importance via coefficients)",
-        "selection_method": "lasso",
+        "_comment_selection_method": "Variance-based selection avoids circularity of LASSO with PCA-derived target. Selects features with highest variance, which preserves biological signal without self-referential prediction.",
+        "selection_method": "variance",
 
         "_comment_lasso_max_iter": "LASSO optimization iterations. 5000 ensures convergence for typical datasets (up from 1000 to prevent ConvergenceWarning)",
         "lasso_max_iter": 5000

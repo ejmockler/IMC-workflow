@@ -417,7 +417,8 @@ def stability_analysis(
     adaptive_search: bool = False,
     adaptive_target_stability: float = 0.6,
     adaptive_tolerance: float = 0.05,
-    adaptive_max_evaluations: Optional[int] = None
+    adaptive_max_evaluations: Optional[int] = None,
+    spatial_weight: float = 0.3
 ) -> Dict:
     """
     Analyze clustering stability across resolution parameters.
@@ -452,7 +453,7 @@ def stability_analysis(
     mean_n_clusters = []
     
     base_knn_graph = None
-    cached_spatial_weight = 0.3
+    cached_spatial_weight = spatial_weight
 
     if use_graph_caching and method == 'leiden' and n_samples > 1:
         with PerformanceTimer("stability_prepare_features", log_result=False):
