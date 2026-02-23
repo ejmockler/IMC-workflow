@@ -65,7 +65,16 @@ class Config:
         """
         self.config_path = Path(config_path)
         self.raw = self._load_config()
-        
+
+        # Pydantic schema validation (warn but don't block for backward compat)
+        try:
+            from .config_schema import load_validated_config
+            load_validated_config(str(self.config_path))
+        except ImportError:
+            pass  # pydantic not installed — skip validation
+        except Exception as e:
+            warnings.warn(f"Config schema validation warning: {e}", UserWarning)
+
         # Data configuration
         self.data = self.raw.get('data', {})
         self.data_dir = Path(self.data.get('raw_data_dir', 'data/241218_IMC_Alun'))

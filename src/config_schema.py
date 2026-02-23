@@ -244,16 +244,7 @@ class ClusteringConfig(BaseModel):
     @field_validator('spatial_weight')
     @classmethod
     def validate_spatial_weight_reasonable(cls, v):
-        """
-        Validate spatial weight is reasonable for IMC data.
-
-        IMC has both feature and spatial information - should use both.
-        """
-        if v == 0.0:
-            raise ValueError(
-                "spatial_weight=0.0 ignores all spatial information. "
-                "IMC data has rich spatial structure - use spatial_weight > 0."
-            )
+        """Validate spatial weight is reasonable for IMC data."""
         if v == 1.0:
             raise ValueError(
                 "spatial_weight=1.0 ignores all feature information. "

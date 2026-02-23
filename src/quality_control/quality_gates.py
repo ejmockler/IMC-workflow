@@ -297,7 +297,8 @@ def create_quality_gate_engine(
         min_ion_count_quality=min_ion_count_quality,
         **kwargs
     )
-    return QualityGateEngine(thresholds)
+    config = QCConfig(thresholds=thresholds)
+    return QualityGateEngine(config)
 
 
 def evaluate_roi_for_analysis(
