@@ -84,25 +84,31 @@ from .batch_correction import (
 
 # Note: Validation moved to src/validation/core for clean separation
 
-# Reproducibility framework
-from .reproducibility_framework import (
-    ReproducibilityFramework,
-    run_reproducibility_test,
-    EnvironmentFingerprint,
-    ReproducibilityResult
-)
+# Reproducibility framework (lazy-loaded — not needed by main_pipeline.py)
+try:
+    from .reproducibility_framework import (
+        ReproducibilityFramework,
+        run_reproducibility_test,
+        EnvironmentFingerprint,
+        ReproducibilityResult
+    )
+except ImportError:
+    pass
 
-# Environment capture utilities
-from .environment_capture import (
-    capture_execution_environment,
-    save_environment_snapshot,
-    validate_environment_compatibility,
-    EnvironmentCapture,
-    EnvironmentFingerprint as EnvFingerprint,
-    SystemInfo,
-    ComputationalEnvironment,
-    DependencyVersions
-)
+# Environment capture utilities (lazy-loaded — not needed by main_pipeline.py)
+try:
+    from .environment_capture import (
+        capture_execution_environment,
+        save_environment_snapshot,
+        validate_environment_compatibility,
+        EnvironmentCapture,
+        EnvironmentFingerprint as EnvFingerprint,
+        SystemInfo,
+        ComputationalEnvironment,
+        DependencyVersions
+    )
+except ImportError:
+    pass
 
 # Parallel processing
 from .parallel_processing import (
@@ -119,18 +125,21 @@ from .spatial_stats import (
     spatial_bootstrap
 )
 
-# Synthetic data generation for validation
-from .synthetic_data_generator import (
-    SyntheticDataGenerator,
-    SyntheticDataConfig,
-    SyntheticDataValidator,
-    ProteinProperties,
-    TissueRegion,
-    SpatialPattern,
-    TissueType,
-    create_example_datasets,
-    validate_synthetic_dataset
-)
+# Synthetic data generation for validation (lazy-loaded — not needed by main_pipeline.py)
+try:
+    from .synthetic_data_generator import (
+        SyntheticDataGenerator,
+        SyntheticDataConfig,
+        SyntheticDataValidator,
+        ProteinProperties,
+        TissueRegion,
+        SpatialPattern,
+        TissueType,
+        create_example_datasets,
+        validate_synthetic_dataset
+    )
+except ImportError:
+    pass
 
 # Threshold analysis
 from .threshold_analysis import (
@@ -185,42 +194,42 @@ __all__ = [
     'perform_clustering',
     'estimate_optimal_cofactor',
     'optimize_cofactors_for_dataset',
-    
+
     # Spatial Clustering (NEW)
     'perform_spatial_clustering',
     'stability_analysis',
     'compute_spatial_coherence',
     'select_resolution_headless',
-    
+
     # Co-abundance Features
     'generate_coabundance_features',
     'compute_local_covariance',
     'select_informative_coabundance_features',
     'compute_protein_modules',
     'create_hierarchical_features',
-    
+
     # Hierarchical Multi-scale
     'build_multiscale_hierarchy',
     'coarsen_graph',
     'add_neighbor_composition_features',
     'compute_texture_features',
     'validate_hierarchy',
-    
+
     # Memory Management
     'MemoryEfficientPipeline',
     'estimate_memory_requirements',
     'check_memory_availability',
     'get_memory_profile',
-    
+
     # Configuration Management
     # Config management consolidated in src/config.py
-    
+
     # SLIC Segmentation
     'slic_pipeline',
     'prepare_dna_composite',
     'perform_slic_segmentation',
     'aggregate_to_superpixels',
-    
+
     # Multi-scale Analysis
     'perform_multiscale_analysis',
     'compute_scale_consistency',
@@ -228,24 +237,22 @@ __all__ = [
     'summarize_multiscale_analysis',
     'compute_adjusted_rand_index',
     'compute_normalized_mutual_info',
-    
+
     # Batch Correction
     'sham_anchored_normalize',
     'detect_batch_effects',
-    'correct_batch_effects',
-    
-    
+
     # Parallel Processing
     'parallel_roi_analysis',
     'create_roi_batch_processor',
     'get_optimal_process_count',
-    
+
     # Spatial Statistics
     'compute_spatial_correlation',
     'compute_region_difference',
     'compute_ripleys_k',
     'spatial_bootstrap',
-    
+
     # Synthetic Data Generation
     'SyntheticDataGenerator',
     'SyntheticDataConfig',
@@ -256,17 +263,17 @@ __all__ = [
     'TissueType',
     'create_example_datasets',
     'validate_synthetic_dataset',
-    
+
     # Threshold Analysis
     'extract_threshold_features',
     'compute_spatial_clustering',
-    
+
     # Reproducibility Framework
     'ReproducibilityFramework',
     'run_reproducibility_test',
-    'EnvironmentFingerprint', 
+    'EnvironmentFingerprint',
     'ReproducibilityResult',
-    
+
     # Environment Capture
     'capture_execution_environment',
     'save_environment_snapshot',
@@ -276,7 +283,7 @@ __all__ = [
     'SystemInfo',
     'ComputationalEnvironment',
     'DependencyVersions',
-    
+
     # Multiple Testing Control
     'HierarchicalMultipleTestingControl',
     'HierarchicalTestingConfig',
@@ -286,13 +293,11 @@ __all__ = [
     'create_standard_hypothesis_families',
     'integrate_with_multiscale_analysis',
     'bootstrap_effect_size_testing',
-    
+
     # Note: Validation metrics moved to src/validation/ framework
-    
+
     # Main Pipeline
-    'run_production_pipeline',
-    'validate_pipeline_inputs',
-    'generate_pipeline_report',
+    'run_complete_analysis',
 ]
 
 # Add storage components if available
@@ -300,7 +305,7 @@ if _storage_available:
     __all__.extend([
         'create_storage_backend',
         'HDF5Storage',
-        'ParquetStorage', 
+        'ParquetStorage',
         'HybridStorage',
         'CompressedJSONStorage'
     ])
