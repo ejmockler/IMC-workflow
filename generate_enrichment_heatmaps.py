@@ -17,14 +17,16 @@ import matplotlib.patches as mpatches
 from matplotlib.colors import TwoSlopeNorm
 import matplotlib.ticker as ticker
 
+from src.utils.paths import get_paths
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-DATA_PATH = (
-    "results/biological_analysis/spatial_neighborhoods/"
-    "temporal_neighborhood_enrichments.csv"
+_PATHS = get_paths()
+DATA_PATH = str(
+    _PATHS.spatial_neighborhoods_dir / "temporal_neighborhood_enrichments.csv"
 )
-OUT_DIR = "results/figures"
+OUT_DIR = str(_PATHS.figures_dir)
 OUT_FILE = os.path.join(OUT_DIR, "neighborhood_enrichment_temporal.png")
 
 os.makedirs(OUT_DIR, exist_ok=True)

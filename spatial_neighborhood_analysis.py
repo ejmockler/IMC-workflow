@@ -22,9 +22,15 @@ from scipy import stats
 from statsmodels.stats.multitest import multipletests
 from collections import Counter
 
+from src.utils.metadata import parse_roi_metadata as _parse_roi_metadata_canonical
+from src.utils.paths import get_paths
+
+_PATHS = get_paths()
+
+
 def load_roi_annotations(roi_id: str) -> pd.DataFrame:
     """Load cell type annotations for a single ROI."""
-    annotation_file = Path('results/biological_analysis/cell_type_annotations') / f'{roi_id}_cell_types.parquet'
+    annotation_file = _PATHS.annotations_dir / f'{roi_id}_cell_types.parquet'
 
     if not annotation_file.exists():
         return None
@@ -241,54 +247,14 @@ def analyze_roi_neighborhoods(
 
     return results_df
 
-def load_metadata() -> pd.DataFrame:
-    """Load experimental metadata with actual anatomical regions."""
-    metadata_file = Path('data/241218_IMC_Alun/Metadata-Table 1.csv')
-    metadata = pd.read_csv(metadata_file)
-    metadata.columns = metadata.columns.str.strip()
-    return metadata
-
-_METADATA_CACHE = None
-
 def parse_roi_metadata(roi_id: str) -> dict:
     """
-    Extract metadata from ROI ID using actual metadata CSV.
+    Extract metadata from ROI ID using the canonical metadata parser.
 
-    Note: M1/M2 in filename = Mouse 1/Mouse 2 (biological replicates), NOT regions!
-    Actual anatomical region comes from metadata "Details" column.
+    Delegates to src.utils.metadata.parse_roi_metadata.
+    Returns dict with keys: timepoint, region (and others).
     """
-    global _METADATA_CACHE
-
-    if _METADATA_CACHE is None:
-        _METADATA_CACHE = load_metadata()
-
-    # Remove 'roi_' prefix if present
-    file_name = roi_id.replace('roi_', '')
-
-    # Look up actual anatomical region from metadata
-    metadata_row = _METADATA_CACHE[_METADATA_CACHE['File Name'] == file_name]
-
-    if len(metadata_row) == 0:
-        # Fallback parsing for ROIs not in metadata
-        parts = roi_id.split('_')
-        if 'Sam' in roi_id:
-            timepoint = 'Sham'
-            region = None
-        elif 'Test' in roi_id:
-            timepoint = 'Test'
-            region = None
-        else:
-            timepoint = [p for p in parts if p.startswith('D')][0]
-            region = None  # Unknown without metadata
-
-        return {'timepoint': timepoint, 'region': region}
-
-    # Extract from metadata
-    row = metadata_row.iloc[0]
-    timepoint = 'Sham' if row['Injury Day'] == 0 else f"D{int(row['Injury Day'])}"
-    region = row['Details'].strip() if pd.notna(row['Details']) else None
-
-    return {'timepoint': timepoint, 'region': region}
+    return _parse_roi_metadata_canonical(roi_id)
 
 def aggregate_across_rois(
     roi_results: List[pd.DataFrame],
@@ -353,7 +319,7 @@ def main():
     print(f"  Permutations: {n_permutations}")
 
     # Get all ROI annotation files
-    annotation_dir = Path('results/biological_analysis/cell_type_annotations')
+    annotation_dir = _PATHS.annotations_dir
     annotation_files = sorted(annotation_dir.glob('roi_*_cell_types.parquet'))
 
     print(f"\n✓ Found {len(annotation_files)} ROI annotations")
@@ -444,7 +410,7 @@ def main():
             print("  (No strong enrichments detected)")
 
     # Save results
-    output_dir = Path('results/biological_analysis/spatial_neighborhoods')
+    output_dir = _PATHS.spatial_neighborhoods_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Save per-ROI results

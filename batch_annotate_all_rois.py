@@ -18,6 +18,9 @@ from pathlib import Path
 import numpy as np
 from src.config import Config
 from src.analysis.cell_type_annotation import annotate_roi_from_results
+from src.utils.paths import get_paths
+
+_PATHS = get_paths()
 
 def load_roi_results(roi_file: Path) -> dict:
     """Load ROI analysis results from gzipped JSON."""
@@ -50,13 +53,13 @@ def main():
     print(f"  Cell types defined: {len(config.raw['cell_type_annotation']['cell_types'])}")
 
     # Find all ROI results
-    results_dir = Path('results/roi_results')
+    results_dir = _PATHS.roi_results_dir
     roi_files = sorted(results_dir.glob('roi_*_results.json.gz'))
 
     print(f"\n✓ Found {len(roi_files)} ROI results to process")
 
     # Output directory
-    output_dir = Path('results/biological_analysis/cell_type_annotations')
+    output_dir = _PATHS.annotations_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Track statistics

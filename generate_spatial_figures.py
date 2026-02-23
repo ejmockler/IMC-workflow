@@ -13,6 +13,7 @@ Usage:
 
 import os
 import sys
+import json
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -23,15 +24,46 @@ from matplotlib.colors import Normalize
 from matplotlib.colorbar import ColorbarBase
 from scipy.spatial import cKDTree
 
+from src.utils.imc_loader import load_imc_images
+from src.utils.paths import get_paths
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-DATA_DIR = "/Users/noot/Documents/IMC/data/241218_IMC_Alun"
-ANNOT_DIR = "/Users/noot/Documents/IMC/results/biological_analysis/cell_type_annotations"
-OUT_DIR = "/Users/noot/Documents/IMC/results/figures"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_PATHS = get_paths()
+DATA_DIR = str(_PATHS.data_dir)
+ANNOT_DIR = str(_PATHS.annotations_dir)
+OUT_DIR = str(_PATHS.figures_dir)
+
+# ---------------------------------------------------------------------------
+# Cofactor: read from config.json (processing.dna_processing.arcsinh_transform)
+# The pipeline config uses cofactor_multiplier=3; falling back to 5 only if
+# config is unavailable. Fixes the divergence from ion_count_processing.py.
+# ---------------------------------------------------------------------------
+def _load_cofactor() -> float:
+    config_path = _PATHS.base_dir / "config.json"
+    try:
+        with open(config_path) as _f:
+            _cfg = json.load(_f)
+        return float(
+            _cfg.get("processing", {})
+                .get("dna_processing", {})
+                .get("arcsinh_transform", {})
+                .get("cofactor_multiplier", 5)
+        )
+    except Exception:
+        return 5.0
+
+_COFACTOR = _load_cofactor()
 
 # ---------------------------------------------------------------------------
 # ROI definitions: (timepoint_label, raw_txt_filename, parquet_filename)
+# Selection criteria: one ROI per timepoint from Mouse 1 (M1), choosing the
+# first available ROI per timepoint for reproducibility. These are NOT
+# cherry-picked for visual impact — each is the lowest-numbered ROI for its
+# timepoint from the same biological replicate (Sham uses Sam1 = Mouse 1).
+# n=1 mouse shown per panel; the study has n=2 mice per timepoint total.
 # ---------------------------------------------------------------------------
 ROIS = [
     (
@@ -83,9 +115,12 @@ CELL_TYPE_LABELS = {
 
 # ---------------------------------------------------------------------------
 # Helper: arcsinh normalised image channel
+# Uses _COFACTOR loaded from config.json (cofactor_multiplier=3 in pipeline config).
 # ---------------------------------------------------------------------------
-def arcsinh_norm(arr, cofactor=5, pct_lo=1, pct_hi=99):
+def arcsinh_norm(arr, cofactor=None, pct_lo=1, pct_hi=99):
     """Apply arcsinh compression then percentile normalisation to [0, 1]."""
+    if cofactor is None:
+        cofactor = _COFACTOR
     transformed = np.arcsinh(arr / cofactor)
     lo = np.percentile(transformed, pct_lo)
     hi = np.percentile(transformed, pct_hi)
@@ -94,31 +129,7 @@ def arcsinh_norm(arr, cofactor=5, pct_lo=1, pct_hi=99):
     clipped = np.clip(transformed, lo, hi)
     return (clipped - lo) / (hi - lo)
 
-
-# ---------------------------------------------------------------------------
-# Helper: load raw IMC pixel data and build 2D channel images
-# ---------------------------------------------------------------------------
-def load_imc_images(txt_path):
-    """
-    Load an IMC .txt file and return a dict of 2D numpy arrays keyed by
-    channel name, plus the grid height and width.
-    """
-    df = pd.read_csv(txt_path, sep="\t")
-
-    x = df["X"].values.astype(int)
-    y = df["Y"].values.astype(int)
-    h = int(y.max()) + 1
-    w = int(x.max()) + 1
-
-    channels = {}
-    for col in df.columns:
-        if col in ("Start_push", "End_push", "Pushes_duration", "X", "Y", "Z"):
-            continue
-        img = np.zeros((h, w), dtype=np.float32)
-        img[y, x] = df[col].values.astype(np.float32)
-        channels[col] = img
-
-    return channels, h, w
+# load_imc_images is imported from src.utils.imc_loader above
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +333,7 @@ def generate_figure(timepoint, txt_path, parquet_path, out_path):
     # Channel colour legend for Panel A (bottom of panel)
     legend_patches_a = [
         mpatches.Patch(facecolor=(0.0, 0.0, 1.0), label="DNA (nuclei)"),
-        mpatches.Patch(facecolor=(0.0, 1.0, 0.0), label="CD44 (injury)"),
+        mpatches.Patch(facecolor=(0.0, 1.0, 0.0), label="CD44"),
         mpatches.Patch(facecolor=(1.0, 0.0, 0.0), label="CD31 (endothelial)"),
     ]
     ax_a.legend(

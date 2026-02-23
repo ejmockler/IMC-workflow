@@ -22,16 +22,18 @@ import matplotlib.patches as mpatches
 from scipy import stats
 from statsmodels.stats.power import TTestIndPower
 
+from src.utils.paths import get_paths
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-BASE_DIR = "/Users/noot/Documents/IMC"
-INPUT_CSV = os.path.join(
-    BASE_DIR,
-    "results/biological_analysis/differential_abundance/temporal_differential_abundance.csv",
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_PATHS = get_paths()
+INPUT_CSV = str(
+    _PATHS.differential_abundance_dir / "temporal_differential_abundance.csv"
 )
-OUTPUT_DIR_TABLE = os.path.join(BASE_DIR, "results/power_analysis")
-OUTPUT_DIR_FIGS  = os.path.join(BASE_DIR, "results/figures")
+OUTPUT_DIR_TABLE = str(_PATHS.power_analysis_dir)
+OUTPUT_DIR_FIGS  = str(_PATHS.figures_dir)
 OUTPUT_TABLE     = os.path.join(OUTPUT_DIR_TABLE, "sample_size_requirements.csv")
 OUTPUT_FIGURE    = os.path.join(OUTPUT_DIR_FIGS,  "pilot_effect_sizes.png")
 

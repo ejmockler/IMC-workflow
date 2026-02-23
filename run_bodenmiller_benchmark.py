@@ -16,10 +16,11 @@ These two representations are NOT equivalent:
   - Raw pixel means pool ALL pixels including inter-cell space
   - SLIC superpixels (our method) segment spatial tiles irrespective of cell boundaries
 
-Goal: pipeline validation — do the raw acquisition data and Steinbock's cell-level
-summaries agree on RELATIVE channel expression levels? Channel rank correlation
-and distribution shape are meaningful; absolute intensity values are not directly
-comparable.
+Goal: quantification concordance — do the raw acquisition data and Steinbock's
+cell-level summaries agree on RELATIVE channel expression levels? Channel rank
+correlation and distribution shape are meaningful; absolute intensity values are
+not directly comparable. This validates data I/O and channel quantification
+consistency, not the full SLIC analysis pipeline.
 """
 
 import os
@@ -34,10 +35,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
 
+from src.utils.imc_loader import load_imc_txt
+from src.utils.paths import get_paths
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-BASE_DIR = "/Users/noot/Documents/IMC"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_PATHS = get_paths()
 
 STEINBOCK_WORKDIR = os.path.join(
     BASE_DIR,
@@ -51,8 +56,8 @@ RAW_DATA_DIR = os.path.join(
     "benchmarks/data/bodenmiller_example/Patient1",
 )
 
-OUTPUT_DIR_BENCH = os.path.join(BASE_DIR, "results/benchmark")
-OUTPUT_DIR_FIGS  = os.path.join(BASE_DIR, "results/figures")
+OUTPUT_DIR_BENCH = str(_PATHS.benchmark_dir)
+OUTPUT_DIR_FIGS  = str(_PATHS.figures_dir)
 OUTPUT_TABLE     = os.path.join(OUTPUT_DIR_BENCH, "bodenmiller_concordance.csv")
 OUTPUT_FIGURE    = os.path.join(OUTPUT_DIR_FIGS,  "benchmark_concordance.png")
 
@@ -155,7 +160,8 @@ print(f"Found {len(txt_files)} .txt file(s): {txt_files}")
 raw_dfs = []
 for fname in txt_files:
     fpath = os.path.join(RAW_DATA_DIR, fname)
-    tmp = pd.read_csv(fpath, sep="\t")
+    result = load_imc_txt(fpath)
+    tmp = result['df']
     tmp["__source_file__"] = fname
     raw_dfs.append(tmp)
 

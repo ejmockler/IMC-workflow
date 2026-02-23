@@ -22,88 +22,27 @@ from scipy import stats
 from statsmodels.stats.multitest import multipletests
 from typing import Dict, List, Tuple
 
+from src.utils.metadata import parse_roi_metadata as _parse_canonical
+from src.utils.paths import get_paths
+
+_PATHS = get_paths()
+
+
 def load_metadata() -> pd.DataFrame:
     """Load experimental metadata with actual anatomical regions."""
-    metadata_file = Path('data/241218_IMC_Alun/Metadata-Table 1.csv')
-    metadata = pd.read_csv(metadata_file)
+    metadata = pd.read_csv(_PATHS.metadata_csv)
     metadata.columns = metadata.columns.str.strip()
     return metadata
 
 def load_batch_summary() -> dict:
     """Load batch annotation summary."""
-    summary_file = Path('results/biological_analysis/cell_type_annotations/batch_annotation_summary.json')
+    summary_file = _PATHS.annotations_dir / 'batch_annotation_summary.json'
     with open(summary_file, 'r') as f:
         return json.load(f)
 
-def parse_roi_metadata(roi_id: str, metadata_df: pd.DataFrame) -> dict:
-    """
-    Extract metadata from ROI ID using actual metadata CSV.
-
-    Format: IMC_241218_Alun_ROI_{timepoint}_{mouse}_{replicate}_{index}
-    Examples:
-      - IMC_241218_Alun_ROI_D1_M1_01_9 (Mouse 1, could be Cortex OR Medulla)
-      - IMC_241218_Alun_ROI_Sam1_01_2 (Sham timepoint)
-
-    Note: M1/M2 in filename = Mouse 1/Mouse 2 (biological replicates), NOT regions!
-    Actual anatomical region comes from metadata "Details" column.
-    """
-    # Remove 'roi_' prefix if present
-    file_name = roi_id.replace('roi_', '')
-
-    # Look up actual anatomical region from metadata
-    metadata_row = metadata_df[metadata_df['File Name'] == file_name]
-
-    if len(metadata_row) == 0:
-        # Fallback parsing for ROIs not in metadata
-        parts = roi_id.split('_')
-        if 'Sam' in roi_id:
-            timepoint = 'Sham'
-            sam_part = [p for p in parts if 'Sam' in p][0]
-            replicate = sam_part
-            region = None
-        elif 'Test' in roi_id:
-            timepoint = 'Test'
-            replicate = 'Test01'
-            region = None
-        else:
-            timepoint = [p for p in parts if p.startswith('D')][0]
-            mouse = [p for p in parts if p.startswith('M')][0]
-            replicate_idx = [i for i, p in enumerate(parts) if p.startswith('M')][0] + 1
-            replicate = f"{timepoint}_{mouse}_{parts[replicate_idx]}"
-            region = None  # Unknown without metadata
-
-        return {
-            'roi_id': roi_id,
-            'timepoint': timepoint,
-            'region': region,
-            'replicate': replicate
-        }
-
-    # Extract from metadata
-    row = metadata_row.iloc[0]
-    timepoint = 'Sham' if row['Injury Day'] == 0 else f"D{int(row['Injury Day'])}"
-    region = row['Details'].strip() if pd.notna(row['Details']) else None
-    mouse = row['Mouse']
-
-    # Create replicate ID
-    parts = roi_id.split('_')
-    if 'Sam' in roi_id:
-        replicate = mouse.replace('MS', 'Sam')  # MS1 -> Sam1, MS2 -> Sam2
-    else:
-        # Extract replicate number from filename
-        replicate_num = [p for p in parts if p.isdigit() and len(p) == 2]
-        if replicate_num:
-            replicate = f"{timepoint}_{mouse}_{replicate_num[0]}"
-        else:
-            replicate = f"{timepoint}_{mouse}"
-
-    return {
-        'roi_id': roi_id,
-        'timepoint': timepoint,
-        'region': region,
-        'replicate': replicate,
-        'mouse': mouse
-    }
+def parse_roi_metadata(roi_id: str, metadata_df: pd.DataFrame = None) -> dict:
+    """Delegate to canonical metadata parser in src.utils.metadata."""
+    return _parse_canonical(roi_id)
 
 def compute_abundances(batch_summary: dict, metadata_df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -505,7 +444,7 @@ def main():
         print("  No regional comparisons available")
 
     # Save results
-    output_dir = Path('results/biological_analysis/differential_abundance')
+    output_dir = _PATHS.differential_abundance_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     abundance_df.to_csv(output_dir / 'roi_abundances.csv', index=False)

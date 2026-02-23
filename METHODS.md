@@ -184,7 +184,7 @@ With n=2 per group, most comparisons are expected to be non-significant. Effect 
 - BH FDR correction within each ROI across all focal × neighbor pairs
 - Aggregation: fraction of ROIs with FDR-significant enrichment
 
-**Spatial weight ablation**: Enrichment scores are identical (Pearson r=1.000) between spatial_weight=0.3 (default, coordinates contribute to clustering) and spatial_weight=0 (expression only). This confirms that self-clustering and cross-type enrichment patterns reflect marker co-expression via boolean gating, not spatial weighting artifacts in the clustering step.
+**Spatial weight ablation**: Enrichment scores are identical (Pearson r=1.000) between spatial_weight=0.3 (default, X/Y coordinates appended to feature matrix) and spatial_weight=0 (coordinates omitted). Note: the co-abundance feature matrix already contains 36 spatial covariance features computed from 20μm KDTree neighborhoods (see Coabundance Feature Engineering above), so this ablation specifically tests the contribution of global position coordinates (2 dimensions) beyond the local spatial covariance structure (36 dimensions) already present in the 153-feature matrix. The result confirms that global tissue position does not influence enrichment patterns beyond local co-expression structure captured by spatial covariance features and boolean gating.
 
 ### Spatial Autocorrelation
 Spatial coherence assessed via Spearman correlation of marker expression with spatial coordinates. Moran's I is configured but not currently implemented in the analysis pipeline.

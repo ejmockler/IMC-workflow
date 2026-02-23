@@ -28,6 +28,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from itertools import combinations
 
+from src.utils.paths import get_paths
+
+_PATHS = get_paths()
+
 
 # ============================================================================
 # MARKER → GENE GROUNDING (via INDRA/CoGEx ground_entity)
@@ -89,10 +93,10 @@ GENE_KNOWLEDGE = {
             'tissue-resident macrophage (CL:0000864)',
         ],
         'kidney_relevance': (
-            'CD44 is the hyaluronan receptor — directly implicated in AKI via '
-            'HA-CD44 signaling. Upregulated in tubular injury, mediates leukocyte '
-            'recruitment to damaged kidney. Only panel gene with direct AKI '
-            'disease association in INDRA.'
+            'CD44 is the hyaluronan receptor — implicated in AKI via '
+            'HA-CD44 signaling in the literature. Reported to be upregulated in '
+            'tubular injury and involved in leukocyte recruitment. Only panel '
+            'gene with direct AKI disease association in INDRA.'
         ),
     },
     'PDGFRA': {
@@ -227,8 +231,8 @@ GENE_KNOWLEDGE = {
         ],
         'kidney_relevance': (
             'MRC1 (CD206) is the canonical M2/alternatively activated macrophage '
-            'marker — INDRA cell ontology confirms CL:0000890. In kidney, M2 '
-            'macrophages mediate tissue repair and anti-inflammatory resolution '
+            'marker — INDRA cell ontology maps to CL:0000890. In kidney, M2 '
+            'macrophages are reported to mediate tissue repair and anti-inflammatory resolution '
             'after AKI. Expressed in metanephric glomerulus and kidney cortex.'
         ),
     },
@@ -354,7 +358,7 @@ INDRA_STATEMENTS = [
     {'source': 'PDGFRA', 'target': 'PDGFRB', 'type': 'Phosphorylation', 'evidence': 1, 'belief': 0.532},
     # PDGFRB ↔ CD44: physical interaction
     {'source': 'PDGFRB', 'target': 'CD44', 'type': 'Complex', 'evidence': 10, 'belief': 0.742,
-     'note': 'CD44 physically associates with PDGFRB — explains pericyte-CD44 co-localization'},
+     'note': 'CD44 physically associates with PDGFRB — would be consistent with pericyte-CD44 co-localization if confirmed'},
     {'source': 'CD44', 'target': 'PDGFRB', 'type': 'Activation', 'evidence': 1, 'belief': 0.535},
     {'source': 'CD44', 'target': 'PDGFRB', 'type': 'Inhibition', 'evidence': 1, 'belief': 0.436},
     # PDGFRA ↔ CD44
@@ -415,10 +419,10 @@ SHARED_BIOLOGY = {
             'cell-cell adhesion (GO:0098609)',
         ],
         'interpretation': (
-            'Both markers share the KIDNEY-SPECIFIC process "glomerular endothelium '
-            'development" — their co-localization in kidney tissue is expected from '
-            'ontology. CD34+/CD31+ double-positive cells ARE the glomerular and '
-            'peritubular capillary endothelium.'
+            'Both markers share the kidney-specific process "glomerular endothelium '
+            'development" — their co-localization in kidney tissue would be expected '
+            'from ontology. CD34+/CD31+ double-positive cells represent glomerular '
+            'and peritubular capillary endothelium.'
         ),
     },
     ('CD44', 'PDGFRA'): {
@@ -468,8 +472,8 @@ SHARED_BIOLOGY = {
         ],
         'interpretation': (
             'Mac-1 (CD11b) on leukocytes binds PECAM1 on endothelium during '
-            'transendothelial migration. Their spatial proximity reflects the '
-            'leukocyte adhesion cascade at sites of vascular inflammation.'
+            'transendothelial migration. If confirmed, their spatial proximity '
+            'would be consistent with the leukocyte adhesion cascade.'
         ),
     },
     ('CD44', 'PECAM1'): {
@@ -618,7 +622,7 @@ MECHANISTIC_NARRATIVES = {
         'Endothelial-fibroblast proximity reflects the vascular-interstitial '
         'interface. PDGFRB on pericytes physically contacts endothelial cells. '
         'PDGFRA/PECAM1 share cell migration regulation (GO:0030335). '
-        'This interface is where capillary rarefaction and fibrosis originate in AKI.'
+        'In AKI, this interface is reported to be where capillary rarefaction and fibrosis originate.'
     ),
     ('endothelial', 'macrophage'): (
         'Endothelial-macrophage proximity reflects leukocyte extravasation. '
@@ -627,24 +631,25 @@ MECHANISTIC_NARRATIVES = {
         'cell-cell adhesion (GO:0007159). This is the transendothelial migration axis.'
     ),
     ('fibroblast', 'macrophage'): (
-        'Fibroblast-macrophage proximity reflects the repair/fibrosis niche. '
+        'Fibroblast-macrophage proximity would be consistent with the repair/fibrosis niche. '
         'PDGFRB forms a physical complex with MRC1 (3 evidence). M2 macrophages '
-        '(CD206+/MRC1+) secrete TGF-beta that activates fibroblasts via PDGFR '
-        'signaling. This interaction determines whether repair resolves or '
-        'progresses to fibrosis.'
+        '(CD206+/MRC1+) are reported to secrete TGF-beta that activates fibroblasts '
+        'via PDGFR signaling. In the literature, this interaction is implicated in '
+        'determining whether repair resolves or progresses to fibrosis.'
     ),
     ('immune', 'endothelial'): (
-        'Immune-endothelial proximity reflects active inflammation. CD44-PECAM1 '
-        'are sequential partners in the leukocyte adhesion cascade: CD44 mediates '
-        'rolling, PECAM1 mediates transmigration. PTPRC+ cells cluster at '
-        'endothelial surfaces during immune infiltration.'
+        'Immune-endothelial proximity would be consistent with active inflammation. '
+        'CD44-PECAM1 are sequential partners in the leukocyte adhesion cascade: '
+        'CD44 mediates rolling, PECAM1 mediates transmigration in the literature. '
+        'PTPRC+ cells are expected to cluster at endothelial surfaces during '
+        'immune infiltration.'
     ),
     ('immune', 'fibroblast'): (
-        'Immune-fibroblast proximity in AKI reflects the inflammatory-fibrotic '
-        'transition zone. CD44 physically complexes with PDGFRB (10 evidence, '
-        'belief=0.74) — a mechanistic basis for immune-stromal interaction. '
-        'CD44 also activates CD34 (4 evidence), linking injury signaling to '
-        'progenitor mobilization.'
+        'Immune-fibroblast proximity in AKI would be consistent with the '
+        'inflammatory-fibrotic transition zone. CD44 physically complexes with '
+        'PDGFRB (10 evidence, belief=0.74) — a known basis for immune-stromal '
+        'interaction. CD44 also activates CD34 (4 evidence), which in the '
+        'literature links injury signaling to progenitor mobilization.'
     ),
 }
 
@@ -927,7 +932,11 @@ def build_evidence_for_neighborhood_results(nb_file: Path) -> List[Dict]:
         # AKI genes
         aki_genes = [g for g in all_genes if g in KIDNEY_CONTEXT['aki_direct']]
 
-        if enrichment > 1.2 or (focal == neighbor):
+        # Include self-clustering (diagonal) and cross-type pairs with
+        # enrichment > 1.0 (above null expectation). No significance gate —
+        # all findings are exploratory (n=2 pilot). Threshold is enrichment
+        # above the permutation null, not an arbitrary cutoff.
+        if enrichment > 1.0 or (focal == neighbor):
             rows.append({
                 'finding_type': 'neighborhood_enrichment',
                 'finding': f"{focal} <-> {neighbor} @ {result.get('timepoint', 'all')}",
@@ -998,7 +1007,7 @@ def main():
     print("INDRA/CoGEx Biological Context Layer")
     print("=" * 80)
 
-    output_dir = Path('results/biological_analysis')
+    output_dir = _PATHS.biological_analysis_dir
 
     # 1. Panel coherence summary
     coherence = panel_coherence_summary()
@@ -1023,7 +1032,7 @@ def main():
     print(f"    {len(MECHANISTIC_NARRATIVES)} mechanistic narratives")
 
     # 3. Differential abundance evidence
-    da_file = output_dir / 'differential_abundance' / 'temporal_differential_abundance.csv'
+    da_file = _PATHS.differential_abundance_dir / 'temporal_differential_abundance.csv'
     da_rows = []
     if da_file.exists():
         print(f"\n  Processing differential abundance: {da_file}")
@@ -1033,7 +1042,7 @@ def main():
         print(f"\n  Skipping DA (file not found): {da_file}")
 
     # 4. Neighborhood enrichment evidence
-    nb_file = output_dir / 'spatial_neighborhoods' / 'temporal_neighborhood_enrichments.csv'
+    nb_file = _PATHS.spatial_neighborhoods_dir / 'temporal_neighborhood_enrichments.csv'
     nb_rows = []
     if nb_file.exists():
         print(f"\n  Processing neighborhood enrichments: {nb_file}")
@@ -1126,8 +1135,8 @@ def main():
         "PDGFRB and PECAM1 are BOTH in kidney cell lineage markers (WP5236)",
         "CD34 + PECAM1 share glomerular endothelium development (GO:0072011)",
         "CD34 has glomerular filtration (GO:0003094) and vascular wound healing (GO:0061042)",
-        "MRC1 marks 'alternatively activated macrophage' (CL:0000890) — validates M2 annotation",
-        "PDGFRB-CD44 physical complex (10 evidence, belief=0.74) — explains injury-stroma interaction",
+        "MRC1 marks 'alternatively activated macrophage' (CL:0000890) — supports M2 annotation",
+        "PDGFRB-CD44 physical complex (10 evidence, belief=0.74) — known injury-stroma interaction",
         "PDGFRA-PDGFRB complex (151 evidence, belief=0.89) — strongest intra-panel relationship",
         "ITGAM + PECAM1 share leukocyte adhesion (GO:0007159) — transendothelial migration axis",
         "All 8 grounded genes are expressed in metanephros cortex (UBERON:0010533)",
