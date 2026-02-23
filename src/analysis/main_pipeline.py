@@ -15,33 +15,11 @@ from typing import Dict, List, Tuple, Optional, Any
 from datetime import datetime
 import warnings
 
-from .ion_count_processing import ion_count_pipeline
-from .slic_segmentation import slic_pipeline
 from .multiscale_analysis import perform_multiscale_analysis, compute_scale_consistency
 from .parallel_processing import create_roi_batch_processor
-from .spillover_correction import SpilloverMatrix, estimate_spillover_matrix, correct_spillover
-from .artifact_detection import DetectorConfig, detect_and_correct_artifacts, create_default_oxidation_graph
-from .batch_correction import BatchCorrectionConfig, bead_anchored_normalize, detect_instrumental_drift
-from .uncertainty_propagation import (
-    UncertaintyMap, UncertaintyConfig, create_base_uncertainty,
-    propagate_through_spillover_correction, propagate_through_artifact_correction,
-    propagate_through_normalization, create_summary_statistics
-)
-from .mixed_effects_models import (
-    HierarchicalDataStructure, MixedEffectsConfig, NestedModel, 
-    SpatialMixedEffects, calculate_effect_sizes, bootstrap_uncertainty
-)
-from .patient_level_cv import CVConfig, StratifiedSubjectCV, perform_nested_cv_analysis
-from .hierarchical_data import (
-    NestedDataValidator, HierarchicalAggregator, VarianceDecomposition,
-    create_hierarchical_summary
-)
-from .multiple_testing_control import (
-    HierarchicalMultipleTestingControl, HierarchicalTestingConfig,
-    create_standard_hypothesis_families, integrate_with_multiscale_analysis
-)
-from .fdr_spatial import FDRConfig
+from .batch_correction import BatchCorrectionConfig, bead_anchored_normalize
 from ..config import Config
+from ..quality_control import QualityGateEngine, QualityMetrics, QualityMonitor, GateDecision
 try:
     from .data_storage import create_storage_backend
 except ImportError:
@@ -93,10 +71,7 @@ class IMCAnalysisPipeline:
             if compatibility['warnings']:
                 warnings.warn(f"Manifest-config warnings: {compatibility['warnings']}")
         
-        # Initialize physics correction configurations
-        self.detector_config = DetectorConfig()
         self.batch_config = BatchCorrectionConfig()
-        self.uncertainty_config = UncertaintyConfig()
 
         # Configure bead normalization from config if available
         if hasattr(config, 'analysis'):
@@ -111,22 +86,67 @@ class IMCAnalysisPipeline:
                             bead_signal_threshold=bead_norm.get('bead_signal_threshold', 100.0),
                             drift_correction_method=bead_norm.get('drift_correction_method', 'median_reference')
                         )
-        
-        # Physics correction components
-        self.spillover_matrix = None
-        self.oxidation_graph = create_default_oxidation_graph()
-        self.correction_metadata = {}
-        
-        # Statistical framework components
-        self.hierarchical_structure = None
-        self.mixed_effects_config = None
-        self.cv_config = None
-        self.statistical_results = {}
-        
-        # Multiple testing control framework
-        self.multiple_testing_config = None
-        self.multiple_testing_controller = None
-    
+
+    def _compute_roi_quality_metrics(self, roi_id: str, roi_data: Dict, protein_names: List[str]) -> QualityMetrics:
+        """Compute lightweight quality metrics from loaded ROI data for gate decisions."""
+        from datetime import datetime
+
+        coords = roi_data.get('coords', np.array([]))
+        ion_counts = roi_data.get('ion_counts', {})
+
+        # Coordinate quality: check for NaN/inf and reasonable range
+        if len(coords) > 0:
+            valid_coords = np.isfinite(coords).all(axis=1).mean()
+            coord_range = coords.ptp(axis=0)
+            # Penalize if range is suspiciously small (< 10 pixels)
+            range_ok = 1.0 if all(r > 10 for r in coord_range) else 0.5
+            coordinate_quality = valid_coords * range_ok
+        else:
+            coordinate_quality = 0.0
+
+        # Ion count quality: check for signal above noise
+        if ion_counts:
+            channel_qualities = []
+            for ch, values in ion_counts.items():
+                vals = np.asarray(values)
+                if len(vals) > 0:
+                    # Fraction of pixels with positive signal
+                    pos_frac = (vals > 0).mean()
+                    # Signal-to-noise proxy: mean / (std + 1e-10)
+                    snr = np.mean(vals) / (np.std(vals) + 1e-10) if np.std(vals) > 0 else 0.0
+                    snr_score = min(1.0, snr / 2.0)  # Normalize: SNR=2 → 1.0
+                    channel_qualities.append(0.5 * pos_frac + 0.5 * snr_score)
+            ion_count_quality = float(np.mean(channel_qualities)) if channel_qualities else 0.0
+        else:
+            ion_count_quality = 0.0
+
+        # Biological quality: protein completeness and DNA signal
+        n_proteins_found = len(ion_counts)
+        protein_completeness = n_proteins_found / max(len(protein_names), 1)
+
+        # DNA signal presence
+        dna_data = roi_data.get('dna1_intensities', np.array([]))
+        if len(dna_data) > 0:
+            dna_signal = min(1.0, np.mean(dna_data) / 50.0)  # Normalize
+        else:
+            dna_signal = 0.5  # Unknown
+
+        biological_quality = 0.6 * protein_completeness + 0.4 * dna_signal
+
+        n_pixels = len(coords) if len(coords) > 0 else 0
+
+        return QualityMetrics(
+            roi_id=roi_id,
+            batch_id='batch_0',
+            timestamp=datetime.now().isoformat(),
+            coordinate_quality=min(1.0, max(0.0, coordinate_quality)),
+            ion_count_quality=min(1.0, max(0.0, ion_count_quality)),
+            biological_quality=min(1.0, max(0.0, biological_quality)),
+            n_pixels=n_pixels,
+            n_proteins=n_proteins_found,
+            protein_completeness=min(1.0, max(0.0, protein_completeness))
+        )
+
     def _log_execution_step(
         self,
         step_name: str,
@@ -546,564 +566,6 @@ class IMCAnalysisPipeline:
         except Exception as e:
             raise ValueError(f"Failed to load ROI data from {roi_file_path}: {str(e)}")
     
-    def apply_physics_corrections(
-        self, 
-        raw_ion_counts: Dict[str, np.ndarray],
-        apply_spillover: bool = True,
-        apply_artifacts: bool = True,
-        apply_normalization: bool = True,
-        track_uncertainty: bool = True
-    ) -> Tuple[Dict[str, np.ndarray], Optional[UncertaintyMap], Dict[str, Any]]:
-        """
-        Apply comprehensive physics corrections to ion count data.
-        
-        Applies corrections in optimal order:
-        1. Spillover correction (if matrix available)
-        2. Artifact detection and correction
-        3. Bead-based normalization (if configured)
-        
-        Args:
-            raw_ion_counts: Dictionary mapping channel_name -> ion_count_array
-            apply_spillover: Whether to apply spillover correction
-            apply_artifacts: Whether to apply artifact corrections
-            apply_normalization: Whether to apply normalization
-            track_uncertainty: Whether to track uncertainty propagation
-            
-        Returns:
-            Tuple of (corrected_counts, uncertainty_map, correction_metadata)
-        """
-        import logging
-        logger = logging.getLogger('IMCPipeline')
-        logger.info("Starting comprehensive physics corrections")
-        
-        # Initialize uncertainty tracking
-        uncertainty_map = None
-        if track_uncertainty:
-            uncertainty_map = create_base_uncertainty(
-                raw_ion_counts, 
-                uncertainty_type='mixed',
-                uncertainty_floor=0.01
-            )
-        
-        current_ion_counts = {k: v.copy() for k, v in raw_ion_counts.items()}
-        corrections_applied = []
-        correction_stats = {}
-        
-        # Step 1: Spillover correction
-        if apply_spillover and self.spillover_matrix is not None:
-            logger.info("Applying spillover correction")
-            try:
-                current_ion_counts, spillover_uncertainty = correct_spillover(
-                    current_ion_counts, 
-                    self.spillover_matrix,
-                    apply_positivity_constraint=True
-                )
-                
-                corrections_applied.append('spillover_correction')
-                correction_stats['spillover'] = {
-                    'matrix_condition': self.spillover_matrix.metadata.get('condition_number', 'unknown'),
-                    'method': self.spillover_matrix.method,
-                    'n_channels': len(self.spillover_matrix.channels)
-                }
-                
-                # Update uncertainty map
-                if track_uncertainty and uncertainty_map is not None:
-                    uncertainty_map = propagate_through_spillover_correction(
-                        uncertainty_map,
-                        self.spillover_matrix.matrix,
-                        self.spillover_matrix.uncertainty,
-                        correction_method='linear'
-                    )
-                
-            except Exception as e:
-                logger.warning(f"Spillover correction failed: {e}")
-                correction_stats['spillover'] = {'error': str(e), 'applied': False}
-        
-        # Step 2: Artifact detection and correction
-        if apply_artifacts:
-            logger.info("Applying artifact corrections")
-            try:
-                corrected_counts, artifact_uncertainties, artifact_metadata = detect_and_correct_artifacts(
-                    current_ion_counts,
-                    detector_config=self.detector_config,
-                    oxidation_graph=self.oxidation_graph,
-                    hot_pixel_threshold=5.0,
-                    acquisition_time_ms=1000.0
-                )
-                
-                current_ion_counts = corrected_counts
-                corrections_applied.extend(artifact_metadata['corrections_applied'])
-                correction_stats['artifacts'] = artifact_metadata
-                
-                # Update uncertainty map
-                if track_uncertainty and uncertainty_map is not None:
-                    # Create combined artifact mask and uncertainty
-                    artifact_mask = np.zeros(uncertainty_map.spatial_shape, dtype=bool)
-                    combined_artifact_uncertainty = np.ones(
-                        (len(uncertainty_map.channels), np.prod(uncertainty_map.spatial_shape))
-                    )
-                    
-                    for i, channel in enumerate(uncertainty_map.channels):
-                        if channel in artifact_uncertainties:
-                            channel_uncertainty = artifact_uncertainties[channel].flatten()
-                            combined_artifact_uncertainty[i] = channel_uncertainty
-                            
-                            # Mark pixels with elevated uncertainty as artifacts
-                            elevated_uncertainty = channel_uncertainty > 1.5
-                            if uncertainty_map.spatial_shape == channel_uncertainty.reshape(-1).shape:
-                                artifact_mask.flat[elevated_uncertainty] = True
-                    
-                    uncertainty_map = propagate_through_artifact_correction(
-                        uncertainty_map,
-                        artifact_mask,
-                        combined_artifact_uncertainty,
-                        artifact_metadata
-                    )
-                
-            except Exception as e:
-                logger.warning(f"Artifact correction failed: {e}")
-                correction_stats['artifacts'] = {'error': str(e), 'applied': False}
-        
-        # Step 3: Bead-based normalization (if configured)
-        if apply_normalization and self.batch_config.bead_channels:
-            logger.info("Applying bead-based normalization")
-            try:
-                # Create batch data structure for normalization
-                batch_data = {'current_roi': current_ion_counts}
-                batch_metadata = {'current_roi': {'acquisition_time': 0}}
-                
-                normalized_data, norm_stats = bead_anchored_normalize(
-                    batch_data, 
-                    batch_metadata,
-                    config=self.batch_config
-                )
-                
-                if norm_stats.get('method') != 'identity':
-                    current_ion_counts = normalized_data['current_roi']
-                    corrections_applied.append('bead_normalization')
-                    correction_stats['normalization'] = norm_stats
-                    
-                    # Update uncertainty map
-                    if track_uncertainty and uncertainty_map is not None:
-                        roi_stats = norm_stats['per_batch_stats']['current_roi']
-                        if 'correction_factors' in roi_stats:
-                            norm_factors = roi_stats['correction_factors']
-                            norm_uncertainties = {
-                                ch: 0.05 * abs(factor - 1.0)  # 5% uncertainty in correction
-                                for ch, factor in norm_factors.items()
-                            }
-                            
-                            uncertainty_map = propagate_through_normalization(
-                                uncertainty_map,
-                                norm_factors,
-                                norm_uncertainties,
-                                'bead_anchored'
-                            )
-                else:
-                    correction_stats['normalization'] = {
-                        'applied': False, 
-                        'reason': norm_stats.get('reason', 'unknown')
-                    }
-                
-            except Exception as e:
-                logger.warning(f"Normalization failed: {e}")
-                correction_stats['normalization'] = {'error': str(e), 'applied': False}
-        
-        # Compile final correction metadata
-        final_metadata = {
-            'corrections_applied': corrections_applied,
-            'correction_statistics': correction_stats,
-            'detector_config': self.detector_config,
-            'batch_config': self.batch_config,
-            'uncertainty_tracking': track_uncertainty
-        }
-        
-        if track_uncertainty and uncertainty_map is not None:
-            uncertainty_summary = create_summary_statistics(uncertainty_map, current_ion_counts)
-            final_metadata['uncertainty_summary'] = uncertainty_summary
-        
-        logger.info(f"Physics corrections completed. Applied: {corrections_applied}")
-        
-        return current_ion_counts, uncertainty_map, final_metadata
-    
-    def setup_spillover_correction(
-        self, 
-        single_stain_data: Dict[str, Dict[str, np.ndarray]], 
-        method: str = 'nnls'
-    ) -> None:
-        """
-        Set up spillover correction from single-stain control data.
-        
-        Args:
-            single_stain_data: Dictionary mapping stain_name -> channel_name -> measurements
-            method: Estimation method ('nnls', 'admm', 'lstsq')
-        """
-        import logging
-        logger = logging.getLogger('IMCPipeline')
-        logger.info(f"Setting up spillover correction using {method}")
-        
-        try:
-            self.spillover_matrix = estimate_spillover_matrix(
-                single_stain_data, 
-                method=method,
-                bootstrap_samples=100,
-                min_signal_threshold=10.0
-            )
-            
-            # Store setup metadata
-            self.correction_metadata['spillover_setup'] = {
-                'method': method,
-                'n_stains': len(single_stain_data),
-                'matrix_condition': self.spillover_matrix.metadata['condition_number'],
-                'channels': self.spillover_matrix.channels
-            }
-            
-            logger.info(f"Spillover matrix estimated: {len(self.spillover_matrix.channels)} channels, "
-                       f"condition number = {self.spillover_matrix.metadata['condition_number']:.2e}")
-            
-        except Exception as e:
-            logger.error(f"Failed to setup spillover correction: {e}")
-            self.spillover_matrix = None
-    
-    def configure_detector_physics(
-        self,
-        deadtime_ns: float = 50.0,
-        saturation_level: int = 65535,
-        dark_current: float = 0.1
-    ) -> None:
-        """Configure detector physics parameters."""
-        self.detector_config = DetectorConfig(
-            deadtime_ns=deadtime_ns,
-            saturation_level=saturation_level,
-            dark_current=dark_current
-        )
-    
-    def configure_bead_normalization(
-        self,
-        bead_channels: List[str] = None,
-        signal_threshold: float = 100.0,
-        drift_method: str = 'linear'
-    ) -> None:
-        """Configure bead-based normalization parameters."""
-        if bead_channels is None:
-            # Read from config instead of hardcoding
-            if hasattr(self.analysis_config, 'channels'):
-                channels_cfg = self.analysis_config.channels
-                if isinstance(channels_cfg, dict):
-                    bead_channels = channels_cfg.get('calibration_channels', ['130Ba', '131Xe'])
-                else:
-                    bead_channels = ['130Ba', '131Xe']
-            else:
-                bead_channels = ['130Ba', '131Xe']
-
-        self.batch_config = BatchCorrectionConfig(
-            bead_channels=bead_channels,
-            bead_signal_threshold=signal_threshold,
-            drift_correction_method=drift_method
-        )
-    
-    def initialize_statistical_framework(self, metadata: pd.DataFrame) -> Dict[str, Any]:
-        """
-        Initialize statistical framework with hierarchical data structure.
-        
-        Args:
-            metadata: Metadata DataFrame with subject/ROI structure
-            
-        Returns:
-            Dictionary with initialization results
-        """
-        try:
-            # Extract statistical framework configuration
-            stat_config = getattr(self.analysis_config, 'statistical_framework', {})
-            
-            # Initialize hierarchical structure
-            hierarchy_config = stat_config.get('hierarchical_structure', {})
-            
-            self.hierarchical_structure = HierarchicalDataStructure.from_metadata(
-                metadata,
-                subject_col=hierarchy_config.get('subject_column', 'Mouse'),
-                slide_col=hierarchy_config.get('slide_column', 'Slide'),
-                roi_col=hierarchy_config.get('roi_column', 'ROI'),
-                condition_col=hierarchy_config.get('condition_column', 'Condition'),
-                timepoint_col=hierarchy_config.get('timepoint_column', 'Injury Day')
-            )
-            
-            # Initialize mixed-effects configuration
-            mixed_effects_config = stat_config.get('mixed_effects', {})
-            self.mixed_effects_config = MixedEffectsConfig(
-                random_effects=mixed_effects_config.get('random_effects', ['subject', 'slide']),
-                fixed_effects=mixed_effects_config.get('fixed_effects', ['condition', 'timepoint']),
-                include_spatial=mixed_effects_config.get('include_spatial_correlation', True),
-                spatial_decay=mixed_effects_config.get('spatial_decay_parameter', 0.1),
-                convergence_tolerance=mixed_effects_config.get('convergence_tolerance', 1e-6),
-                max_iterations=mixed_effects_config.get('max_iterations', 1000)
-            )
-            
-            # Initialize cross-validation configuration
-            cv_config = stat_config.get('cross_validation', {})
-            self.cv_config = CVConfig(
-                n_splits=cv_config.get('n_splits', 5),
-                stratify_by=cv_config.get('stratify_by', None),
-                min_subjects_per_fold=cv_config.get('min_subjects_per_fold', 2),
-                spatial_block_size=cv_config.get('spatial_block_size', None),
-                random_state=cv_config.get('random_state', 42),
-                ensure_balance=cv_config.get('ensure_balance', True)
-            )
-            
-            # Validate hierarchical structure
-            validator = NestedDataValidator(self.hierarchical_structure)
-            validation_results = validator.validate_data_integrity(metadata)
-            
-            initialization_results = {
-                'hierarchical_structure_valid': validation_results['is_valid'],
-                'validation_issues': validation_results.get('issues', []),
-                'validation_warnings': validation_results.get('warnings', []),
-                'structure_statistics': validation_results.get('statistics', {}),
-                'effective_sample_sizes': self.hierarchical_structure.get_effective_sample_size()
-            }
-            
-            if not validation_results['is_valid']:
-                warnings.warn("Hierarchical structure validation failed. Some statistical methods may not work properly.")
-            
-            return initialization_results
-            
-        except Exception as e:
-            warnings.warn(f"Statistical framework initialization failed: {e}")
-            return {'initialization_failed': True, 'error': str(e)}
-    
-    def initialize_multiple_testing_control(self,
-                                          config_override: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Initialize hierarchical multiple testing control framework.
-        
-        Args:
-            config_override: Optional configuration overrides
-            
-        Returns:
-            Dictionary with initialization results
-        """
-        try:
-            # Get configuration from main config
-            mt_config = getattr(self.analysis_config, 'statistical_framework', {}).get('multiple_testing', {})
-            
-            # Apply overrides
-            if config_override:
-                mt_config.update(config_override)
-            
-            # Create testing configuration
-            self.multiple_testing_config = HierarchicalTestingConfig(
-                fdr_config=FDRConfig(
-                    method=mt_config.get('fdr_method', 'benjamini_yekutieli'),
-                    alpha=mt_config.get('fdr_alpha', 0.05),
-                    dependence_assumption=mt_config.get('dependence_assumption', 'arbitrary'),
-                    use_spatial_weights=mt_config.get('use_spatial_weights', True),
-                    adaptive_weights=mt_config.get('adaptive_weights', True)
-                ),
-                fwer_alpha=mt_config.get('fwer_alpha', 0.05),
-                fwer_method=mt_config.get('fwer_method', 'holm'),
-                bootstrap_n=mt_config.get('bootstrap_n', 1000),
-                bootstrap_confidence=mt_config.get('bootstrap_confidence', 0.95),
-                min_n_for_pvalues=mt_config.get('min_n_for_pvalues', 10),
-                effect_size_threshold=mt_config.get('effect_size_threshold', 0.2)
-            )
-            
-            # Initialize controller
-            self.multiple_testing_controller = HierarchicalMultipleTestingControl(
-                self.multiple_testing_config
-            )
-            
-            return {
-                'multiple_testing_initialized': True,
-                'config': {
-                    'fdr_method': self.multiple_testing_config.fdr_config.method,
-                    'fdr_alpha': self.multiple_testing_config.fdr_config.alpha,
-                    'fwer_method': self.multiple_testing_config.fwer_method,
-                    'bootstrap_n': self.multiple_testing_config.bootstrap_n
-                }
-            }
-            
-        except Exception as e:
-            warnings.warn(f"Multiple testing control initialization failed: {e}")
-            return {'initialization_failed': True, 'error': str(e)}
-    
-    def perform_mixed_effects_analysis(self,
-                                     data: pd.DataFrame,
-                                     response_variables: List[str],
-                                     spatial_coords: Optional[np.ndarray] = None) -> Dict[str, Any]:
-        """
-        Perform mixed-effects analysis on hierarchical data.
-        
-        Args:
-            data: DataFrame with hierarchical structure and response variables
-            response_variables: List of response variable column names
-            spatial_coords: Optional spatial coordinates for spatial modeling
-            
-        Returns:
-            Dictionary with mixed-effects analysis results
-        """
-        if self.hierarchical_structure is None:
-            raise ValueError("Statistical framework not initialized. Call initialize_statistical_framework first.")
-        
-        results = {}
-        
-        for response_var in response_variables:
-            if response_var not in data.columns:
-                warnings.warn(f"Response variable {response_var} not found in data")
-                continue
-                
-            try:
-                # Fit mixed-effects model
-                if spatial_coords is not None and self.mixed_effects_config.include_spatial:
-                    model = SpatialMixedEffects(self.mixed_effects_config)
-                    model_results = model.fit(
-                        data, response_var, self.hierarchical_structure, spatial_coords
-                    )
-                else:
-                    model = NestedModel(self.mixed_effects_config)
-                    model_results = model.fit(
-                        data, response_var, self.hierarchical_structure, spatial_coords
-                    )
-                
-                # Calculate effect sizes
-                effect_sizes = calculate_effect_sizes(model_results, self.hierarchical_structure)
-                
-                # Bootstrap uncertainty if requested
-                stat_config = getattr(self.analysis_config, 'statistical_framework', {})
-                effect_config = stat_config.get('effect_sizes', {})
-                
-                if effect_config.get('bootstrap_confidence_intervals', True):
-                    n_bootstrap = effect_config.get('n_bootstrap', 100)
-                    bootstrap_cis = bootstrap_uncertainty(
-                        model, data, response_var, self.hierarchical_structure, n_bootstrap
-                    )
-                    model_results['bootstrap_confidence_intervals'] = bootstrap_cis
-                
-                # Combine results
-                results[response_var] = {
-                    'model_results': model_results,
-                    'effect_sizes': effect_sizes,
-                    'model_type': 'spatial_mixed_effects' if spatial_coords is not None else 'mixed_effects'
-                }
-                
-            except Exception as e:
-                warnings.warn(f"Mixed-effects analysis failed for {response_var}: {e}")
-                results[response_var] = {'error': str(e), 'model_type': 'failed'}
-        
-        return results
-    
-    def perform_patient_level_cross_validation(self,
-                                             data: pd.DataFrame,
-                                             target_column: str,
-                                             feature_columns: List[str],
-                                             model_class,
-                                             model_params: Dict = None) -> Dict[str, Any]:
-        """
-        Perform cross-validation with proper subject-level splitting.
-        
-        Args:
-            data: Full dataset with hierarchical structure
-            target_column: Name of target variable column
-            feature_columns: List of feature column names
-            model_class: Model class to fit (should have fit/predict methods)
-            model_params: Parameters to pass to model constructor
-            
-        Returns:
-            Dictionary with cross-validation results
-        """
-        if self.hierarchical_structure is None:
-            raise ValueError("Statistical framework not initialized. Call initialize_statistical_framework first.")
-        
-        try:
-            # Initialize stratified subject CV
-            cv_splitter = StratifiedSubjectCV(self.cv_config, self.hierarchical_structure)
-            
-            # Perform cross-validation
-            cv_results = cv_splitter.validate_model(
-                data, target_column, feature_columns, model_class, model_params
-            )
-            
-            # Perform nested CV analysis
-            nested_analysis = perform_nested_cv_analysis(
-                data, self.hierarchical_structure, self.cv_config
-            )
-            
-            return {
-                'cross_validation_results': cv_results,
-                'nested_analysis': nested_analysis,
-                'cv_method': 'subject_level'
-            }
-            
-        except Exception as e:
-            warnings.warn(f"Patient-level cross-validation failed: {e}")
-            return {'error': str(e), 'cv_method': 'failed'}
-    
-    def create_hierarchical_summary_report(self,
-                                         data: pd.DataFrame,
-                                         value_columns: List[str]) -> Dict[str, Any]:
-        """
-        Create comprehensive hierarchical data summary.
-        
-        Args:
-            data: Input data with hierarchical structure
-            value_columns: Columns to analyze
-            
-        Returns:
-            Dictionary with comprehensive hierarchical summary
-        """
-        if self.hierarchical_structure is None:
-            raise ValueError("Statistical framework not initialized. Call initialize_statistical_framework first.")
-        
-        try:
-            # Create comprehensive summary
-            summary = create_hierarchical_summary(
-                data, self.hierarchical_structure, value_columns
-            )
-            
-            # Add statistical framework configuration
-            summary['statistical_framework_config'] = {
-                'mixed_effects_config': self.mixed_effects_config.__dict__ if self.mixed_effects_config else None,
-                'cv_config': self.cv_config.__dict__ if self.cv_config else None,
-                'hierarchical_structure': {
-                    'n_subjects': len(self.hierarchical_structure.subjects),
-                    'subject_column': self.hierarchical_structure.subject_column,
-                    'roi_column': self.hierarchical_structure.roi_column,
-                    'effective_sample_sizes': self.hierarchical_structure.get_effective_sample_size()
-                }
-            }
-            
-            return summary
-            
-        except Exception as e:
-            warnings.warn(f"Hierarchical summary creation failed: {e}")
-            return {'error': str(e)}
-    
-    def aggregate_to_subject_level(self,
-                                  data: pd.DataFrame,
-                                  value_columns: List[str],
-                                  aggregation_method: str = 'mean') -> pd.DataFrame:
-        """
-        Aggregate data to subject level to address pseudoreplication.
-        
-        Args:
-            data: Input data with hierarchical structure
-            value_columns: Columns to aggregate
-            aggregation_method: Aggregation method ('mean', 'median', 'sum')
-            
-        Returns:
-            Subject-level aggregated data
-        """
-        if self.hierarchical_structure is None:
-            raise ValueError("Statistical framework not initialized. Call initialize_statistical_framework first.")
-        
-        try:
-            aggregator = HierarchicalAggregator(self.hierarchical_structure)
-            return aggregator.aggregate_to_subject_level(
-                data, value_columns, aggregation_method, preserve_metadata=True
-            )
-        except Exception as e:
-            warnings.warn(f"Subject-level aggregation failed: {e}")
-            return pd.DataFrame()  # Return empty DataFrame on failure
-    
     def analyze_single_roi(
         self, 
         roi_data: Dict,
@@ -1186,25 +648,6 @@ class IMCAnalysisPipeline:
         # Compute consistency metrics between scales
         consistency_results = compute_scale_consistency(multiscale_results)
 
-        # Apply hierarchical multiple testing control if initialized
-        if self.multiple_testing_controller is not None:
-            # Extract spatial coordinates for each scale
-            spatial_coords = {}
-            scales = scales_um  # Use the resolved scales_um from above
-            for scale in scales:
-                scale_key = f"scale_{scale}um"
-                if scale_key in multiscale_results and 'aggregated_coords' in multiscale_results[scale_key]:
-                    spatial_coords[scale_key] = multiscale_results[scale_key]['aggregated_coords']
-            
-            # Apply multiple testing corrections
-            try:
-                corrected_results = integrate_with_multiscale_analysis(
-                    multiscale_results, spatial_coords, self.multiple_testing_config
-                )
-                multiscale_results = corrected_results
-            except Exception as e:
-                warnings.warn(f"Multiple testing control failed: {e}")
-        
         # Extract main scale results for backward compatibility
         main_scale_results = multiscale_results.get('scale_results', {})
         if main_scale_results:
@@ -1306,6 +749,31 @@ class IMCAnalysisPipeline:
         
         if not roi_data_dict:
             raise ValueError("No valid ROI data loaded")
+
+        # === QC GATE: Pre-flight ROI quality check ===
+        gate_engine = QualityGateEngine()
+        qc_monitor = QualityMonitor()
+        skipped_rois = []
+
+        for roi_id, roi_data in list(roi_data_dict.items()):
+            qm = self._compute_roi_quality_metrics(roi_id, roi_data, protein_names)
+            qc_monitor.add_roi_quality(qm)
+            decision, reason, details = gate_engine.evaluate_roi_quality(qm)
+
+            if decision == GateDecision.FAIL:
+                warnings.warn(f"QC gate FAIL for {roi_id}: {reason}. Skipping.")
+                skipped_rois.append(roi_id)
+                del roi_data_dict[roi_id]
+            elif decision == GateDecision.WARN:
+                warnings.warn(f"QC gate WARN for {roi_id}: {reason}. Continuing.")
+            elif decision == GateDecision.ABORT:
+                raise RuntimeError(f"QC gate ABORT: {reason}. Analysis halted.")
+
+        if skipped_rois:
+            warnings.warn(f"QC gates skipped {len(skipped_rois)} ROIs: {skipped_rois}")
+
+        if not roi_data_dict:
+            raise ValueError("All ROIs failed quality gates — no data to analyze")
 
         # BUG FIX #6: Apply batch-level bead normalization BEFORE individual ROI processing
         # Bead normalization requires temporal context across ALL ROIs to model drift
@@ -1534,76 +1002,6 @@ class IMCAnalysisPipeline:
         
         return results, errors
     
-    def run_validation_study(
-        self,
-        analysis_results: List[Dict],
-        output_dir: str = "validation_results"
-    ) -> Dict:
-        """
-        Run segmentation quality validation on analysis results.
-        
-        Validates SLIC-on-DNA segmentation through morphological metrics
-        and biological correspondence, without synthetic data generation.
-        
-        Args:
-            analysis_results: List of analyzed ROI results
-            output_dir: Output directory for validation results
-            
-        Returns:
-            Validation results summary
-        """
-        validation_summary = {
-            'method': 'segmentation_quality',
-            'n_rois': len(analysis_results),
-            'scale_validations': {}
-        }
-        
-        # Validate segmentation quality for each ROI
-        for result in analysis_results:
-            multiscale_results = result.get('multiscale_results', {})
-            
-            for scale, scale_result in multiscale_results.items():
-                if scale not in validation_summary['scale_validations']:
-                    validation_summary['scale_validations'][scale] = []
-                
-                # Get reference channels and segments
-                if 'superpixel_labels' in scale_result and 'composite_dna' in scale_result:
-                    reference_channels = {'DNA_composite': scale_result['composite_dna']}
-                    
-                    # Compute segmentation quality metrics
-                    # TODO: Implement proper segmentation quality validation
-                    quality_metrics = {
-                        'n_segments': len(np.unique(scale_result['superpixel_labels'])),
-                        'scale_um': scale,
-                        'status': 'placeholder'
-                    }
-                    
-                    validation_summary['scale_validations'][scale].append(quality_metrics)
-        
-        # Save validation results using efficient storage
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-        
-        # Create storage backend for validation results
-        validation_storage = create_storage_backend(
-            storage_config=storage_config,
-            base_path=output_dir
-        )
-        
-        # Save validation summary
-        if hasattr(validation_storage, 'save_analysis_results'):
-            validation_storage.save_analysis_results(validation_summary, 'validation_summary')
-        elif hasattr(validation_storage, 'save_roi_analysis'):
-            validation_storage.save_roi_analysis('validation_summary', validation_summary)
-        else:
-            # Fallback - save as JSON
-            import json
-            with open(Path(output_dir) / 'validation_summary.json', 'w') as f:
-                json.dump(validation_summary, f, indent=2)
-        # Note: validation_results would need to be defined if we want to save details
-        
-        self.validation_results = validation_summary
-        return validation_summary
-    
     def generate_summary_report(
         self, 
         results: Dict,
@@ -1768,19 +1166,7 @@ def run_complete_analysis(
     
     # Initialize pipeline with proper config and manifest
     pipeline = IMCAnalysisPipeline(config, manifest)
-    
-    # Initialize statistical framework if configured
-    if hasattr(config, 'statistical_framework'):
-        # Load metadata if available
-        metadata_file = config.data.get('metadata_file')
-        if metadata_file and Path(metadata_file).exists():
-            metadata = pd.read_csv(metadata_file)
-            init_results = pipeline.initialize_statistical_framework(metadata)
-            if init_results.get('hierarchical_structure_valid'):
-                print("Statistical framework initialized successfully")
-            else:
-                print(f"Statistical framework warnings: {init_results.get('validation_warnings', [])}")
-    
+
     # Find ROI files
     roi_files = list(Path(roi_directory).glob("*.txt"))
     
