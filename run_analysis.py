@@ -51,13 +51,13 @@ def main():
     logger.info(f"Data directory: {data_dir}")
     logger.info(f"Output directory: {output_dir}")
     
-    # Find ROI files
-    roi_files = list(data_dir.glob("*.txt"))
+    # Find ROI files, excluding test acquisitions
+    roi_files = [f for f in sorted(data_dir.glob("*.txt")) if 'Test' not in f.name]
     if not roi_files:
         logger.error(f"No .txt files found in data directory: {data_dir}")
         sys.exit(1)
-    
-    logger.info(f"Found {len(roi_files)} ROI files")
+
+    logger.info(f"Found {len(roi_files)} ROI files (test acquisitions excluded)")
     
     # --- CRITICAL: Pre-analysis validation with practical pipeline ---
     logger.info("=== Starting Pre-Analysis Validation (Practical Approach) ===")

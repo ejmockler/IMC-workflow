@@ -349,17 +349,17 @@
       "_comment_random_state": "Fixed seed for reproducibility across runs",
       "random_state": 42,
 
-      "_comment_adaptive_search": "Bayesian optimization for efficient resolution search. Target 0.75 stability (strong consensus), ±0.02 tolerance ensures tight convergence",
+      "_comment_adaptive_search": "Bayesian optimization for efficient resolution search. Target 0.30 stability (realistic for heterogeneous tissue with near-zero baseline), ±0.05 tolerance for convergence",
       "adaptive_search": true,
-      "adaptive_target_stability": 0.75,
-      "adaptive_tolerance": 0.02,
+      "adaptive_target_stability": 0.30,
+      "adaptive_tolerance": 0.05,
       "adaptive_max_evaluations": 50,
 
       "_comment_parallel": "Parallel processing for bootstrap iterations reduces runtime from hours to minutes",
       "parallel": true,
 
-      "_comment_graph_caching": "Cache kNN graph construction across bootstrap iterations (10x speedup)",
-      "use_graph_caching": true,
+      "_comment_graph_caching": "Disabled for publication: rebuilds kNN graph per bootstrap iteration for unbiased stability estimation. Slower but eliminates graph-caching bias flagged in peer review.",
+      "use_graph_caching": false,
 
       "_comment_k_neighbors": "Default k=15 for single-scale analysis. Overridden by k_neighbors_by_scale for multiscale",
       "k_neighbors": 15,
