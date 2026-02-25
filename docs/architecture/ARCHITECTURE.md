@@ -62,29 +62,21 @@ src/analysis/main_pipeline.py
 ### Quality Control
 ```
 src/analysis/quality_control.py
-src/analysis/automatic_qc_system.py
-src/analysis/marker_validation.py
-src/analysis/kidney_validation.py
+src/quality_control/quality_gates.py
+src/quality_control/statistical_monitoring.py
 ```
 
 ### Performance & Memory
 ```
 src/analysis/memory_management.py
-src/analysis/memory_optimizer.py
 src/analysis/parallel_processing.py
-src/analysis/performance_dag.py
-src/analysis/performance_optimizer.py
 ```
 
 ### Batch Effects & Normalization
 ```
 src/analysis/batch_correction.py
-src/analysis/bead_normalization.py
-src/analysis/spillover_correction.py
 ```
-- Sham-anchored z-score normalization (primary method)
-- Bead-based calibration
-- Spillover compensation
+- Quantile normalization for batch effects
 
 ### Data Storage & Provenance
 ```
@@ -104,16 +96,15 @@ src/analysis/fdr_spatial.py
 src/analysis/spatial_permutation.py
 src/analysis/spatial_resampling.py
 src/analysis/mixed_effects_models.py
-src/analysis/patient_level_cv.py
-src/analysis/uncertainty_propagation.py
 ```
 
 ### Validation & Testing
 ```
 src/analysis/synthetic_data_generator.py
-src/analysis/deviation_workflow.py
-src/analysis/ablation_framework.py
-src/analysis/complete_system_validation.py
+src/validation/framework.py
+src/validation/scientific_quality.py
+src/validation/data_integrity.py
+src/validation/pipeline_state.py
 ```
 
 ## Configuration System
@@ -166,11 +157,10 @@ Analysis and visualization are decoupled. Notebooks consume analysis outputs.
 - `quality_control.py`
 
 ### Research/Experimental (Available)
-- `ablation_framework.py`
-- `segmentation_benchmark.py`
 - `graph_clustering.py`
-- `mi_imc_integration.py`
-- `single_stain_protocols.py`
+- `grid_segmentation.py`
+- `watershed_segmentation.py`
+- `clustering_comparison.py`
 
 ### Utility/Support (Infrastructure)
 - All memory, performance, provenance, and validation modules

@@ -17,7 +17,7 @@ This document provides detailed methodology for the IMC analysis pipeline.
 
 **Design Type:** Cross-sectional (different subjects at each timepoint).
 - 8 biological replicates total across 4 timepoints
-- Multiple ROIs per subject (25 ROIs total, ~3 per mouse)
+- Multiple ROIs per subject (24 ROIs total, 1 test acquisition excluded; ~3 per mouse)
 - Anatomical regions (cortex/medulla) identified from metadata
 
 **Statistical Limitations:** n=2 per timepoint prevents inferential statistics between specific timepoints. All findings are hypothesis-generating, not confirmatory. Validation in adequately powered cohorts (n>=10 per group) required for biological claims.
@@ -84,7 +84,7 @@ Morphology-aware segmentation using DNA channels:
 2. **SLIC Parameters** (from config.json):
    - Compactness: 10.0
    - Sigma: 1.5
-   - Segment count: area / target_size^2 (scale-dependent)
+   - Segment count: tissue_area / target_size^2 (scale-dependent; tissue area from eroded mask, not total image area)
    - Scales: 10um, 20um, 40um
 3. **Aggregation**: Mean protein expression within each superpixel
 
@@ -139,25 +139,25 @@ Both feature and spatial components are scaled by the weight parameter. Setting 
 
 ### kNN Graph Construction
 Scale-adaptive k neighbors:
-- 10um (~2400 superpixels): k=14
-- 20um (~600 superpixels): k=12
-- 40um (~130 superpixels): k=10
+- 10um (~2400 superpixels, median=2434): k=14
+- 20um (~580 superpixels, median=584): k=12
+- 40um (~120 superpixels, median=123): k=10
 
 ### Resolution Selection via Stability Analysis
 Resolution selected via bootstrap stability:
 
 1. For each candidate resolution:
-   - Generate B bootstrap samples (default B=5, configurable to 100; 90% subsampling)
+   - Generate B=100 bootstrap samples; 85% subsampling
    - Cluster each sample at that resolution
    - Compute pairwise ARI between all bootstrap clusterings
 
 2. Stability score: mean pairwise ARI across bootstrap pairs
 
-3. Select resolution with maximum stability (target: S >= 0.6)
+3. Select resolution with maximum stability (target: S >= 0.30)
 
 **Current status:** Near-zero stability scores observed across all scales and resolutions. This is reported transparently; downstream analyses that depend on cluster assignments carry this uncertainty.
 
-> **Stability estimation approximation.** Bootstrap stability analysis uses a cached kNN graph built on the full dataset, with per-iteration subsampling via vertex deletion. This avoids O(n_bootstrap × n²) graph construction but may underestimate instability relative to full graph reconstruction per iteration, as the global neighborhood structure is partially preserved. The `use_graph_caching` parameter can be set to `false` for exact (but slower) stability estimation.
+> **Stability estimation.** Graph caching is disabled by default (`use_graph_caching=false`): the kNN graph is rebuilt from scratch for each bootstrap iteration, providing unbiased stability estimates at the cost of O(n_bootstrap × n²) graph construction. The `use_graph_caching` parameter can be set to `true` for faster (but potentially optimistic) stability estimation via vertex deletion on a cached full-dataset graph.
 
 ## Cell Type Annotation
 
@@ -188,7 +188,7 @@ With n=2 per group, most comparisons are expected to be non-significant. Effect 
 
 > **Spatial enrichment null model.** Neighborhood enrichment significance is assessed via global permutation of cell-type labels within each ROI. This null model assumes spatial homogeneity and does not preserve regional gradients (e.g., cortico-medullary axis). For tissues with strong spatial structure, enrichment p-values may be anti-conservative. Regional stratification or toroidal shift permutation would provide a more appropriate null but were not implemented in this pilot study.
 
-**Spatial weight ablation**: Enrichment scores are identical (Pearson r=1.000) between spatial_weight=0.3 (default, X/Y coordinates appended to feature matrix) and spatial_weight=0 (coordinates omitted). Note: the co-abundance feature matrix already contains 36 spatial covariance features computed from 20μm KDTree neighborhoods (see Coabundance Feature Engineering above), so this ablation specifically tests the contribution of global position coordinates (2 dimensions) beyond the local spatial covariance structure (36 dimensions) already present in the 153-feature matrix. The result confirms that global tissue position does not influence enrichment patterns beyond local co-expression structure captured by spatial covariance features and boolean gating.
+**Spatial weight ablation**: In prior runs, enrichment scores were identical (Pearson r=1.000) between spatial_weight=0.3 (default, X/Y coordinates appended to feature matrix) and spatial_weight=0 (coordinates omitted). Note: the co-abundance feature matrix already contains 36 spatial covariance features computed from 20μm KDTree neighborhoods (see Coabundance Feature Engineering above), so this ablation specifically tests the contribution of global position coordinates (2 dimensions) beyond the local spatial covariance structure (36 dimensions) already present in the 153-feature matrix. The result confirms that global tissue position does not influence enrichment patterns beyond local co-expression structure captured by spatial covariance features and boolean gating.
 
 > **Spatial information encoding.** Local spatial structure enters the analysis through two channels: (1) 36 spatial covariance features computed via radius-based neighborhoods in the coabundance feature set, and (2) the `spatial_weight` parameter that blends raw spatial coordinates into the clustering feature matrix via kNN graphs. These encode related but non-identical spatial information (radius neighborhoods vs. k-nearest-neighbor graphs). The `spatial_weight=0` ablation removes channel (2) but not channel (1), so the ablation tests the marginal contribution of coordinate-based weighting beyond what is already captured by spatial covariance features.
 
@@ -215,7 +215,7 @@ When multiple acquisition batches detected:
 
 ## Computational Implementation
 
-- **Graph Caching**: kNN graph computed once per scale, reused across bootstrap iterations
+- **Graph Caching**: Disabled by default (`use_graph_caching=false`); kNN graph rebuilt per bootstrap iteration for unbiased stability estimation. Can be enabled for speed at the cost of potentially optimistic stability scores
 - **Random Seeds**: Fixed (random_state=42) for reproducibility
 - **Configuration**: All parameters in config.json; Config class is single source of truth
 - **Provenance**: Software versions and parameter snapshots tracked per run
@@ -230,7 +230,7 @@ When multiple acquisition batches detected:
 
 ## Software and Dependencies
 
-- Python 3.8+
+- Python 3.12+
 - NumPy, Pandas, Scikit-learn, Scikit-image, SciPy
 - statsmodels (multiple testing correction)
 - leidenalg (community detection)

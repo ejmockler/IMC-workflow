@@ -44,7 +44,7 @@ Each scale contains:
 
 | Field | Type | Shape | Description |
 |-------|------|-------|-------------|
-| `features` | array | `[n_superpixels, n_features]` | Aggregated ion count features (30 features from 11 markers) |
+| `features` | array | `[n_superpixels, n_features]` | Aggregated ion count features (30 features from 9 protein markers) |
 | `spatial_coords` | array | `[n_superpixels, 2]` | Superpixel centroids (x, y) in μm |
 | `cluster_labels` | array | `[n_superpixels]` | Leiden community detection labels (0 to n_clusters-1) |
 | `superpixel_labels` | array | `[height, width]` | Pixel-level segmentation map |
@@ -463,7 +463,7 @@ plot_marker_spatial_map(results, marker='CD45', scale='10.0')
 
 - Single ROI file (compressed): ~100KB - 2MB
 - Single ROI file (uncompressed): ~1MB - 20MB
-- Loading all 18 ROIs: ~50-150MB RAM
+- Loading all 24 ROIs: ~50-150MB RAM
 
 **Recommendation**: Load selectively if memory-constrained:
 ```python

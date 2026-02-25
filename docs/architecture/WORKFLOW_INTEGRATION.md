@@ -151,7 +151,7 @@ python differential_abundance_analysis.py
 python spatial_neighborhood_analysis.py
 
 # Step 5: Visualize
-jupyter notebook analyze_results.ipynb
+jupyter notebook notebooks/biological_narratives/kidney_injury_spatial_analysis.ipynb
 ```
 
 **Pros**:
