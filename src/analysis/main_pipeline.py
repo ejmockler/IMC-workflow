@@ -97,7 +97,7 @@ class IMCAnalysisPipeline:
         # Coordinate quality: check for NaN/inf and reasonable range
         if len(coords) > 0:
             valid_coords = np.isfinite(coords).all(axis=1).mean()
-            coord_range = coords.ptp(axis=0)
+            coord_range = np.ptp(coords, axis=0)
             # Penalize if range is suspiciously small (< 10 pixels)
             range_ok = 1.0 if all(r > 10 for r in coord_range) else 0.5
             coordinate_quality = valid_coords * range_ok
@@ -1167,12 +1167,12 @@ def run_complete_analysis(
     # Initialize pipeline with proper config and manifest
     pipeline = IMCAnalysisPipeline(config, manifest)
 
-    # Find ROI files
-    roi_files = list(Path(roi_directory).glob("*.txt"))
-    
+    # Find ROI files, excluding test acquisitions
+    roi_files = [f for f in sorted(Path(roi_directory).glob("*.txt")) if 'Test' not in f.name]
+
     if not roi_files:
         raise ValueError(f"No ROI files found in {roi_directory}")
-    
+
     print(f"Found {len(roi_files)} ROI files")
 
     # Get output directory from config (respects experiment-specific paths)
