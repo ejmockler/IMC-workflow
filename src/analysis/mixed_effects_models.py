@@ -527,7 +527,7 @@ class SpatialMixedEffects(NestedModel):
             coeffs = np.polyfit(valid_dist, log_corr, 1)
             decay = -coeffs[0]
             return max(0.0, decay)  # Ensure non-negative
-        except:
+        except (np.linalg.LinAlgError, ValueError):
             return 0.0
 
 
@@ -614,7 +614,7 @@ def bootstrap_uncertainty(model: NestedModel,
                 bootstrap_df, response_var, hierarchy
             )
             bootstrap_results.append(bootstrap_results_dict)
-        except:
+        except Exception:
             continue  # Skip failed bootstrap iterations
     
     # Calculate confidence intervals

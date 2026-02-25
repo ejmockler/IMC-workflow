@@ -589,7 +589,8 @@ class CompressedJSONStorage:
     
     def load_roi_complete(self, roi_id: str) -> Dict[str, Any]:
         """Load complete ROI analysis from compressed JSON."""
-        filename = f"roi_{roi_id}.json"
+        safe_roi_id = _sanitize_roi_id(roi_id)
+        filename = f"roi_{safe_roi_id}.json"
         
         # Try compressed version first
         filepath_gz = self.roi_dir / (filename + ".gz")

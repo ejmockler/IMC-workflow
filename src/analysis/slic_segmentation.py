@@ -226,7 +226,7 @@ def perform_slic_segmentation(
         min_size = max(5, int(0.0005 * tissue_mask.size))  # 0.05% of image
         try:
             tissue_mask = remove_small_objects(tissue_mask, min_size=min_size)
-        except:
+        except (ValueError, TypeError):
             # If remove_small_objects fails, keep original mask
             pass
         tissue_mask_eroded = tissue_mask  # No erosion for sparse data

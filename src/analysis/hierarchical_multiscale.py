@@ -244,7 +244,7 @@ def compute_texture_features(
             correlation = graycoprops(glcm, 'correlation')[0, 0]
             
             texture_features_all.extend([contrast, homogeneity, energy, correlation])
-        except:
+        except (ValueError, IndexError):
             # If texture computation fails, use zeros
             texture_features_all.extend([0, 0, 0, 0])
     

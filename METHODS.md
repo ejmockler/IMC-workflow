@@ -157,6 +157,8 @@ Resolution selected via bootstrap stability:
 
 **Current status:** Near-zero stability scores observed across all scales and resolutions. This is reported transparently; downstream analyses that depend on cluster assignments carry this uncertainty.
 
+> **Stability estimation approximation.** Bootstrap stability analysis uses a cached kNN graph built on the full dataset, with per-iteration subsampling via vertex deletion. This avoids O(n_bootstrap × n²) graph construction but may underestimate instability relative to full graph reconstruction per iteration, as the global neighborhood structure is partially preserved. The `use_graph_caching` parameter can be set to `false` for exact (but slower) stability estimation.
+
 ## Cell Type Annotation
 
 ### Method
@@ -184,7 +186,11 @@ With n=2 per group, most comparisons are expected to be non-significant. Effect 
 - BH FDR correction within each ROI across all focal × neighbor pairs
 - Aggregation: fraction of ROIs with FDR-significant enrichment
 
+> **Spatial enrichment null model.** Neighborhood enrichment significance is assessed via global permutation of cell-type labels within each ROI. This null model assumes spatial homogeneity and does not preserve regional gradients (e.g., cortico-medullary axis). For tissues with strong spatial structure, enrichment p-values may be anti-conservative. Regional stratification or toroidal shift permutation would provide a more appropriate null but were not implemented in this pilot study.
+
 **Spatial weight ablation**: Enrichment scores are identical (Pearson r=1.000) between spatial_weight=0.3 (default, X/Y coordinates appended to feature matrix) and spatial_weight=0 (coordinates omitted). Note: the co-abundance feature matrix already contains 36 spatial covariance features computed from 20μm KDTree neighborhoods (see Coabundance Feature Engineering above), so this ablation specifically tests the contribution of global position coordinates (2 dimensions) beyond the local spatial covariance structure (36 dimensions) already present in the 153-feature matrix. The result confirms that global tissue position does not influence enrichment patterns beyond local co-expression structure captured by spatial covariance features and boolean gating.
+
+> **Spatial information encoding.** Local spatial structure enters the analysis through two channels: (1) 36 spatial covariance features computed via radius-based neighborhoods in the coabundance feature set, and (2) the `spatial_weight` parameter that blends raw spatial coordinates into the clustering feature matrix via kNN graphs. These encode related but non-identical spatial information (radius neighborhoods vs. k-nearest-neighbor graphs). The `spatial_weight=0` ablation removes channel (2) but not channel (1), so the ablation tests the marginal contribution of coordinate-based weighting beyond what is already captured by spatial covariance features.
 
 ### Spatial Autocorrelation
 Spatial coherence assessed via Spearman correlation of marker expression with spatial coordinates. Moran's I is configured but not currently implemented in the analysis pipeline.

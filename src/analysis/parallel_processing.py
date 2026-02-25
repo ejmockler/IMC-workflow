@@ -590,7 +590,7 @@ def flatten_dict(d: Dict, prefix: str = '') -> Dict:
                     flattened[f"{new_key}_size"] = int(arr.size)
                 else:
                     flattened[f"{new_key}_size"] = len(v)
-            except:
+            except (TypeError, AttributeError):
                 flattened[f"{new_key}_size"] = len(v) if hasattr(v, '__len__') else 1
         else:
             flattened[new_key] = v

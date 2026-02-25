@@ -15,6 +15,8 @@ import logging
 from pathlib import Path
 import json
 
+logger = logging.getLogger(__name__)
+
 
 class ValidationSeverity(Enum):
     """Validation result severity levels."""
@@ -461,6 +463,7 @@ class QualityMetrics:
             score = np.exp(-abs(np.log(ratio))**2)
             return float(score)
         
+        logger.debug("Distribution check: unknown distribution type, returning default 0.5")
         return 0.5  # Default for unknown distributions
 
 

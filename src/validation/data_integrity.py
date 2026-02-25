@@ -12,6 +12,8 @@ from scipy import stats
 from sklearn.neighbors import NearestNeighbors
 import logging
 
+logger = logging.getLogger(__name__)
+
 from .framework import (
     ValidationRule, ValidationResult, ValidationSeverity, 
     ValidationCategory, ValidationMetric, QualityMetrics
@@ -179,6 +181,7 @@ class CoordinateValidator(ValidationRule):
     def _assess_spatial_regularity(self, coords: np.ndarray, random_seed: int = 42) -> float:
         """Assess spatial regularity using deterministic sampling and nearest neighbor analysis."""
         if len(coords) < 10:
+            logger.debug("Spatial regularity: insufficient data (n < 10), returning default 0.5")
             return 0.5  # Insufficient data
         
         # Deterministic sampling for reproducibility
@@ -233,6 +236,7 @@ class CoordinateValidator(ValidationRule):
             nn_distances = distances[:, 1]  # Distance to nearest neighbor
             
             if len(nn_distances) == 0:
+                logger.debug("Spatial regularity: no nearest neighbor distances found, returning default 0.5")
                 return 0.5
             
             # Calculate coefficient of variation
@@ -244,7 +248,7 @@ class CoordinateValidator(ValidationRule):
             return float(np.clip(regularity, 0.0, 1.0))
             
         except Exception as e:
-            logger.warning(f"Error in spatial regularity calculation: {e}")
+            logger.debug(f"Spatial regularity calculation failed: {e}, returning default 0.5")
             return 0.5
 
 
@@ -695,4 +699,6 @@ class TransformationValidator(ValidationRule):
         if finite_frac:
             quality_components.append(finite_frac.value)
         
+        if not quality_components:
+            logger.debug("No quality components available, returning default 0.5")
         return np.mean(quality_components) if quality_components else 0.5

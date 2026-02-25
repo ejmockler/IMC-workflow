@@ -12,6 +12,8 @@ from scipy import stats
 from sklearn.metrics import silhouette_score
 import logging
 
+logger = logging.getLogger(__name__)
+
 from .framework import (
     ValidationRule, ValidationResult, ValidationSeverity,
     ValidationCategory, ValidationMetric, QualityMetrics
@@ -249,6 +251,7 @@ class PreprocessingValidator(ValidationRule):
         positive_counts = counts[counts > 0]
         
         if len(positive_counts) < 10:
+            logger.debug("Background correction: insufficient positive counts (n < 10), returning default 0.5")
             return 0.5  # Insufficient data
         
         # Check for reasonable distribution shape
@@ -264,7 +267,8 @@ class PreprocessingValidator(ValidationRule):
             
             return (skew_score + kurt_score) / 2
             
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Background correction assessment failed: {e}, returning default 0.5")
             return 0.5
 
 
@@ -483,6 +487,7 @@ class SegmentationValidator(ValidationRule):
             from scipy.spatial import ConvexHull
             
             if len(pixel_coords) < 3:
+                logger.debug("Superpixel compactness: insufficient coordinates (n < 3), returning NaN")
                 return np.nan
             
             # Use convex hull as approximation
@@ -501,11 +506,13 @@ class SegmentationValidator(ValidationRule):
                 compactness = 4 * np.pi * area / (perimeter ** 2)
                 return min(1.0, compactness)  # Cap at 1.0
             else:
+                logger.debug("Superpixel compactness: zero perimeter, returning NaN")
                 return np.nan
-                
-        except Exception:
+
+        except Exception as e:
+            logger.debug(f"Superpixel compactness calculation failed: {e}, returning NaN")
             return np.nan
-    
+
     def _count_connected_components(self, binary_mask: np.ndarray) -> int:
         """Count connected components in binary mask."""
         try:

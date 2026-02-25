@@ -834,7 +834,7 @@ class SyntheticDataGenerator:
                 'distances': distances.tolist(),
                 'k_values': k_values.tolist()
             }
-        except:
+        except Exception:
             metrics['ripleys_k'] = None
         
         # Protein correlations
@@ -848,7 +848,7 @@ class SyntheticDataGenerator:
                         expressions[protein2].reshape(-1, 1)
                     )
                     protein_corrs[f"{protein1}_{protein2}"] = float(corr)
-                except:
+                except Exception:
                     protein_corrs[f"{protein1}_{protein2}"] = 0.0
         
         metrics['protein_correlations'] = protein_corrs
@@ -866,7 +866,7 @@ class SyntheticDataGenerator:
             from .spatial_clustering import compute_spatial_coherence
             spatial_coherence = compute_spatial_coherence(cluster_labels, coordinates)
             metrics['spatial_coherence'] = float(spatial_coherence)
-        except:
+        except Exception:
             metrics['spatial_coherence'] = None
         
         return metrics
@@ -890,7 +890,7 @@ class SyntheticDataGenerator:
                         cluster_labels[labeled_mask]
                     )
                     return float(score)
-        except:
+        except Exception:
             pass
         
         return 0.0

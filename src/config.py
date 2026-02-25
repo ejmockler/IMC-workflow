@@ -30,10 +30,7 @@ def migrate_config(config_dict: Dict[str, Any]) -> Dict[str, Any]:
         if 'resolution_range' not in clustering:
             clustering['resolution_range'] = [0.5, 2.0]
             modified = True
-        if 'optimization_method' not in clustering and 'optimization_method' in clustering:
-            # Fix: only set if not present
-            pass
-        elif 'optimization_method' not in clustering:
+        if 'optimization_method' not in clustering:
             clustering['optimization_method'] = 'stability'
             modified = True
             

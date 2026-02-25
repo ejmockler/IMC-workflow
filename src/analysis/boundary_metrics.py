@@ -653,9 +653,9 @@ class BoundaryQualityEvaluator:
                     original_spatial_pattern = np.mean(k_values)
                 else:
                     continue
-            except:
+            except Exception:
                 continue
-            
+
             # Spatial autocorrelation within each segment
             segment_patterns = []
             unique_labels = np.unique(labels)
@@ -672,7 +672,7 @@ class BoundaryQualityEvaluator:
                         )
                         if len(seg_k_values) > 0:
                             segment_patterns.append(np.mean(seg_k_values))
-                    except:
+                    except Exception:
                         continue
             
             if segment_patterns and original_spatial_pattern > 0:
@@ -825,9 +825,9 @@ class BoundaryQualityEvaluator:
                 if perimeter > 0:
                     compactness = 4 * np.pi * area / (perimeter ** 2)
                     segment_compactness.append(compactness)
-            except:
+            except Exception:
                 continue
-        
+
         if segment_areas:
             # Size consistency
             area_cv = np.std(segment_areas) / np.mean(segment_areas)

@@ -14,6 +14,8 @@ from sklearn.metrics import silhouette_score
 from sklearn.cluster import KMeans
 import logging
 
+logger = logging.getLogger(__name__)
+
 from .framework import (
     ValidationRule, ValidationResult, ValidationSeverity,
     ValidationCategory, ValidationMetric, QualityMetrics
@@ -651,6 +653,7 @@ class SpatialValidator(ValidationRule):
         try:
             n = len(coords)
             if n < 10:
+                logger.debug(f"Moran's I: insufficient samples (n={n}), returning NaN")
                 return np.nan
             
             # Create spatial weights matrix (inverse distance)
@@ -682,11 +685,13 @@ class SpatialValidator(ValidationRule):
                 morans_i = (n / np.sum(weights)) * (numerator / denominator)
                 return morans_i
             else:
+                logger.debug("Moran's I: zero variance in values, returning NaN")
                 return np.nan
-                
-        except Exception:
+
+        except Exception as e:
+            logger.debug(f"Moran's I calculation failed: {e}, returning NaN")
             return np.nan
-    
+
     def _calculate_edge_density(self, coords: np.ndarray) -> float:
         """Calculate edge density as measure of morphological coherence."""
         try:
@@ -711,5 +716,6 @@ class SpatialValidator(ValidationRule):
             coherence = np.exp(-cv_edges)
             return coherence
             
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Edge density calculation failed: {e}, returning default 0.5")
             return 0.5  # Default moderate score
