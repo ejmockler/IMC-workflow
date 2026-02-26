@@ -83,7 +83,7 @@ class IMCAnalysisPipeline:
                     if isinstance(bead_norm, dict) and bead_norm.get('enabled', False):
                         self.batch_config = BatchCorrectionConfig(
                             bead_channels=bead_norm.get('bead_channels', ['130Ba', '131Xe']),
-                            bead_signal_threshold=bead_norm.get('bead_signal_threshold', 100.0),
+                            bead_signal_threshold=bead_norm.get('bead_signal_threshold', 10.0),
                             drift_correction_method=bead_norm.get('drift_correction_method', 'median_reference')
                         )
 
