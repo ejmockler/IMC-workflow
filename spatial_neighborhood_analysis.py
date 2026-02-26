@@ -144,9 +144,11 @@ def permutation_test(
 
         null_props.append(neighbor_prop)
 
-    # Two-sided p-value
+    # Two-sided p-value with Phipson & Smyth (2010) pseudocount correction
+    # Prevents p=0 which implies infinite evidence against the null
     null_props = np.array(null_props)
-    p_value = np.mean(np.abs(null_props - expected_prop) >= np.abs(observed_prop - expected_prop))
+    n_extreme = np.sum(np.abs(null_props - expected_prop) >= np.abs(observed_prop - expected_prop))
+    p_value = (n_extreme + 1) / (len(null_props) + 1)
 
     return enrichment, p_value
 
@@ -279,23 +281,28 @@ def aggregate_across_rois(
     combined = combined[combined['timepoint'] != 'Test']
 
     # Group and aggregate
+    # Use weighted means for continuous columns, weighted by n_focal_cells,
+    # so ROIs with more focal cells contribute proportionally more
     group_cols = ['focal_cell_type', 'neighbor_cell_type', groupby]
 
-    agg_dict = {
-        'observed_proportion': 'mean',
-        'expected_proportion': 'mean',
-        'enrichment_score': 'mean',
-        'log2_enrichment': 'mean',
-        'p_value': lambda x: np.mean(x < 0.05),  # Fraction raw significant (for comparison)
-        'n_focal_cells': 'sum',
-        'roi_id': 'count'
-    }
+    weighted_cols = ['observed_proportion', 'expected_proportion', 'enrichment_score', 'log2_enrichment']
 
-    # Use FDR-corrected significance if available
-    if 'significant_fdr' in combined.columns:
-        agg_dict['significant_fdr'] = lambda x: np.mean(x)  # Fraction FDR-significant
+    def _weighted_agg(group_df):
+        weights = group_df['n_focal_cells']
+        result = {}
+        for col in weighted_cols:
+            if weights.sum() > 0:
+                result[col] = np.average(group_df[col], weights=weights)
+            else:
+                result[col] = group_df[col].mean()
+        result['p_value'] = np.mean(group_df['p_value'] < 0.05)  # Fraction raw significant (for comparison)
+        result['n_focal_cells'] = group_df['n_focal_cells'].sum()
+        result['roi_id'] = len(group_df)
+        if 'significant_fdr' in group_df.columns:
+            result['significant_fdr'] = np.mean(group_df['significant_fdr'])  # Fraction FDR-significant
+        return pd.Series(result)
 
-    aggregated = combined.groupby(group_cols).agg(agg_dict).reset_index()
+    aggregated = combined.groupby(group_cols).apply(_weighted_agg, include_groups=False).reset_index()
 
     aggregated.rename(columns={
         'p_value': 'fraction_significant_raw',

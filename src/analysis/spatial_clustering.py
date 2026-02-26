@@ -95,7 +95,7 @@ def perform_spatial_clustering(
                 enriched_features,
                 enriched_feature_names,
                 target_n_features=coabundance_options.get('target_n_features', 30),
-                method=coabundance_options.get('selection_method', 'lasso'),
+                method=coabundance_options.get('selection_method', 'variance'),
                 options=coabundance_options  # Pass full options dict for method-specific params
             )
         else:

@@ -184,7 +184,7 @@ class ComprehensiveFigureGenerator:
         ax_heatmap = fig.add_subplot(gs[0, :2])
         self._plot_cluster_heatmap(ax_heatmap)
         
-        # Panel B: Statistical tests (top right)
+        # Panel B: Cluster frequency heatmap (top right)
         ax_stats = fig.add_subplot(gs[0, 2:])
         self._plot_statistical_tests(ax_stats)
         
@@ -352,57 +352,69 @@ class ComprehensiveFigureGenerator:
             ax.grid(axis='y', alpha=0.3)
     
     def _plot_statistical_tests(self, ax):
-        """Plot results of statistical tests."""
-        # Perform ANOVA for each cluster across timepoints
-        test_results = []
-        
+        """Plot descriptive heatmap of mean cluster frequencies by timepoint.
+
+        Note: Significance tests removed. With n=2 mice per timepoint,
+        formal hypothesis testing is underpowered and misleading.
+        Descriptive summaries are shown instead.
+        """
         cluster_data = []
         for roi_id, data in self.roi_data.items():
             if data['arrays'] is not None and data['condition'] == 'Injury':
                 cluster_labels = data['arrays']['scale_20.0_cluster_labels']
                 unique, counts = np.unique(cluster_labels, return_counts=True)
                 total = len(cluster_labels)
-                
+
                 for cluster_id, count in zip(unique, counts):
                     cluster_data.append({
                         'Timepoint': data['timepoint'],
                         'Cluster': str(cluster_id),
                         'Frequency': count / total * 100
                     })
-        
+
+        if not cluster_data:
+            ax.text(0.5, 0.5, 'Insufficient data', ha='center', va='center',
+                    transform=ax.transAxes)
+            ax.set_title('B. Cluster Frequency by Timepoint', fontweight='bold', fontsize=10)
+            return
+
         df = pd.DataFrame(cluster_data)
-        
-        # Run Kruskal-Wallis test for each cluster
-        for cluster_id in sorted(df['Cluster'].unique()):
-            cluster_df = df[df['Cluster'] == cluster_id]
-            
-            groups = []
-            for tp in sorted(cluster_df['Timepoint'].unique()):
-                groups.append(cluster_df[cluster_df['Timepoint'] == tp]['Frequency'].values)
-            
-            if len(groups) >= 2 and all(len(g) > 0 for g in groups):
-                stat, pval = stats.kruskal(*groups)
-                test_results.append({
-                    'Cluster': self.cluster_phenotypes.get(cluster_id, f'C{cluster_id}'),
-                    'p-value': pval,
-                    'Significant': pval < 0.05
-                })
-        
-        # Plot results
-        results_df = pd.DataFrame(test_results)
-        if not results_df.empty:
-            results_df = results_df.sort_values('p-value')
-            
-            y_pos = range(len(results_df))
-            colors = ['red' if sig else 'gray' for sig in results_df['Significant']]
-            
-            ax.barh(y_pos, -np.log10(results_df['p-value']), color=colors, alpha=0.7)
-            ax.set_yticks(y_pos)
-            ax.set_yticklabels(results_df['Cluster'].str[:20], fontsize=7)
-            ax.set_xlabel('-log10(p-value)')
-            ax.axvline(x=-np.log10(0.05), color='black', linestyle='--', alpha=0.5)
-            ax.text(-np.log10(0.05) + 0.1, len(y_pos) - 0.5, 'p=0.05', fontsize=6)
-            ax.set_title('B. Temporal Changes\n(Kruskal-Wallis)', fontweight='bold', fontsize=10)
+
+        # Build mean-frequency pivot: clusters (rows) x timepoints (cols)
+        pivot = df.pivot_table(
+            values='Frequency',
+            index='Cluster',
+            columns='Timepoint',
+            aggfunc='mean'
+        )
+        pivot = pivot.sort_index()
+
+        # Relabel rows with phenotype names
+        row_labels = [self.cluster_phenotypes.get(c, f'C{c}')[:20] for c in pivot.index]
+        col_labels = [str(tp) for tp in pivot.columns]
+
+        im = ax.imshow(pivot.values, aspect='auto', cmap='YlOrRd')
+
+        ax.set_xticks(range(len(col_labels)))
+        ax.set_xticklabels(col_labels, fontsize=8)
+        ax.set_yticks(range(len(row_labels)))
+        ax.set_yticklabels(row_labels, fontsize=7)
+
+        # Annotate cells with frequency values
+        for i in range(pivot.shape[0]):
+            for j in range(pivot.shape[1]):
+                val = pivot.values[i, j]
+                text_color = 'white' if val > pivot.values.max() * 0.6 else 'black'
+                ax.text(j, i, f'{val:.1f}%', ha='center', va='center',
+                        fontsize=7, color=text_color)
+
+        cbar = plt.colorbar(im, ax=ax, label='Mean Frequency (%)')
+        cbar.ax.tick_params(labelsize=7)
+
+        ax.set_title('B. Cluster Frequency by Timepoint\n(Injury ROIs, descriptive)',
+                      fontweight='bold', fontsize=10)
+        ax.set_xlabel('Days Post-Injury')
+        ax.set_ylabel('Cluster')
     
     def _plot_example_spatial(self, ax):
         """Plot example spatial map."""
