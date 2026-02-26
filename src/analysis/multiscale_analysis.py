@@ -331,6 +331,10 @@ def perform_multiscale_analysis(
             for i in range(n_composition_features):
                 enhanced_protein_names.append(f"neighborhood_comp_{i}")
         
+        # Compute scale-adaptive k_neighbors (needed by both stability and clustering)
+        n_samples = features.shape[0]
+        k_neighbors = _compute_scale_adaptive_k_neighbors(n_samples, scale_um, config)
+
         # Step 3: Stability analysis for resolution selection
         stability_config = _extract_stability_config(config)
         stability_kwargs = {
@@ -356,6 +360,7 @@ def perform_multiscale_analysis(
             features, spatial_coords,
             method=method,
             resolution_range=resolution_range,
+            k_neighbors=k_neighbors,
             **stability_kwargs
         )
 
@@ -376,10 +381,6 @@ def perform_multiscale_analysis(
         fine_weight = spatial_weight_params.get('fine_scale_weight', 0.2)
         coarse_weight = spatial_weight_params.get('coarse_scale_weight', 0.4)
         spatial_weight = fine_weight if scale_um <= sw_threshold else coarse_weight
-
-        # Compute scale-adaptive k_neighbors to prevent over-connected graphs
-        n_samples = features.shape[0]
-        k_neighbors = _compute_scale_adaptive_k_neighbors(n_samples, scale_um, config)
 
         cluster_labels, clustering_info = perform_spatial_clustering(
             features, spatial_coords,

@@ -418,11 +418,12 @@ def stability_analysis(
     adaptive_target_stability: float = 0.6,
     adaptive_tolerance: float = 0.05,
     adaptive_max_evaluations: Optional[int] = None,
-    spatial_weight: float = 0.3
+    spatial_weight: float = 0.3,
+    k_neighbors: int = 15
 ) -> Dict:
     """
     Analyze clustering stability across resolution parameters.
-    
+
     Args:
         feature_matrix: N x P feature matrix
         spatial_coords: N x 2 spatial coordinates
@@ -439,7 +440,8 @@ def stability_analysis(
         adaptive_target_stability: Target stability for adaptive convergence
         adaptive_tolerance: Resolution tolerance for adaptive refinement
         adaptive_max_evaluations: Maximum evaluations for adaptive search
-        
+        k_neighbors: Number of neighbors for kNN graph construction
+
     Returns:
         Dictionary with stability analysis results
     """
@@ -465,7 +467,7 @@ def stability_analysis(
         with PerformanceTimer("stability_build_knn_graph", log_result=False) as build_timer:
             base_knn_graph = _build_knn_graph_cached(
                 combined_features,
-                k_neighbors=min(15, max(1, subsample_size - 1))
+                k_neighbors=min(k_neighbors, max(1, subsample_size - 1))
             )
         if build_timer and build_timer.elapsed is not None:
             record_timing("stability_graph_build", build_timer.elapsed)

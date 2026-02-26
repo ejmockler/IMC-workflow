@@ -319,7 +319,7 @@ def main():
 
     # Parameters
     k_neighbors = 10
-    n_permutations = 500
+    n_permutations = 1000
 
     print(f"\nParameters:")
     print(f"  k-nearest neighbors: {k_neighbors}")

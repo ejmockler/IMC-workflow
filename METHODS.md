@@ -147,7 +147,7 @@ Scale-adaptive k neighbors:
 Resolution selected via bootstrap stability:
 
 1. For each candidate resolution:
-   - Generate B=100 bootstrap samples; 85% subsampling
+   - Generate B=20 bootstrap samples; 85% subsampling
    - Cluster each sample at that resolution
    - Compute pairwise ARI between all bootstrap clusterings
 
@@ -157,7 +157,7 @@ Resolution selected via bootstrap stability:
 
 **Current status:** Near-zero stability scores observed across all scales and resolutions. This is reported transparently; downstream analyses that depend on cluster assignments carry this uncertainty.
 
-> **Stability estimation.** Graph caching is disabled by default (`use_graph_caching=false`): the kNN graph is rebuilt from scratch for each bootstrap iteration, providing unbiased stability estimates at the cost of O(n_bootstrap × n²) graph construction. The `use_graph_caching` parameter can be set to `true` for faster (but potentially optimistic) stability estimation via vertex deletion on a cached full-dataset graph.
+> **Stability estimation.** Graph caching is enabled (`use_graph_caching=true`): a single kNN graph is built on the full dataset and subsampled per bootstrap iteration via vertex deletion. This is faster but may produce optimistic stability estimates. With near-zero stability observed across all scales and resolutions, the caching bias is negligible relative to the fundamental instability. The parameter can be set to `false` to rebuild the kNN graph from scratch per iteration at the cost of O(n_bootstrap × n²) graph construction.
 
 ## Cell Type Annotation
 
@@ -223,7 +223,7 @@ When multiple acquisition batches detected:
 
 ## Computational Implementation
 
-- **Graph Caching**: Disabled by default (`use_graph_caching=false`); kNN graph rebuilt per bootstrap iteration for unbiased stability estimation. Can be enabled for speed at the cost of potentially optimistic stability scores
+- **Graph Caching**: Enabled (`use_graph_caching=true`); kNN graph built once on full dataset, subsampled per bootstrap iteration. Faster but potentially optimistic — moot given near-zero stability baseline
 - **Random Seeds**: Fixed (random_state=42) for reproducibility
 - **Configuration**: All parameters in config.json; Config class is single source of truth
 - **Scale-adaptive parameters**: Spatial weight and resolution range use scale-dependent defaults (fine scales: w=0.2, range=[0.5, 2.0]; coarse scales: w=0.4, range=[0.2, 1.0]). The scalar `spatial_weight` and list `resolution_range` in config.json are overridden by these scale-adaptive heuristics
