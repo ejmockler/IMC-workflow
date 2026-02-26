@@ -169,6 +169,8 @@ Boolean gating on arcsinh-transformed superpixel-level expression (10um scale):
 ### Assignment Rate
 Mean assignment rate: ~21% (range 10-48% across ROIs). The remaining ~79% of superpixels are unassigned due to the 9-marker panel lacking sufficient markers for complete tissue annotation. Spatial analyses operate only on the identifiable fraction.
 
+> **Proportions denominator.** Cell type proportions in differential abundance analysis use the total number of superpixels (including unassigned) as denominator. This means changes in the unassigned fraction across timepoints will shift all assigned cell type proportions without a true change in absolute abundance. An alternative denominator (assigned superpixels only) would be equally valid but measures relative composition within the identified fraction rather than tissue-wide prevalence. The total-superpixel denominator is reported; users should interpret proportion changes in the context of the ~79% unassigned tissue.
+
 ## Statistical Analysis
 
 ### Differential Abundance
@@ -180,11 +182,17 @@ Mean assignment rate: ~21% (range 10-48% across ROIs). The remaining ~79% of sup
 
 With n=2 per group, most comparisons are expected to be non-significant. Effect sizes with CIs crossing zero are reported honestly.
 
+> **Mann-Whitney U at n=2.** With two observations per group, the Mann-Whitney U test can only produce three possible p-values (approximately 0.33, 0.67, 1.0 for two-sided tests). No comparison can reach conventional significance (p < 0.05) regardless of effect magnitude. The test is retained for completeness and forward compatibility with larger cohorts; Hedges' g effect sizes and bootstrap CIs are the primary inferential quantities.
+
+> **Bootstrap CI degeneracy at n=2.** With 2 mouse-level means per group and bootstrap resampling with replacement, only 4 unique bootstrap samples exist per group ({a,a}, {a,b}, {b,a}, {b,b}), yielding 3 unique group means. This produces a maximum of 9 unique Hedges' g values per comparison. The resulting CIs reflect the discrete sample space rather than smooth sampling distributions and should be interpreted as approximate bounds on effect magnitude, not precise interval estimates.
+
 ### Spatial Neighborhood Enrichment
 - k-nearest neighbors (k=10) neighborhood composition per superpixel
-- Permutation test (n=500): shuffle cell type labels, compare observed vs null neighbor proportions
+- Permutation test (n=500): shuffle cell type labels, compare observed vs null neighbor proportions. P-values computed with Phipson & Smyth (2010) pseudocount: p = (n_extreme + 1) / (n_permutations + 1)
 - BH FDR correction within each ROI across all focal × neighbor pairs
-- Aggregation: fraction of ROIs with FDR-significant enrichment
+- Aggregation: weighted mean enrichment across ROIs (weights = n_focal_cells per ROI)
+
+> **Marker sharing and self-enrichment.** Several cell type definitions share positive markers (e.g., activated_endothelial_cd44 and activated_immune_cd44 both require CD44+; m2_macrophage and activated_immune share CD11b+). Because boolean gating assigns positivity based on continuous expression thresholds, cell types sharing markers will co-localize in marker expression space and consequently in physical space, producing self-enrichment that reflects shared gating criteria rather than independent biological co-localization. Self-enrichment scores (diagonal of the enrichment matrix) should be interpreted with this confound in mind.
 
 > **Spatial enrichment null model.** Neighborhood enrichment significance is assessed via global permutation of cell-type labels within each ROI. This null model assumes spatial homogeneity and does not preserve regional gradients (e.g., cortico-medullary axis). For tissues with strong spatial structure, enrichment p-values may be anti-conservative. Regional stratification or toroidal shift permutation would provide a more appropriate null but were not implemented in this pilot study.
 
@@ -218,6 +226,7 @@ When multiple acquisition batches detected:
 - **Graph Caching**: Disabled by default (`use_graph_caching=false`); kNN graph rebuilt per bootstrap iteration for unbiased stability estimation. Can be enabled for speed at the cost of potentially optimistic stability scores
 - **Random Seeds**: Fixed (random_state=42) for reproducibility
 - **Configuration**: All parameters in config.json; Config class is single source of truth
+- **Scale-adaptive parameters**: Spatial weight and resolution range use scale-dependent defaults (fine scales: w=0.2, range=[0.5, 2.0]; coarse scales: w=0.4, range=[0.2, 1.0]). The scalar `spatial_weight` and list `resolution_range` in config.json are overridden by these scale-adaptive heuristics
 - **Provenance**: Software versions and parameter snapshots tracked per run
 
 ## Limitations
