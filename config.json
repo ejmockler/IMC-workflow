@@ -681,7 +681,7 @@
     }
   },
   "output": {
-    "results_dir": "results/cross_sectional_kidney_injury",
+    "results_dir": "results",
     "roi_results_dir": "roi_results",
     "qc_dir": "quality_control",
     "save_intermediate": true,
