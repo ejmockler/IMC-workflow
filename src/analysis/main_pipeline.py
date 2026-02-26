@@ -587,10 +587,10 @@ class IMCAnalysisPipeline:
         config = self.analysis_config
 
         # Get default config values
-        multiscale_config = getattr(self.analysis_config.analysis, 'multiscale', {})
-        slic_config = getattr(self.analysis_config.segmentation, 'slic', {})
-        default_scales = getattr(multiscale_config, 'scales_um', [10, 20, 50])
-        default_use_slic = getattr(slic_config, 'use_slic', False)
+        multiscale_config = self.analysis_config.analysis.get('multiscale', {})
+        slic_config = self.analysis_config.segmentation.get('slic', {})
+        default_scales = multiscale_config.get('scales_um', [10, 20, 40])
+        default_use_slic = slic_config.get('use_slic', False)
 
         # Apply overrides if provided
         if override_config:
@@ -649,11 +649,12 @@ class IMCAnalysisPipeline:
         consistency_results = compute_scale_consistency(multiscale_results)
 
         # Extract main scale results for backward compatibility
-        main_scale_results = multiscale_results.get('scale_results', {})
-        if main_scale_results:
-            # Get results from the primary scale (usually the first one)
-            primary_scale = list(main_scale_results.keys())[0] if main_scale_results else None
-            primary_results = main_scale_results.get(primary_scale, {}) if primary_scale else {}
+        # multiscale_results is keyed by scale floats (e.g., 10.0, 20.0, 40.0),
+        # not wrapped under a 'scale_results' key.
+        numeric_scales = sorted([k for k in multiscale_results.keys() if isinstance(k, (int, float))])
+        if numeric_scales:
+            primary_scale = numeric_scales[0]
+            primary_results = multiscale_results.get(primary_scale, {})
         else:
             primary_results = {}
         

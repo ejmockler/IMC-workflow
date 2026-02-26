@@ -21,19 +21,60 @@ if TYPE_CHECKING:
 def _extract_stability_config(config: Optional['Config']) -> Dict[str, Any]:
     """
     Safely extract stability-analysis optimization settings from config-like objects.
+
+    Reads from config.analysis.clustering (primary) with fallback to
+    config.optimization.stability_analysis (legacy). Maps key names to
+    what the consumer expects:
+        n_bootstrap -> n_bootstrap_iterations
     """
     if config is None:
         return {}
 
+    result = {}
+
+    # Primary source: config.analysis.clustering (where config.json stores values)
+    clustering = {}
+    if hasattr(config, 'analysis'):
+        analysis_section = getattr(config, 'analysis', {})
+        if isinstance(analysis_section, dict):
+            clustering = analysis_section.get('clustering', {}) or {}
+    elif isinstance(config, dict):
+        clustering = config.get('analysis', {}).get('clustering', {}) or {}
+
+    if clustering:
+        # Map keys from analysis.clustering names to consumer-expected names
+        key_mapping = {
+            'n_bootstrap': 'n_bootstrap_iterations',  # consumer reads n_bootstrap_iterations
+            'parallel': 'parallel_execution',          # consumer reads parallel_execution
+        }
+        # Direct pass-through keys (same name in config and consumer)
+        passthrough_keys = [
+            'n_resolutions', 'use_graph_caching', 'adaptive_search',
+            'adaptive_target_stability', 'adaptive_tolerance',
+            'adaptive_max_evaluations', 'subsample_ratio', 'n_workers',
+        ]
+        for config_key, consumer_key in key_mapping.items():
+            if config_key in clustering:
+                result[consumer_key] = clustering[config_key]
+        for key in passthrough_keys:
+            if key in clustering:
+                result[key] = clustering[key]
+
+    # Fallback: config.optimization.stability_analysis (legacy location)
+    # Only fills keys not already set from the primary source
+    legacy = {}
     if hasattr(config, 'optimization'):
         optimization_section = getattr(config, 'optimization', {})
         if isinstance(optimization_section, dict):
-            return optimization_section.get('stability_analysis', {}) or {}
+            legacy = optimization_section.get('stability_analysis', {}) or {}
+    elif isinstance(config, dict):
+        legacy = config.get('optimization', {}).get('stability_analysis', {}) or {}
 
-    if isinstance(config, dict):
-        return config.get('optimization', {}).get('stability_analysis', {}) or {}
+    for key, value in legacy.items():
+        if key not in result:
+            result[key] = value
 
-    return {}
+    return result
 
 
 def _compute_scale_adaptive_k_neighbors(n_samples: int, scale_um: float, config: Optional['Config']) -> int:
@@ -70,29 +111,53 @@ def _extract_algorithm_params(config: Optional['Config'], param_name: str) -> Di
 
     BUG FIX #9: Externalized hardcoded scientific parameters for reproducibility.
 
+    Reads from config.analysis.clustering (primary) with fallback to
+    config.optimization.algorithm_parameters (legacy).
+
     Args:
         config: Config object or dict
-        param_name: Name of parameter set (e.g., 'spatial_weight', 'resolution_range')
+        param_name: Name of parameter set (e.g., 'spatial_weight', 'resolution_range',
+                    'k_neighbors_by_scale')
 
     Returns:
-        Dictionary of parameters with defaults if not in config
+        Dictionary of parameters, or {} if not found / not a dict
     """
     if config is None:
         return {}
 
-    # Try to extract from Config object
+    # Primary source: config.analysis.clustering.<param_name>
+    clustering = {}
+    if hasattr(config, 'analysis'):
+        analysis_section = getattr(config, 'analysis', {})
+        if isinstance(analysis_section, dict):
+            clustering = analysis_section.get('clustering', {}) or {}
+    elif isinstance(config, dict):
+        clustering = config.get('analysis', {}).get('clustering', {}) or {}
+
+    if clustering and param_name in clustering:
+        value = clustering[param_name]
+        if isinstance(value, dict):
+            return value
+        # Non-dict values (scalars, lists) cannot be queried with .get(),
+        # so return empty -- consumers use .get() with defaults which is correct
+        # when the config value is not a structured override dict.
+
+    # Fallback: config.optimization.algorithm_parameters.<param_name> (legacy)
     if hasattr(config, 'optimization'):
         optimization_section = getattr(config, 'optimization', {})
         if isinstance(optimization_section, dict):
             algo_params = optimization_section.get('algorithm_parameters', {})
             if isinstance(algo_params, dict):
-                return algo_params.get(param_name, {})
+                value = algo_params.get(param_name, {})
+                if isinstance(value, dict):
+                    return value
 
-    # Try to extract from dict
     if isinstance(config, dict):
         algo_params = config.get('optimization', {}).get('algorithm_parameters', {})
         if isinstance(algo_params, dict):
-            return algo_params.get(param_name, {})
+            value = algo_params.get(param_name, {})
+            if isinstance(value, dict):
+                return value
 
     return {}
 
@@ -300,9 +365,8 @@ def perform_multiscale_analysis(
         # Extract coabundance options from config
         coabundance_opts = {}
         if config is not None:
-            if hasattr(config, 'analysis') and hasattr(config.analysis, 'clustering'):
-                if hasattr(config.analysis.clustering, 'coabundance_options'):
-                    coabundance_opts = config.analysis.clustering.coabundance_options
+            if hasattr(config, 'analysis') and isinstance(config.analysis, dict):
+                coabundance_opts = config.analysis.get('clustering', {}).get('coabundance_options', {})
             elif isinstance(config, dict):
                 coabundance_opts = config.get('analysis', {}).get('clustering', {}).get('coabundance_options', {})
 
