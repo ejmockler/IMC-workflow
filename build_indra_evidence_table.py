@@ -4,7 +4,7 @@ INDRA/CoGEx Biological Context Layer
 Provides mechanistic biological context for IMC spatial proteomics findings
 by integrating multi-layer knowledge from the INDRA/CoGEx knowledge graph.
 
-Knowledge layers (all pre-queried via CoGEx MCP tools, 2026-02-20):
+Knowledge layers (pre-queried via CoGEx MCP tools, last updated 2026-02-26):
   1. Per-gene: pathways, GO terms, diseases, cell types, tissue expression, phenotypes
   2. Gene pairs: INDRA causal statements (Complex, Activation, Inhibition, Phosphorylation)
   3. Shared biology: GO processes shared between co-localizing marker pairs
@@ -336,137 +336,168 @@ GENE_KNOWLEDGE = {
 
 # ============================================================================
 # LAYER 2: INTRA-PANEL INDRA CAUSAL STATEMENTS
-# Pre-queried via Cypher: MATCH (g1)-[r:indra_rel]->(g2) WHERE g1.id IN [panel]
-# 139 total statements between 9 grounded panel genes (including Ly6g murine)
+# Systematically queried via CoGEx Cypher (2026-02-26):
+#   MATCH (g1:BioEntity)-[r:indra_rel]->(g2:BioEntity)
+#   WHERE g1.id IN [panel CURIEs] AND g2.id IN [panel CURIEs] AND g1.id <> g2.id
+# 175 raw Neo4j edges aggregated by (source, type, target) →
+#   sum(evidence_count), max(belief) → 120 unique directed relationships
 # ============================================================================
 
 INDRA_STATEMENTS = [
-    # PDGFRA ↔ PDGFRB: strongest intra-panel relationship
-    {'source': 'PDGFRB', 'target': 'PDGFRA', 'type': 'Complex', 'evidence': 151, 'belief': 0.888,
-     'note': 'Heterodimer formation — the core PDGF receptor signaling unit'},
+    # --- PDGFRA ↔ PDGFRB: strongest intra-panel axis (receptor heterodimer) ---
+    {'source': 'PDGFRA', 'target': 'PDGFRB', 'type': 'Complex', 'evidence': 183, 'belief': 0.888,
+     'note': 'Heterodimer — the core PDGF receptor signaling unit'},
+    {'source': 'PDGFRB', 'target': 'PDGFRA', 'type': 'Complex', 'evidence': 183, 'belief': 0.888},
     {'source': 'PDGFRB', 'target': 'PDGFRA', 'type': 'Inhibition', 'evidence': 5, 'belief': 0.505,
      'note': 'Cross-inhibition between receptor isoforms'},
-    {'source': 'PDGFRA', 'target': 'PDGFRB', 'type': 'Inhibition', 'evidence': 4, 'belief': 0.602,
-     'note': 'Bidirectional cross-regulation'},
-    {'source': 'PDGFRB', 'target': 'PDGFRA', 'type': 'Activation', 'evidence': 4, 'belief': 0.400,
-     'note': 'Trans-activation of alpha by beta'},
+    {'source': 'PDGFRB', 'target': 'PDGFRA', 'type': 'Activation', 'evidence': 5, 'belief': 0.4},
+    {'source': 'PDGFRA', 'target': 'PDGFRB', 'type': 'Inhibition', 'evidence': 4, 'belief': 0.602},
     {'source': 'PDGFRA', 'target': 'PDGFRB', 'type': 'Activation', 'evidence': 3, 'belief': 0.366},
-    {'source': 'PDGFRB', 'target': 'PDGFRA', 'type': 'Phosphorylation', 'evidence': 2, 'belief': 0.750,
-     'note': 'High-confidence kinase activity: beta phosphorylates alpha'},
-    {'source': 'PDGFRA', 'target': 'PDGFRB', 'type': 'IncreaseAmount', 'evidence': 3, 'belief': 0.629,
-     'note': 'Alpha upregulates beta expression'},
+    {'source': 'PDGFRA', 'target': 'PDGFRB', 'type': 'IncreaseAmount', 'evidence': 3, 'belief': 0.629},
+    {'source': 'PDGFRB', 'target': 'PDGFRA', 'type': 'DecreaseAmount', 'evidence': 3, 'belief': 0.604},
+    {'source': 'PDGFRB', 'target': 'PDGFRA', 'type': 'Phosphorylation', 'evidence': 3, 'belief': 0.827,
+     'note': 'High-belief kinase activity: beta phosphorylates alpha'},
+    {'source': 'PDGFRA', 'target': 'PDGFRB', 'type': 'DecreaseAmount', 'evidence': 2, 'belief': 0.474},
+    {'source': 'PDGFRB', 'target': 'PDGFRA', 'type': 'IncreaseAmount', 'evidence': 1, 'belief': 0.484},
     {'source': 'PDGFRA', 'target': 'PDGFRB', 'type': 'Phosphorylation', 'evidence': 1, 'belief': 0.532},
-    # PDGFRB ↔ CD44: physical interaction
-    {'source': 'PDGFRB', 'target': 'CD44', 'type': 'Complex', 'evidence': 10, 'belief': 0.742,
-     'note': 'CD44 physically associates with PDGFRB — would be consistent with pericyte-CD44 co-localization if confirmed'},
+    # --- MRC1 ↔ PTPRC: CD45-CD206 macrophage surface complex ---
+    {'source': 'MRC1', 'target': 'PTPRC', 'type': 'Complex', 'evidence': 20, 'belief': 0.412,
+     'note': 'CD45-MRC1 complex on macrophage surface'},
+    {'source': 'PTPRC', 'target': 'MRC1', 'type': 'Complex', 'evidence': 20, 'belief': 0.412},
+    {'source': 'PTPRC', 'target': 'MRC1', 'type': 'IncreaseAmount', 'evidence': 1, 'belief': 0.484},
+    {'source': 'MRC1', 'target': 'PTPRC', 'type': 'Inhibition', 'evidence': 2, 'belief': 0.441},
+    {'source': 'MRC1', 'target': 'PTPRC', 'type': 'IncreaseAmount', 'evidence': 1, 'belief': 0.484},
+    # --- ITGAM ↔ Ly6g: canonical neutrophil signature (CD11b+Ly6G+) ---
+    {'source': 'ITGAM', 'target': 'Ly6g', 'type': 'Complex', 'evidence': 15, 'belief': 0.436,
+     'note': 'CD11b-Ly6G complex — THE canonical neutrophil surface signature'},
+    {'source': 'Ly6g', 'target': 'ITGAM', 'type': 'Complex', 'evidence': 15, 'belief': 0.436},
+    {'source': 'Ly6g', 'target': 'ITGAM', 'type': 'Inhibition', 'evidence': 5, 'belief': 0.505},
+    {'source': 'ITGAM', 'target': 'Ly6g', 'type': 'Activation', 'evidence': 2, 'belief': 0.367},
+    {'source': 'Ly6g', 'target': 'ITGAM', 'type': 'Activation', 'evidence': 2, 'belief': 0.363},
+    {'source': 'Ly6g', 'target': 'ITGAM', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
+    {'source': 'ITGAM', 'target': 'Ly6g', 'type': 'Inhibition', 'evidence': 1, 'belief': 0.436},
+    # --- ITGAM ↔ PTPRC: myeloid signaling axis ---
+    {'source': 'ITGAM', 'target': 'PTPRC', 'type': 'Activation', 'evidence': 11, 'belief': 0.419,
+     'note': 'CD11b activates CD45 — myeloid cell signaling'},
+    {'source': 'PTPRC', 'target': 'ITGAM', 'type': 'Activation', 'evidence': 10, 'belief': 0.418},
+    {'source': 'ITGAM', 'target': 'PTPRC', 'type': 'Inhibition', 'evidence': 4, 'belief': 0.492},
+    {'source': 'PTPRC', 'target': 'ITGAM', 'type': 'IncreaseAmount', 'evidence': 4, 'belief': 0.526},
+    {'source': 'ITGAM', 'target': 'PTPRC', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
+    {'source': 'PTPRC', 'target': 'ITGAM', 'type': 'Inhibition', 'evidence': 2, 'belief': 0.441},
+    {'source': 'ITGAM', 'target': 'PTPRC', 'type': 'Complex', 'evidence': 1, 'belief': 0.444},
+    {'source': 'PTPRC', 'target': 'ITGAM', 'type': 'Complex', 'evidence': 1, 'belief': 0.444},
+    # --- CD44 ↔ PDGFRB: immune-stromal physical interaction ---
+    {'source': 'CD44', 'target': 'PDGFRB', 'type': 'Complex', 'evidence': 10, 'belief': 0.742,
+     'note': 'CD44 physically associates with PDGFRB — immune-stromal axis'},
+    {'source': 'PDGFRB', 'target': 'CD44', 'type': 'Complex', 'evidence': 10, 'belief': 0.742},
     {'source': 'CD44', 'target': 'PDGFRB', 'type': 'Activation', 'evidence': 1, 'belief': 0.535},
     {'source': 'CD44', 'target': 'PDGFRB', 'type': 'Inhibition', 'evidence': 1, 'belief': 0.436},
-    # PDGFRA ↔ CD44
-    {'source': 'PDGFRA', 'target': 'CD44', 'type': 'Complex', 'evidence': 1, 'belief': 0.830,
-     'note': 'High-belief complex despite single evidence'},
-    {'source': 'CD44', 'target': 'PDGFRA', 'type': 'Complex', 'evidence': 1, 'belief': 0.830},
-    # PECAM1 ↔ CD34: endothelial signaling axis
-    {'source': 'PECAM1', 'target': 'CD34', 'type': 'Activation', 'evidence': 5, 'belief': 0.375,
-     'note': 'CD31 activates CD34 — endothelial marker cross-talk'},
-    {'source': 'PECAM1', 'target': 'CD34', 'type': 'Inhibition', 'evidence': 3, 'belief': 0.476,
-     'note': 'Complex bidirectional regulation'},
-    {'source': 'CD34', 'target': 'PECAM1', 'type': 'Activation', 'evidence': 2, 'belief': 0.367},
-    {'source': 'CD34', 'target': 'PECAM1', 'type': 'IncreaseAmount', 'evidence': 1, 'belief': 0.484},
-    {'source': 'CD34', 'target': 'PECAM1', 'type': 'DecreaseAmount', 'evidence': 1, 'belief': 0.474},
-    {'source': 'PECAM1', 'target': 'CD34', 'type': 'Complex', 'evidence': 2, 'belief': 0.457},
-    # CD44 ↔ CD34
-    {'source': 'CD44', 'target': 'CD34', 'type': 'Activation', 'evidence': 4, 'belief': 0.376,
-     'note': 'CD44 activates CD34 — injury marker drives progenitor?'},
-    {'source': 'CD44', 'target': 'CD34', 'type': 'Inhibition', 'evidence': 2, 'belief': 0.441},
-    {'source': 'CD34', 'target': 'CD44', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472,
-     'note': 'CD34+ cells upregulate CD44'},
-    # CD44 ↔ MRC1: macrophage biology
-    {'source': 'CD44', 'target': 'MRC1', 'type': 'Complex', 'evidence': 3, 'belief': 0.648,
-     'note': 'Physical interaction on macrophage surface — consistent with CD44+/CD206+ co-expression'},
-    # PDGFRB ↔ MRC1
-    {'source': 'PDGFRB', 'target': 'MRC1', 'type': 'Complex', 'evidence': 3, 'belief': 0.423,
-     'note': 'Pericyte-macrophage interaction complex'},
-    # PECAM1 ↔ MRC1
-    {'source': 'PECAM1', 'target': 'MRC1', 'type': 'Complex', 'evidence': 2, 'belief': 0.457,
-     'note': 'Endothelial-macrophage interaction'},
-    # PDGFRB ↔ CD34: pericyte-endothelial
-    {'source': 'PDGFRB', 'target': 'CD34', 'type': 'Activation', 'evidence': 2, 'belief': 0.367,
-     'note': 'Pericyte signaling to endothelial progenitors'},
-    # PDGFRA ↔ CD34
-    {'source': 'CD34', 'target': 'PDGFRA', 'type': 'Complex', 'evidence': 4, 'belief': 0.409,
-     'note': 'Progenitor-fibroblast physical interaction'},
-    {'source': 'PDGFRA', 'target': 'CD34', 'type': 'Activation', 'evidence': 3, 'belief': 0.379},
-    # CD44 ↔ PECAM1
-    {'source': 'CD44', 'target': 'PECAM1', 'type': 'Activation', 'evidence': 1, 'belief': 0.417,
-     'note': 'CD44 activates endothelial PECAM1 — adhesion/extravasation'},
-    {'source': 'CD44', 'target': 'PECAM1', 'type': 'IncreaseAmount', 'evidence': 1, 'belief': 0.484},
-    {'source': 'PECAM1', 'target': 'CD44', 'type': 'Inhibition', 'evidence': 1, 'belief': 0.436},
-    # MRC1 ↔ CD34
-    {'source': 'CD34', 'target': 'MRC1', 'type': 'Complex', 'evidence': 1, 'belief': 0.426},
-    # ---- CORRECTED GROUNDINGS: PTPRC (hgnc:9666) and ITGAM (hgnc:6149) ----
-    # Previously missed due to wrong CURIEs (hgnc:9620=TWF1, hgnc:6148=ITGAL)
-    # PTPRC ↔ MRC1: CD45+ macrophage biology
-    {'source': 'PTPRC', 'target': 'MRC1', 'type': 'Complex', 'evidence': 20, 'belief': 0.412,
-     'note': 'CD45-MRC1 complex on macrophage surface — 20 evidence, strong'},
-    {'source': 'PTPRC', 'target': 'MRC1', 'type': 'IncreaseAmount', 'evidence': 1, 'belief': 0.484},
-    # ITGAM → PTPRC: myeloid signaling
-    {'source': 'ITGAM', 'target': 'PTPRC', 'type': 'Activation', 'evidence': 11, 'belief': 0.419,
-     'note': 'CD11b activates CD45 — myeloid cell signaling axis'},
-    {'source': 'ITGAM', 'target': 'PTPRC', 'type': 'Inhibition', 'evidence': 4, 'belief': 0.492},
-    {'source': 'ITGAM', 'target': 'PTPRC', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
-    {'source': 'ITGAM', 'target': 'PTPRC', 'type': 'Complex', 'evidence': 1, 'belief': 0.444},
-    # PTPRC → ITGAM
-    {'source': 'PTPRC', 'target': 'ITGAM', 'type': 'Activation', 'evidence': 10, 'belief': 0.418,
-     'note': 'Bidirectional CD45-CD11b signaling'},
-    {'source': 'PTPRC', 'target': 'ITGAM', 'type': 'IncreaseAmount', 'evidence': 4, 'belief': 0.526},
-    {'source': 'PTPRC', 'target': 'ITGAM', 'type': 'Inhibition', 'evidence': 2, 'belief': 0.441},
-    {'source': 'PTPRC', 'target': 'ITGAM', 'type': 'Complex', 'evidence': 1, 'belief': 0.444},
-    # ITGAM ↔ Ly6g: neutrophil signature (CD11b+Ly6G+)
-    {'source': 'ITGAM', 'target': 'Ly6g', 'type': 'Complex', 'evidence': 11, 'belief': 0.436,
-     'note': 'CD11b-Ly6G complex — THE canonical neutrophil surface signature'},
-    {'source': 'ITGAM', 'target': 'Ly6g', 'type': 'Inhibition', 'evidence': 5, 'belief': 0.505},
-    {'source': 'ITGAM', 'target': 'Ly6g', 'type': 'Activation', 'evidence': 2, 'belief': 0.363},
-    {'source': 'ITGAM', 'target': 'Ly6g', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
-    # PTPRC → Ly6g
-    {'source': 'PTPRC', 'target': 'Ly6g', 'type': 'Activation', 'evidence': 4, 'belief': 0.376,
-     'note': 'CD45 activates Ly6G expression — pan-leukocyte → neutrophil axis'},
-    # PTPRC ↔ CD44: immune activation
-    {'source': 'PTPRC', 'target': 'CD44', 'type': 'Complex', 'evidence': 5, 'belief': 0.766,
-     'note': 'High-belief CD45-CD44 complex — immune cell activation marker co-expression'},
-    {'source': 'PTPRC', 'target': 'CD44', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
-    {'source': 'PTPRC', 'target': 'CD44', 'type': 'Activation', 'evidence': 2, 'belief': 0.367},
-    {'source': 'PTPRC', 'target': 'CD44', 'type': 'DecreaseAmount', 'evidence': 1, 'belief': 0.474},
-    # PTPRC ↔ CD34: leukocyte-progenitor
-    {'source': 'PTPRC', 'target': 'CD34', 'type': 'Activation', 'evidence': 5, 'belief': 0.375,
-     'note': 'CD45 activates CD34 — leukocyte-progenitor signaling'},
-    {'source': 'PTPRC', 'target': 'CD34', 'type': 'Complex', 'evidence': 4, 'belief': 0.478},
+    # --- CD34 ↔ PTPRC: leukocyte-progenitor signaling ---
+    {'source': 'CD34', 'target': 'PTPRC', 'type': 'Activation', 'evidence': 10, 'belief': 0.638},
+    {'source': 'PTPRC', 'target': 'CD34', 'type': 'Activation', 'evidence': 5, 'belief': 0.375},
+    {'source': 'PTPRC', 'target': 'CD34', 'type': 'Complex', 'evidence': 4, 'belief': 0.529},
+    {'source': 'CD34', 'target': 'PTPRC', 'type': 'Complex', 'evidence': 4, 'belief': 0.529},
     {'source': 'PTPRC', 'target': 'CD34', 'type': 'Inhibition', 'evidence': 1, 'belief': 0.436},
-    # PTPRC ↔ PECAM1: transendothelial migration
-    {'source': 'PTPRC', 'target': 'PECAM1', 'type': 'Inhibition', 'evidence': 3, 'belief': 0.476},
-    {'source': 'PTPRC', 'target': 'PECAM1', 'type': 'Activation', 'evidence': 1, 'belief': 0.372},
-    {'source': 'PTPRC', 'target': 'PECAM1', 'type': 'Complex', 'evidence': 1, 'belief': 0.444},
-    {'source': 'PTPRC', 'target': 'PECAM1', 'type': 'DecreaseAmount', 'evidence': 1, 'belief': 0.474},
-    # PTPRC → PDGFRA/PDGFRB
-    {'source': 'PTPRC', 'target': 'PDGFRA', 'type': 'Activation', 'evidence': 1, 'belief': 0.372},
-    {'source': 'PTPRC', 'target': 'PDGFRB', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
-    # ITGAM ↔ MRC1: M1/M2 polarization axis
+    {'source': 'CD34', 'target': 'PTPRC', 'type': 'DecreaseAmount', 'evidence': 1, 'belief': 0.474},
+    {'source': 'CD34', 'target': 'PTPRC', 'type': 'Inhibition', 'evidence': 1, 'belief': 0.436},
+    # --- ITGAM ↔ MRC1: M1/M2 macrophage polarization ---
     {'source': 'ITGAM', 'target': 'MRC1', 'type': 'Inhibition', 'evidence': 7, 'belief': 0.493,
-     'note': 'CD11b inhibits MRC1 — M1/M2 macrophage polarization switch'},
+     'note': 'CD11b inhibits MRC1 — M1/M2 polarization switch'},
+    {'source': 'ITGAM', 'target': 'MRC1', 'type': 'Complex', 'evidence': 5, 'belief': 0.426},
+    {'source': 'MRC1', 'target': 'ITGAM', 'type': 'Complex', 'evidence': 5, 'belief': 0.426},
+    {'source': 'MRC1', 'target': 'ITGAM', 'type': 'Activation', 'evidence': 3, 'belief': 0.406},
     {'source': 'ITGAM', 'target': 'MRC1', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
     {'source': 'ITGAM', 'target': 'MRC1', 'type': 'Activation', 'evidence': 2, 'belief': 0.363},
     {'source': 'ITGAM', 'target': 'MRC1', 'type': 'DecreaseAmount', 'evidence': 1, 'belief': 0.474},
-    {'source': 'ITGAM', 'target': 'MRC1', 'type': 'Complex', 'evidence': 4, 'belief': 0.426},
-    # ITGAM ↔ CD44
-    {'source': 'ITGAM', 'target': 'CD44', 'type': 'Complex', 'evidence': 2, 'belief': 0.411},
-    {'source': 'ITGAM', 'target': 'CD44', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
-    {'source': 'ITGAM', 'target': 'CD44', 'type': 'Activation', 'evidence': 1, 'belief': 0.372},
-    # ITGAM ↔ PECAM1: leukocyte adhesion
+    # --- PTPRC ↔ CD44: immune activation marker co-expression ---
+    {'source': 'PTPRC', 'target': 'CD44', 'type': 'Complex', 'evidence': 5, 'belief': 0.766,
+     'note': 'High-belief CD45-CD44 complex — immune activation'},
+    {'source': 'CD44', 'target': 'PTPRC', 'type': 'Complex', 'evidence': 5, 'belief': 0.766},
+    {'source': 'PTPRC', 'target': 'CD44', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
+    {'source': 'PTPRC', 'target': 'CD44', 'type': 'Activation', 'evidence': 2, 'belief': 0.367},
+    {'source': 'PTPRC', 'target': 'CD44', 'type': 'DecreaseAmount', 'evidence': 1, 'belief': 0.474},
+    {'source': 'CD44', 'target': 'PTPRC', 'type': 'IncreaseAmount', 'evidence': 1, 'belief': 0.484},
+    {'source': 'CD44', 'target': 'PTPRC', 'type': 'Activation', 'evidence': 1, 'belief': 0.372},
+    # --- PECAM1 ↔ CD34: endothelial signaling axis ---
+    {'source': 'PECAM1', 'target': 'CD34', 'type': 'Activation', 'evidence': 5, 'belief': 0.375,
+     'note': 'CD31 activates CD34 — endothelial cross-talk'},
+    {'source': 'PECAM1', 'target': 'CD34', 'type': 'Inhibition', 'evidence': 3, 'belief': 0.476},
+    {'source': 'PECAM1', 'target': 'CD34', 'type': 'Complex', 'evidence': 2, 'belief': 0.457},
+    {'source': 'CD34', 'target': 'PECAM1', 'type': 'Complex', 'evidence': 2, 'belief': 0.457},
+    {'source': 'CD34', 'target': 'PECAM1', 'type': 'Activation', 'evidence': 2, 'belief': 0.367},
+    {'source': 'PECAM1', 'target': 'CD34', 'type': 'DecreaseAmount', 'evidence': 1, 'belief': 0.474},
+    {'source': 'CD34', 'target': 'PECAM1', 'type': 'DecreaseAmount', 'evidence': 1, 'belief': 0.474},
+    {'source': 'CD34', 'target': 'PECAM1', 'type': 'Inhibition', 'evidence': 1, 'belief': 0.436},
+    {'source': 'CD34', 'target': 'PECAM1', 'type': 'IncreaseAmount', 'evidence': 1, 'belief': 0.484},
+    # --- Ly6g ↔ PTPRC: pan-leukocyte → neutrophil axis ---
+    {'source': 'Ly6g', 'target': 'PTPRC', 'type': 'Activation', 'evidence': 4, 'belief': 0.376},
+    {'source': 'PTPRC', 'target': 'Ly6g', 'type': 'Activation', 'evidence': 1, 'belief': 0.372},
+    # --- CD44 ↔ CD34: injury marker ↔ progenitor ---
+    {'source': 'CD44', 'target': 'CD34', 'type': 'Activation', 'evidence': 4, 'belief': 0.376,
+     'note': 'CD44 activates CD34 — injury drives progenitor?'},
+    {'source': 'CD44', 'target': 'CD34', 'type': 'Inhibition', 'evidence': 2, 'belief': 0.441},
+    {'source': 'CD44', 'target': 'CD34', 'type': 'DecreaseAmount', 'evidence': 1, 'belief': 0.474},
+    {'source': 'CD34', 'target': 'CD44', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
+    {'source': 'CD34', 'target': 'CD44', 'type': 'Inhibition', 'evidence': 1, 'belief': 0.436},
+    {'source': 'CD34', 'target': 'CD44', 'type': 'Activation', 'evidence': 1, 'belief': 0.372},
+    # --- CD34 ↔ ITGAM ---
+    {'source': 'CD34', 'target': 'ITGAM', 'type': 'Activation', 'evidence': 4, 'belief': 0.376},
+    {'source': 'CD34', 'target': 'ITGAM', 'type': 'Inhibition', 'evidence': 2, 'belief': 0.441},
+    {'source': 'CD34', 'target': 'ITGAM', 'type': 'Complex', 'evidence': 1, 'belief': 0.426},
+    {'source': 'CD44', 'target': 'ITGAM', 'type': 'Complex', 'evidence': 2, 'belief': 0.411},
+    {'source': 'CD44', 'target': 'ITGAM', 'type': 'Activation', 'evidence': 2, 'belief': 0.367},
+    {'source': 'CD44', 'target': 'ITGAM', 'type': 'IncreaseAmount', 'evidence': 1, 'belief': 0.484},
+    # --- PDGFRA ↔ CD34: progenitor-fibroblast ---
+    {'source': 'PDGFRA', 'target': 'CD34', 'type': 'Complex', 'evidence': 4, 'belief': 0.409},
+    {'source': 'CD34', 'target': 'PDGFRA', 'type': 'Complex', 'evidence': 4, 'belief': 0.409},
+    {'source': 'PDGFRA', 'target': 'CD34', 'type': 'Activation', 'evidence': 3, 'belief': 0.379},
+    {'source': 'CD34', 'target': 'PDGFRA', 'type': 'Activation', 'evidence': 1, 'belief': 0.372},
+    # --- PTPRC ↔ PECAM1: transendothelial migration ---
+    {'source': 'PTPRC', 'target': 'PECAM1', 'type': 'Inhibition', 'evidence': 3, 'belief': 0.476},
+    {'source': 'PECAM1', 'target': 'PTPRC', 'type': 'Inhibition', 'evidence': 3, 'belief': 0.476},
+    {'source': 'PTPRC', 'target': 'PECAM1', 'type': 'Activation', 'evidence': 1, 'belief': 0.372},
+    {'source': 'PTPRC', 'target': 'PECAM1', 'type': 'Complex', 'evidence': 1, 'belief': 0.444},
+    {'source': 'PTPRC', 'target': 'PECAM1', 'type': 'DecreaseAmount', 'evidence': 1, 'belief': 0.474},
+    {'source': 'PECAM1', 'target': 'PTPRC', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
+    {'source': 'PECAM1', 'target': 'PTPRC', 'type': 'Activation', 'evidence': 2, 'belief': 0.367},
+    {'source': 'PECAM1', 'target': 'PTPRC', 'type': 'Complex', 'evidence': 1, 'belief': 0.444},
+    # --- ITGAM ↔ PECAM1: leukocyte adhesion ---
     {'source': 'ITGAM', 'target': 'PECAM1', 'type': 'Complex', 'evidence': 3, 'belief': 0.452,
-     'note': 'CD11b-PECAM1 complex — transendothelial migration axis'},
+     'note': 'CD11b-PECAM1 complex — transendothelial migration'},
+    {'source': 'PECAM1', 'target': 'ITGAM', 'type': 'Complex', 'evidence': 3, 'belief': 0.452},
     {'source': 'ITGAM', 'target': 'PECAM1', 'type': 'Activation', 'evidence': 1, 'belief': 0.372},
-    # ITGAM ↔ CD34
+    {'source': 'PECAM1', 'target': 'ITGAM', 'type': 'DecreaseAmount', 'evidence': 1, 'belief': 0.474},
+    {'source': 'PECAM1', 'target': 'ITGAM', 'type': 'Inhibition', 'evidence': 1, 'belief': 0.614},
+    # --- MRC1 ↔ CD44: macrophage surface co-expression ---
+    {'source': 'MRC1', 'target': 'CD44', 'type': 'Complex', 'evidence': 3, 'belief': 0.648,
+     'note': 'Physical interaction on macrophage surface'},
+    {'source': 'CD44', 'target': 'MRC1', 'type': 'Complex', 'evidence': 3, 'belief': 0.648},
+    # --- MRC1/PDGFRB/PECAM1 cross-type complexes ---
+    {'source': 'MRC1', 'target': 'PDGFRB', 'type': 'Complex', 'evidence': 3, 'belief': 0.423,
+     'note': 'Pericyte-macrophage interaction complex'},
+    {'source': 'PDGFRB', 'target': 'MRC1', 'type': 'Complex', 'evidence': 3, 'belief': 0.423},
+    {'source': 'MRC1', 'target': 'PECAM1', 'type': 'Complex', 'evidence': 2, 'belief': 0.457},
+    {'source': 'PECAM1', 'target': 'MRC1', 'type': 'Complex', 'evidence': 2, 'belief': 0.457},
+    # --- PDGFRB ↔ CD34: pericyte-endothelial ---
+    {'source': 'PDGFRB', 'target': 'CD34', 'type': 'Activation', 'evidence': 2, 'belief': 0.367},
+    {'source': 'PDGFRB', 'target': 'CD34', 'type': 'Complex', 'evidence': 2, 'belief': 0.426},
+    {'source': 'CD34', 'target': 'PDGFRB', 'type': 'Complex', 'evidence': 2, 'belief': 0.426},
+    # --- CD44 ↔ PECAM1: adhesion/extravasation ---
+    {'source': 'CD44', 'target': 'PECAM1', 'type': 'Activation', 'evidence': 2, 'belief': 0.417},
+    {'source': 'CD44', 'target': 'PECAM1', 'type': 'IncreaseAmount', 'evidence': 1, 'belief': 0.484},
+    {'source': 'PECAM1', 'target': 'CD44', 'type': 'Inhibition', 'evidence': 1, 'belief': 0.436},
+    # --- PTPRC ↔ PDGFRA/PDGFRB ---
+    {'source': 'PTPRC', 'target': 'PDGFRB', 'type': 'IncreaseAmount', 'evidence': 2, 'belief': 0.472},
+    {'source': 'PTPRC', 'target': 'PDGFRA', 'type': 'Activation', 'evidence': 1, 'belief': 0.372},
+    # --- PDGFRA ↔ CD44 ---
+    {'source': 'PDGFRA', 'target': 'CD44', 'type': 'Complex', 'evidence': 1, 'belief': 0.83,
+     'note': 'High-belief complex despite single evidence'},
+    {'source': 'CD44', 'target': 'PDGFRA', 'type': 'Complex', 'evidence': 1, 'belief': 0.83},
+    # --- Low-evidence cross-type relationships ---
     {'source': 'ITGAM', 'target': 'CD34', 'type': 'Inhibition', 'evidence': 1, 'belief': 0.436},
     {'source': 'ITGAM', 'target': 'CD34', 'type': 'Complex', 'evidence': 1, 'belief': 0.426},
+    {'source': 'MRC1', 'target': 'CD34', 'type': 'Complex', 'evidence': 1, 'belief': 0.426},
+    {'source': 'CD34', 'target': 'MRC1', 'type': 'Complex', 'evidence': 1, 'belief': 0.426},
 ]
 
 
@@ -868,7 +899,7 @@ def panel_coherence_summary() -> str:
 
     return (
         f"Panel biological coverage was assessed against the INDRA/CoGEx knowledge graph "
-        f"(queried 2026-02-20, corrected 2026-02-26). All {grounded} markers grounded "
+        f"(queried 2026-02-26 via systematic Cypher). All {grounded} markers grounded "
         f"encode genes with {n_stmts} known intra-panel causal relationships, spanning immune "
         f"infiltration (PTPRC, ITGAM), tissue injury/adhesion (CD44), vascular integrity "
         f"(PECAM1, CD34), stromal/fibrotic response (PDGFRA, PDGFRB), and anti-inflammatory "
@@ -1034,7 +1065,7 @@ def build_panel_context() -> Dict:
     coherence_text = panel_coherence_summary()
     return {
         'metadata': {
-            'query_date': '2026-02-20',
+            'query_date': '2026-02-26',
             'source': 'INDRA/CoGEx via MCP tools',
             'panel_size': 9,
             'grounded_genes': sum(1 for v in MARKER_GENE_MAP.values() if v['grounded']),
