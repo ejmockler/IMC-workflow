@@ -31,17 +31,13 @@ pytest-cov==7.0.0
 
 # Performance monitoring
 psutil==7.1.0
-memory_profiler==0.61.0
 
-# Configuration management
-pyyaml==6.0.2
+# Configuration and validation
+pydantic==2.12.3
 
 # Data serialization (optional, fallback to JSON)
 h5py==3.14.0  # For HDF5 storage
 pyarrow==21.0.0  # For Parquet storage
-
-# Progress bars and logging
-tqdm==4.67.1
 
 # Numerical optimization
 numba==0.62.1  # JIT compilation for performance-critical sections

@@ -249,7 +249,7 @@ def _estimate_intensity_function(coords: np.ndarray,
     
     # Kernel density estimation
     kde = gaussian_kde(coords.T, bw_method=bandwidth)
-    intensities = kde.evaluate(coords.T)
+    intensities = kde(coords.T)
     
     # Normalize to sum to n_points
     intensities = intensities * n_points / np.sum(intensities)

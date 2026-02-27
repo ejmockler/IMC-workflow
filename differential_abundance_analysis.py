@@ -271,6 +271,10 @@ def perform_differential_abundance(df: pd.DataFrame, cell_types: List[str]) -> p
         if prop_col not in mouse_df.columns:
             continue
 
+        # Skip cell types with zero total counts across all mice
+        if mouse_df[prop_col].sum() == 0:
+            continue
+
         has_clr = clr_col in mouse_df.columns
 
         for tp1, tp2 in timepoint_pairs:

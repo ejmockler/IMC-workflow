@@ -14,6 +14,10 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 from datetime import datetime
 import warnings
+import logging
+import traceback
+
+logger = logging.getLogger('IMCPipeline')
 
 from .multiscale_analysis import perform_multiscale_analysis, compute_scale_consistency
 from .parallel_processing import create_roi_batch_processor
@@ -702,14 +706,14 @@ class IMCAnalysisPipeline:
                 try:
                     self._snapshot_config(output_dir)
                 except Exception as e:
-                    warnings.warn(f"Config snapshot failed: {e}")
+                    logger.error(f"Config snapshot failed for {roi_id}: {e}", exc_info=True)
 
             # Create provenance file linking this analysis to config
             if self.config_hash is not None:
                 try:
                     self._create_provenance_file(output_dir, result)
                 except Exception as e:
-                    warnings.warn(f"Provenance file creation failed: {e}")
+                    logger.error(f"Provenance file creation failed for {roi_id}: {e}", exc_info=True)
 
         return result
     
@@ -746,7 +750,7 @@ class IMCAnalysisPipeline:
                 roi_data = self.load_roi_data(roi_path, protein_names)
                 roi_data_dict[roi_id] = roi_data
             except Exception as e:
-                warnings.warn(f"Failed to load ROI {roi_path}: {str(e)}")
+                logger.error(f"Failed to load ROI {roi_path}: {e}", exc_info=True)
         
         if not roi_data_dict:
             raise ValueError("No valid ROI data loaded")
@@ -829,7 +833,10 @@ class IMCAnalysisPipeline:
                            f"beads={bead_channels}, valid_rois={valid_batches}")
 
             except Exception as e:
-                logger.warning(f"Batch bead normalization failed: {e}. Proceeding without normalization.")
+                logger.error(f"Batch bead normalization failed: {e}. "
+                            f"Data will be UNNORMALIZED — results may not be comparable across ROIs.",
+                            exc_info=True)
+                raise
 
         # Create efficient storage backend
         storage_config = {}
@@ -984,7 +991,9 @@ class IMCAnalysisPipeline:
                             json.dump(metadata_summary, f, indent=2)
                             
                 except Exception as e:
-                    errors.append(f"Failed to process {roi_id}: {str(e)}")
+                    tb = traceback.format_exc()
+                    logger.error(f"Failed to process ROI {roi_id}: {e}\n{tb}")
+                    errors.append(f"Failed to process {roi_id}: {str(e)}\n{tb}")
         else:
             # Create batch processor for parallel processing
             batch_processor = create_roi_batch_processor(
@@ -1079,8 +1088,10 @@ class IMCAnalysisPipeline:
                 base_path=Path(output_path).parent
             )
             summary_storage.save_roi_analysis('analysis_summary', summary)
-        except Exception:
+        except Exception as e:
             # Fallback to JSON if storage fails
+            logger.error(f"Storage backend failed for summary report, falling back to JSON: {e}",
+                        exc_info=True)
             with open(output_path, 'w') as f:
                 json.dump(summary, f, indent=2, default=str)
         
@@ -1137,7 +1148,7 @@ def run_complete_analysis(
             manifest = AnalysisManifest.load(manifest_path)
             print(f"Loaded analysis manifest: {manifest.manifest_id}")
         except Exception as e:
-            warnings.warn(f"Could not load manifest from {manifest_path}: {e}")
+            logger.error(f"Could not load manifest from {manifest_path}: {e}", exc_info=True)
     
     elif create_manifest and AnalysisManifest:
         from .analysis_manifest import ScientificObjectives, create_manifest_from_config
