@@ -251,7 +251,8 @@ def _test_single_resolution_parallel(
         return resolution, 0.0, 0.0
 
     subsample_size = max(1, int(n_samples * subsample_ratio))
-    bootstrap_labels: List[np.ndarray] = []
+    # Track (indices, labels) pairs so ARI compares corresponding points
+    bootstrap_results: List[Tuple[np.ndarray, np.ndarray]] = []
 
     for b in range(n_bootstrap):
         seed = random_state + int(resolution * 1000) + b
@@ -278,19 +279,33 @@ def _test_single_resolution_parallel(
                 random_state=seed
             )
 
-        bootstrap_labels.append(labels)
+        bootstrap_results.append((indices, labels))
 
     from sklearn.metrics import adjusted_rand_score
 
     ari_scores: List[float] = []
     for i in range(n_bootstrap):
         for j in range(i + 1, n_bootstrap):
-            if len(bootstrap_labels[i]) == len(bootstrap_labels[j]):
-                ari = adjusted_rand_score(bootstrap_labels[i], bootstrap_labels[j])
-                ari_scores.append(ari)
+            idx_i, lab_i = bootstrap_results[i]
+            idx_j, lab_j = bootstrap_results[j]
+
+            # Find points present in both bootstrap samples
+            common = np.intersect1d(idx_i, idx_j)
+            if len(common) < 10:
+                continue
+
+            # Map common points to their positions in each label vector
+            idx_to_pos_i = {int(idx): pos for pos, idx in enumerate(idx_i)}
+            idx_to_pos_j = {int(idx): pos for pos, idx in enumerate(idx_j)}
+
+            pos_i = np.array([idx_to_pos_i[int(c)] for c in common])
+            pos_j = np.array([idx_to_pos_j[int(c)] for c in common])
+
+            ari = adjusted_rand_score(lab_i[pos_i], lab_j[pos_j])
+            ari_scores.append(ari)
 
     stability = float(np.mean(ari_scores)) if ari_scores else 0.0
-    n_clusters_list = [len(np.unique(labels[labels >= 0])) for labels in bootstrap_labels]
+    n_clusters_list = [len(np.unique(lab[lab >= 0])) for _, lab in bootstrap_results]
     mean_n_clusters = float(np.mean(n_clusters_list)) if n_clusters_list else 0.0
 
     return resolution, stability, mean_n_clusters

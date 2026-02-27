@@ -103,14 +103,19 @@ def permutation_test(
     knn_indices: np.ndarray,
     focal_cell_type: str,
     neighbor_cell_type: str,
-    n_permutations: int = 1000
+    n_permutations: int = 1000,
+    random_state: int = 42
 ) -> Tuple[float, float]:
     """
     Test if observed neighbor proportion is significantly different from expected.
 
+    Uses global label permutation (standard null for neighborhood enrichment —
+    same approach as histoCAT/squidpy). Tests whether co-localization exceeds
+    chance given cell type frequencies.
+
     Returns: (enrichment_score, p_value)
     enrichment_score = observed / expected
-    p_value = fraction of permutations >= observed
+    p_value = fraction of permutations >= observed (Phipson & Smyth corrected)
     """
     # Get expected proportion
     expected_props = compute_expected_composition(cell_types)
@@ -128,12 +133,15 @@ def permutation_test(
     if len(focal_indices) == 0:
         return enrichment, np.nan
 
+    # Deterministic RNG for reproducibility
+    rng = np.random.default_rng(random_state)
+
     # Generate null distribution
     null_props = []
 
     for _ in range(n_permutations):
-        # Shuffle cell type labels
-        permuted_types = np.random.permutation(cell_types)
+        # Shuffle cell type labels (preserves total counts, randomizes positions)
+        permuted_types = rng.permutation(cell_types)
 
         # Compute neighbor composition under permutation
         neighbor_indices = knn_indices[focal_indices].flatten()
@@ -198,16 +206,22 @@ def analyze_roi_neighborhoods(
 
     results = []
 
-    for focal_ct in focal_cell_types:
+    # Deterministic seed per ROI (hash roi_id for reproducibility)
+    roi_seed = hash(roi_id) % (2**31)
+
+    for fi, focal_ct in enumerate(focal_cell_types):
         # Get observed neighborhood composition
         observed_comp = compute_neighborhood_composition(cell_types, knn_indices, focal_ct)
 
-        for neighbor_ct in neighbor_cell_types:
+        for ni, neighbor_ct in enumerate(neighbor_cell_types):
             observed_prop = observed_comp.get(neighbor_ct, 0.0)
             expected_prop = expected_comp.get(neighbor_ct, 0.0)
 
             if expected_prop == 0:
                 continue
+
+            # Unique seed per ROI × focal × neighbor combination
+            pair_seed = roi_seed + fi * 1000 + ni
 
             # Compute enrichment and significance
             enrichment, p_value = permutation_test(
@@ -216,7 +230,8 @@ def analyze_roi_neighborhoods(
                 knn_indices,
                 focal_ct,
                 neighbor_ct,
-                n_permutations=n_permutations
+                n_permutations=n_permutations,
+                random_state=pair_seed
             )
 
             results.append({

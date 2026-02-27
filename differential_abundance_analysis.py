@@ -22,6 +22,8 @@ from scipy import stats
 from statsmodels.stats.multitest import multipletests
 from typing import Dict, List, Tuple
 
+from scipy.stats.mstats import gmean
+
 from src.utils.metadata import parse_roi_metadata as _parse_canonical
 from src.utils.paths import get_paths
 
@@ -85,6 +87,39 @@ def compute_abundances(batch_summary: dict, metadata_df: pd.DataFrame) -> pd.Dat
 
     # Filter out test ROIs
     df = df[df['timepoint'] != 'Test']
+
+    return df
+
+
+def add_clr_columns(df: pd.DataFrame, cell_types: List[str]) -> pd.DataFrame:
+    """
+    Add centered log-ratio (CLR) transformed columns for compositional awareness.
+
+    Cell type proportions are compositional data (they share the denominator,
+    and ~79% is unassigned). CLR transforms break the spurious negative
+    correlation induced by the shared denominator.
+
+    CLR(x_i) = log(x_i / geometric_mean(x))
+
+    Uses a pseudocount of 1e-6 to handle zero proportions.
+    Includes 'unassigned' in the composition vector since it's a real component.
+    """
+    prop_cols = [f'{ct}_prop' for ct in cell_types if f'{ct}_prop' in df.columns]
+    # Include unassigned as part of the composition
+    if 'unassigned_prop' in df.columns and 'unassigned_prop' not in prop_cols:
+        prop_cols.append('unassigned_prop')
+
+    if not prop_cols:
+        return df
+
+    eps = 1e-6
+    props = df[prop_cols].values + eps  # Pseudocount for zeros
+    geo_mean = gmean(props, axis=1, keepdims=True)
+    clr_values = np.log(props / geo_mean)
+
+    for i, col in enumerate(prop_cols):
+        clr_col = col.replace('_prop', '_clr')
+        df[clr_col] = clr_values[:, i]
 
     return df
 
@@ -180,9 +215,11 @@ def aggregate_to_mouse_level(df: pd.DataFrame) -> pd.DataFrame:
     (n=3 per mouse). Averaging ROIs within each mouse prevents pseudoreplication.
     """
     prop_cols = [c for c in df.columns if c.endswith('_prop')]
+    clr_cols = [c for c in df.columns if c.endswith('_clr')]
     count_cols = [c for c in df.columns if c.endswith('_count')]
 
     agg_dict = {col: 'mean' for col in prop_cols}
+    agg_dict.update({col: 'mean' for col in clr_cols})
     agg_dict.update({col: 'sum' for col in count_cols})
     agg_dict['n_total'] = 'sum'
     agg_dict['n_assigned'] = 'sum'
@@ -229,9 +266,12 @@ def perform_differential_abundance(df: pd.DataFrame, cell_types: List[str]) -> p
 
     for cell_type in cell_types:
         prop_col = f'{cell_type}_prop'
+        clr_col = f'{cell_type}_clr'
 
         if prop_col not in mouse_df.columns:
             continue
+
+        has_clr = clr_col in mouse_df.columns
 
         for tp1, tp2 in timepoint_pairs:
             group1 = mouse_df[mouse_df['timepoint'] == tp1][prop_col].values
@@ -253,7 +293,7 @@ def perform_differential_abundance(df: pd.DataFrame, cell_types: List[str]) -> p
             fold_change = (mean2 + eps) / (mean1 + eps)
             log2_fc = np.log2(fold_change) if fold_change > 0 else np.nan
 
-            results.append({
+            row = {
                 'cell_type': cell_type,
                 'comparison': f'{tp1}_vs_{tp2}',
                 'timepoint_1': tp1,
@@ -271,7 +311,15 @@ def perform_differential_abundance(df: pd.DataFrame, cell_types: List[str]) -> p
                 'hedges_g': g,
                 'ci_lower_95': ci_lower,
                 'ci_upper_95': ci_upper,
-            })
+            }
+
+            # CLR-transformed effect size (compositional-aware)
+            if has_clr:
+                clr1 = mouse_df[mouse_df['timepoint'] == tp1][clr_col].values
+                clr2 = mouse_df[mouse_df['timepoint'] == tp2][clr_col].values
+                row['hedges_g_clr'] = hedges_g(clr1, clr2)
+
+            results.append(row)
 
     results_df = pd.DataFrame(results)
 
@@ -296,18 +344,30 @@ def perform_regional_analysis(df: pd.DataFrame, cell_types: List[str]) -> pd.Dat
     Compare cell type abundances between Cortex and Medulla (actual anatomical regions).
 
     Stratified by timepoint (D1, D3, D7 only).
-    Uses ROI-level data since region is nested within mouse×timepoint
+    Aggregates to mouse-level means per region to avoid pseudoreplication
     (each mouse contributes ROIs to both regions).
 
-    Note: Regional comparisons are within-mouse, so pseudoreplication is less severe
-    than temporal comparisons. Still, n is small (typically 1-2 ROIs per region per mouse).
+    Unit of analysis: mouse (n=2 per timepoint), same as temporal analysis.
     """
     results = []
 
     df_injury = df[df['timepoint'].isin(['D1', 'D3', 'D7'])].copy()
 
+    if 'region' not in df_injury.columns:
+        return pd.DataFrame()
+
+    # Aggregate ROIs to mouse-level means within each region
+    prop_cols = [c for c in df_injury.columns if c.endswith('_prop')]
+    agg_dict = {col: 'mean' for col in prop_cols}
+    agg_dict['roi_id'] = 'count'
+
+    mouse_region_df = df_injury.groupby(
+        ['timepoint', 'mouse', 'region']
+    ).agg(agg_dict).reset_index()
+    mouse_region_df = mouse_region_df.rename(columns={'roi_id': 'n_rois'})
+
     for timepoint in ['D1', 'D3', 'D7']:
-        df_tp = df_injury[df_injury['timepoint'] == timepoint]
+        df_tp = mouse_region_df[mouse_region_df['timepoint'] == timepoint]
 
         for cell_type in cell_types:
             prop_col = f'{cell_type}_prop'
@@ -335,8 +395,8 @@ def perform_regional_analysis(df: pd.DataFrame, cell_types: List[str]) -> pd.Dat
             results.append({
                 'cell_type': cell_type,
                 'timepoint': timepoint,
-                'n_cortex': len(cortex),
-                'n_medulla': len(medulla),
+                'n_mice_cortex': len(cortex),
+                'n_mice_medulla': len(medulla),
                 'mean_cortex': mean_cortex,
                 'mean_medulla': mean_medulla,
                 'std_cortex': std_cortex,
@@ -392,6 +452,10 @@ def main():
     cell_type_cols = [c for c in abundance_df.columns if c.endswith('_count') and not c.startswith('unassigned')]
     cell_types = [c.replace('_count', '') for c in cell_type_cols]
 
+    # Add CLR-transformed columns for compositional awareness
+    abundance_df = add_clr_columns(abundance_df, cell_types)
+    print(f"  CLR transform applied (includes unassigned in composition)")
+
     print(f"  Cell types: {len(cell_types)}")
     for ct in cell_types:
         total_count = abundance_df[f'{ct}_count'].sum()
@@ -438,8 +502,8 @@ def main():
             fdr_str = f"q={row.get('p_value_fdr', np.nan):.3f}" if not np.isnan(row.get('p_value_fdr', np.nan)) else "q=NA"
             print(f"\n  {row['cell_type']} @ {row['timepoint']}")
             print(f"    {direction} {row['fold_change']:.2f}x | g={row['hedges_g']:.2f} 95%CI {ci_str} | {fdr_str}")
-            print(f"    Cortex:  {row['mean_cortex']:.3%} +/- {row['std_cortex']:.3%} (n={row['n_cortex']})")
-            print(f"    Medulla: {row['mean_medulla']:.3%} +/- {row['std_medulla']:.3%} (n={row['n_medulla']})")
+            print(f"    Cortex:  {row['mean_cortex']:.3%} +/- {row['std_cortex']:.3%} (n={row['n_mice_cortex']} mice)")
+            print(f"    Medulla: {row['mean_medulla']:.3%} +/- {row['std_medulla']:.3%} (n={row['n_mice_medulla']} mice)")
     else:
         print("  No regional comparisons available")
 
