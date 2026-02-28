@@ -22,7 +22,7 @@ def deserialize_array(arr_dict):
 
 def main():
     # Load superpixel data
-    results_dir = Path('/Users/noot/Documents/IMC/results/roi_results')
+    results_dir = Path(__file__).resolve().parent.parent.parent.parent / 'results' / 'roi_results'
     result_files = sorted(results_dir.glob('roi_*.json.gz'))
 
     print(f"Found {len(result_files)} ROI result files")

@@ -225,9 +225,8 @@ def aggregate_to_mouse_level(df: pd.DataFrame) -> pd.DataFrame:
     agg_dict['roi_id'] = 'count'  # n_rois per mouse
 
     group_cols = ['timepoint', 'mouse']
-    # Keep region if present (for regional analysis)
-    if 'region' in df.columns:
-        agg_dict['region'] = 'first'
+    # Note: region is NOT included here — temporal analysis averages across regions
+    # within each mouse. Regional analysis uses its own groupby in perform_regional_analysis().
 
     mouse_df = df.groupby(group_cols).agg(agg_dict).reset_index()
     mouse_df = mouse_df.rename(columns={'roi_id': 'n_rois'})

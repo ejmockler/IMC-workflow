@@ -5,12 +5,15 @@ Compare tissue microenvironments at multiple spatial scales to address heterogen
 Implements 10μm, 20μm, and 40μm scale analysis with consistency metrics.
 """
 
+import logging
 import numpy as np
 from typing import Dict, List, Tuple, Optional, TYPE_CHECKING, Any
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from .ion_count_processing import ion_count_pipeline
 from .slic_segmentation import slic_pipeline
 from .spatial_clustering import perform_spatial_clustering, stability_analysis, compute_spatial_coherence
+
+logger = logging.getLogger('MultiscaleAnalysis')
 from .hierarchical_multiscale import build_multiscale_hierarchy, add_neighbor_composition_features
 from .graph_clustering import create_graph_clustering_baseline
 from .clustering_comparison import compare_graph_vs_spatial_clustering
@@ -91,9 +94,6 @@ def _compute_scale_adaptive_k_neighbors(n_samples: int, scale_um: float, config:
     Returns:
         Optimal k value for this scale
     """
-    import logging
-    logger = logging.getLogger('MultiscaleAnalysis')
-
     # Read the top-level config k_neighbors for reference (the "user-facing" value)
     config_k_neighbors = 15  # default
     if config is not None:
@@ -236,8 +236,6 @@ def perform_multiscale_analysis(
     Returns:
         Dictionary with hierarchical analysis results and optional baseline comparisons
     """
-    import logging
-    logger = logging.getLogger('MultiscaleAnalysis')
     logger.info(f"Starting hierarchical multi-scale analysis with {len(coords)} pixels")
     
     # Handle backward compatibility
@@ -369,6 +367,7 @@ def perform_multiscale_analysis(
         stability_kwargs = {
             'n_resolutions': stability_config.get('n_resolutions', 15),
             'n_bootstrap': stability_config.get('n_bootstrap_iterations', 5),
+            'subsample_ratio': stability_config.get('subsample_ratio', 0.9),
             'use_graph_caching': stability_config.get('use_graph_caching', True),
             'parallel': stability_config.get('parallel_execution', True),
             'n_workers': stability_config.get('n_workers'),
@@ -530,8 +529,6 @@ def perform_multiscale_analysis(
             )
         elif plots_dir and roi_id:
             # Debug: Log why plot wasn't generated
-            import logging
-            logger = logging.getLogger('MultiscaleAnalysis')
             logger.warning(f"Validation plot skipped for {roi_id} at {scale_um}μm: "
                          f"superpixel_labels {'present' if 'superpixel_labels' in aggregation_result else 'MISSING'}")
         
@@ -679,13 +676,9 @@ def _generate_validation_plot(
         import matplotlib.pyplot as plt
         plt.close(fig)  # Free memory
         
-        import logging
-        logger = logging.getLogger('MultiscaleAnalysis')
         logger.info(f"Saved validation plot to {output_file}")
-        
+
     except Exception as e:
-        import logging
-        logger = logging.getLogger('MultiscaleAnalysis')
         logger.warning(f"Could not generate validation plot: {e}")
 
 

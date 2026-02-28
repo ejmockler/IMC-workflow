@@ -147,9 +147,9 @@ Scale-adaptive k neighbors:
 Resolution selected via bootstrap stability:
 
 1. For each candidate resolution:
-   - Generate B=20 bootstrap samples; 90% subsampling without replacement
+   - Generate B=20 bootstrap samples; 85% subsampling without replacement
    - Cluster each sample at that resolution
-   - Compute pairwise ARI between all bootstrap clusterings on the intersection of common points (each bootstrap pair shares ~81% of points at 90% subsampling)
+   - Compute pairwise ARI between all bootstrap clusterings on the intersection of common points (each bootstrap pair shares ~72% of points at 85% subsampling)
 
 2. Stability score: mean pairwise ARI across bootstrap pairs (compared only on common points)
 
@@ -204,7 +204,8 @@ With n=2 per group, most comparisons are expected to be non-significant. Effect 
 > **Spatial information encoding.** Local spatial structure enters the analysis through two channels: (1) 36 spatial covariance features computed via radius-based neighborhoods in the coabundance feature set, and (2) the `spatial_weight` parameter that blends raw spatial coordinates into the clustering feature matrix via kNN graphs. These encode related but non-identical spatial information (radius neighborhoods vs. k-nearest-neighbor graphs). The `spatial_weight=0` ablation removes channel (2) but not channel (1), so the ablation tests the marginal contribution of coordinate-based weighting beyond what is already captured by spatial covariance features.
 
 ### Spatial Autocorrelation
-Spatial coherence assessed via Spearman correlation of marker expression with spatial coordinates. Moran's I is configured but not currently implemented in the analysis pipeline.
+- **Marker-level**: Spearman correlation of marker expression with spatial coordinates
+- **Cluster-level**: Moran's I spatial coherence computed per ROI per scale as a quality metric for cluster spatial compactness (inverse-distance weights, cKDTree neighborhood). Higher values indicate spatially contiguous clusters. Used for quality assessment, not primary analysis.
 
 ## Quality Control
 

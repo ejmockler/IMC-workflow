@@ -281,51 +281,6 @@
         "functional_role": "anti-inflammatory_repair",
         "_comment_gating_fix": "CRITICAL FIX (2025-01-31): Reduced from 4-marker to 3-marker core gate. CD44 and CD140b are activation markers, not M2 requirements. Previous 4-marker AND gate failed to detect any M2s (contradicts published flow/scRNA-seq data)."
       },
-      "m2_macrophage_cd44": {
-        "label": "M2 Macrophage (CD44+ subset)",
-        "description": "M2 macrophages with adhesion molecule (CD44+). Represents activated subset of M2 population. NOTE: Not all M2s express CD44; this is a subset, not a requirement.",
-        "positive_markers": [
-          "CD45",
-          "CD11b",
-          "CD206",
-          "CD44"
-        ],
-        "negative_markers": [
-          "CD31"
-        ],
-        "color": "#FCBF49",
-        "expected_timepoints": [
-          "day_3",
-          "day_7"
-        ],
-        "expected_regions": [
-          "cortex",
-          "medulla"
-        ],
-        "functional_role": "activated_m2_repair"
-      },
-      "m2_macrophage_cd140b": {
-        "label": "M2 Macrophage (CD140b+ subset)",
-        "description": "M2 macrophages with stromal interaction marker (CD140b+). May indicate fibroblast-macrophage crosstalk or pro-fibrotic phenotype. NOTE: This is a specialized subset, not required for M2 definition.",
-        "positive_markers": [
-          "CD45",
-          "CD11b",
-          "CD206",
-          "CD140b"
-        ],
-        "negative_markers": [
-          "CD31"
-        ],
-        "color": "#EAE2B7",
-        "expected_timepoints": [
-          "day_3",
-          "day_7"
-        ],
-        "expected_regions": [
-          "medulla"
-        ],
-        "functional_role": "fibrotic_m2_transition"
-      },
       "activated_endothelial_cd44": {
         "label": "Activated Endothelial (CD44+)",
         "description": "Activated endothelial cells",
