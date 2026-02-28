@@ -460,7 +460,7 @@ def stability_analysis(
     Returns:
         Dictionary with stability analysis results
     """
-    np.random.seed(random_state)
+    # Each resolution uses its own local RNG via default_rng (no global state)
     n_samples = feature_matrix.shape[0]
     subsample_size = int(n_samples * subsample_ratio)
     

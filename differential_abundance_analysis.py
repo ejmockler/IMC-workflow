@@ -215,11 +215,9 @@ def aggregate_to_mouse_level(df: pd.DataFrame) -> pd.DataFrame:
     (n=3 per mouse). Averaging ROIs within each mouse prevents pseudoreplication.
     """
     prop_cols = [c for c in df.columns if c.endswith('_prop')]
-    clr_cols = [c for c in df.columns if c.endswith('_clr')]
     count_cols = [c for c in df.columns if c.endswith('_count')]
 
     agg_dict = {col: 'mean' for col in prop_cols}
-    agg_dict.update({col: 'mean' for col in clr_cols})
     agg_dict.update({col: 'sum' for col in count_cols})
     agg_dict['n_total'] = 'sum'
     agg_dict['n_assigned'] = 'sum'
@@ -251,8 +249,10 @@ def perform_differential_abundance(df: pd.DataFrame, cell_types: List[str]) -> p
     Mann-Whitney p-values (n=2 vs n=2, mostly non-significant — that's honest),
     and BH FDR-corrected p-values across all comparisons.
     """
-    # Aggregate to mouse level first
+    # Aggregate to mouse level first, then apply CLR
+    # CLR must be applied AFTER aggregation because mean(CLR(x)) ≠ CLR(mean(x))
     mouse_df = aggregate_to_mouse_level(df)
+    mouse_df = add_clr_columns(mouse_df, cell_types)
 
     results = []
 
@@ -348,10 +348,14 @@ def perform_regional_analysis(df: pd.DataFrame, cell_types: List[str]) -> pd.Dat
     Compare cell type abundances between Cortex and Medulla (actual anatomical regions).
 
     Stratified by timepoint (D1, D3, D7 only).
-    Aggregates to mouse-level means per region to avoid pseudoreplication
-    (each mouse contributes ROIs to both regions).
+    Aggregates to mouse-level means per region.
 
-    Unit of analysis: mouse (n=2 per timepoint), same as temporal analysis.
+    Note: Cortex and Medulla from the same mouse are paired observations.
+    Mann-Whitney treats them as independent, which is technically incorrect.
+    With n=2 mice per timepoint, neither Mann-Whitney nor Wilcoxon signed-rank
+    can reach significance (minimum p > 0.05). Effect sizes (Hedges' g) remain
+    the primary inferential quantities. The paired structure means that
+    between-mouse variance is conflated with between-region variance.
     """
     results = []
 
@@ -456,9 +460,8 @@ def main():
     cell_type_cols = [c for c in abundance_df.columns if c.endswith('_count') and not c.startswith('unassigned')]
     cell_types = [c.replace('_count', '') for c in cell_type_cols]
 
-    # Add CLR-transformed columns for compositional awareness
-    abundance_df = add_clr_columns(abundance_df, cell_types)
-    print(f"  CLR transform applied (includes unassigned in composition)")
+    # Note: CLR transform applied inside perform_differential_abundance()
+    # AFTER mouse-level aggregation, because mean(CLR(x)) ≠ CLR(mean(x))
 
     print(f"  Cell types: {len(cell_types)}")
     for ct in cell_types:

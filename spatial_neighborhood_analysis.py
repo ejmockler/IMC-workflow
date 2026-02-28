@@ -163,7 +163,7 @@ def permutation_test(
 def analyze_roi_neighborhoods(
     roi_id: str,
     k_neighbors: int = 10,
-    n_permutations: int = 500
+    n_permutations: int = 1000
 ) -> pd.DataFrame:
     """
     Analyze spatial neighborhoods for a single ROI.

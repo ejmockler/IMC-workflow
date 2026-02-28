@@ -51,7 +51,7 @@ Nine protein markers selected to capture the principal cellular axes of acute ki
 | CD44 | CD44 | Tissue injury, hyaluronan receptor |
 
 ### Knowledge-Grounded Panel Justification
-Panel biological coverage was assessed against the INDRA/CoGEx knowledge graph (queried 2026-02-20). The 8 groundable markers (Ly6G excluded as murine-specific) encode genes with 32 known intra-panel causal relationships, spanning immune infiltration (PTPRC, ITGAM), tissue injury/adhesion (CD44), vascular integrity (PECAM1, CD34), stromal/fibrotic response (PDGFRA, PDGFRB), and anti-inflammatory resolution (MRC1). Five of 8 genes are regulated by TGF-beta, the master regulator of renal fibrosis; 4/8 by VEGF. The panel was not designed for pathway enrichment analysis (n=8 genes precludes meaningful ORA).
+Panel biological coverage was assessed against the INDRA/CoGEx knowledge graph (queried 2026-02-26). The 8 groundable markers (Ly6G excluded as murine-specific) encode genes with 117 known intra-panel relationships (175 raw edges aggregated by source/type/target), spanning immune infiltration (PTPRC, ITGAM), tissue injury/adhesion (CD44), vascular integrity (PECAM1, CD34), stromal/fibrotic response (PDGFRA, PDGFRB), and anti-inflammatory resolution (MRC1). Five of 8 genes are regulated by TGF-beta, the master regulator of renal fibrosis; 4/8 by VEGF. The panel was not designed for pathway enrichment analysis (n=8 genes precludes meaningful ORA).
 
 CD44 is the only panel gene with a direct AKI disease association in INDRA (MESH:D058186). CD34 and PECAM1 share the kidney-specific GO process "glomerular endothelium development" (GO:0072011). PDGFRA and PDGFRB both participate in the nephrogenesis pathway (WP4823). All 8 grounded genes are expressed in metanephros cortex (UBERON:0010533). See `results/biological_analysis/indra_panel_context.json` for the full INDRA knowledge base.
 
@@ -187,6 +187,8 @@ With n=2 per group, most comparisons are expected to be non-significant. Effect 
 
 > **Bootstrap CI degeneracy at n=2.** With 2 mouse-level means per group and bootstrap resampling with replacement, only 4 unique bootstrap samples exist per group ({a,a}, {a,b}, {b,a}, {b,b}), yielding 3 unique group means. This produces a maximum of 9 unique Hedges' g values per comparison. The resulting CIs reflect the discrete sample space rather than smooth sampling distributions and should be interpreted as approximate bounds on effect magnitude, not precise interval estimates.
 
+> **Regional comparisons are paired.** Cortex and medulla from the same mouse are paired observations. The current implementation uses Mann-Whitney U, which treats them as independent — between-mouse variance is conflated with between-region variance. A Wilcoxon signed-rank test would be more appropriate for paired data, but with n=2 pairs, neither test can reach significance. Effect sizes from regional comparisons should be interpreted with this caveat.
+
 ### Spatial Neighborhood Enrichment
 - k-nearest neighbors (k=10) neighborhood composition per superpixel
 - Permutation test (n=1000): global shuffle of cell type labels within each ROI, compare observed vs null neighbor proportions. P-values computed with Phipson & Smyth (2010) pseudocount: p = (n_extreme + 1) / (n_permutations + 1). Deterministic seeding per ROI × cell-type pair for reproducibility.
@@ -236,7 +238,7 @@ When multiple acquisition batches detected:
 2. **Marker panel (n=9)**: Limited to coarse lineage identification. ~79% of tissue is unassigned (lacks marker combination for annotation). Cannot identify specific T cell subsets, B cells, dendritic cells, or full macrophage polarization spectrum. The panel precludes pathway enrichment analysis (n=8 groundable genes).
 3. **Clustering stability**: Near-zero bootstrap ARI stability at all scales and resolutions. Cluster assignments should be interpreted cautiously; downstream analyses carry this uncertainty.
 4. **Cross-sectional design**: No longitudinal tracking. Temporal patterns are inferred from different subjects at each timepoint.
-5. **INDRA knowledge context**: The INDRA/CoGEx-derived biological context (shared regulators, mediated paths, mechanistic narratives) contextualizes spatial findings against known biology. It does not validate that specific spatial patterns are statistically real — it provides Discussion-level interpretation, not Results-level evidence.
+5. **INDRA knowledge context**: The INDRA/CoGEx-derived biological context (shared regulators, mediated paths, mechanistic narratives) contextualizes spatial findings against known biology. It does not validate that specific spatial patterns are statistically real — it provides Discussion-level interpretation, not Results-level evidence. Note: for cell types defined by marker co-expression (e.g., neutrophil = CD45+/Ly6G+), INDRA relationships between those same markers (e.g., ITGAM-Ly6G Complex) trivially "explain" self-enrichment — this circularity should be considered when interpreting INDRA context for self-enriching cell type pairs.
 
 ## Software and Dependencies
 
