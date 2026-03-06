@@ -362,7 +362,47 @@ def perform_multiscale_analysis(
         n_samples = features.shape[0]
         k_neighbors = _compute_scale_adaptive_k_neighbors(n_samples, scale_um, config)
 
-        # Step 3: Stability analysis for resolution selection
+        # Step 3: Compute scale-adaptive spatial_weight BEFORE stability analysis
+        # so that stability evaluation uses the same weight as final clustering
+        spatial_weight_params = _extract_algorithm_params(config, 'spatial_weight')
+        sw_threshold = spatial_weight_params.get('fine_scale_threshold_um', 20.0)
+        fine_weight = spatial_weight_params.get('fine_scale_weight', 0.2)
+        coarse_weight = spatial_weight_params.get('coarse_scale_weight', 0.4)
+        spatial_weight = fine_weight if scale_um <= sw_threshold else coarse_weight
+
+        # Log spatial_weight override transparency
+        config_spatial_weight = None
+        if config is not None:
+            sw_clustering = {}
+            if hasattr(config, 'analysis'):
+                sw_analysis_section = getattr(config, 'analysis', {})
+                if isinstance(sw_analysis_section, dict):
+                    sw_clustering = sw_analysis_section.get('clustering', {}) or {}
+            elif isinstance(config, dict):
+                sw_clustering = config.get('analysis', {}).get('clustering', {}) or {}
+            if 'spatial_weight' in sw_clustering:
+                config_spatial_weight = sw_clustering['spatial_weight']
+
+        if config_spatial_weight is not None and spatial_weight != config_spatial_weight:
+            if spatial_weight_params:
+                logger.info(
+                    f"spatial_weight overridden: config.analysis.clustering.spatial_weight="
+                    f"{config_spatial_weight} -> {spatial_weight} "
+                    f"(scale-adaptive: {'fine' if scale_um <= sw_threshold else 'coarse'} weight "
+                    f"for {scale_um}um, threshold={sw_threshold}um)"
+                )
+            else:
+                logger.info(
+                    f"spatial_weight overridden: config.analysis.clustering.spatial_weight="
+                    f"{config_spatial_weight} -> {spatial_weight} "
+                    f"(hardcoded scale-adaptive default: {'fine' if scale_um <= sw_threshold else 'coarse'} "
+                    f"weight for {scale_um}um because config.spatial_weight is a scalar, "
+                    f"not a scale-adaptive dict)"
+                )
+        else:
+            logger.info(f"spatial_weight={spatial_weight} for {scale_um}um")
+
+        # Step 4: Stability analysis for resolution selection
         stability_config = _extract_stability_config(config)
         stability_kwargs = {
             'n_resolutions': stability_config.get('n_resolutions', 15),
@@ -374,7 +414,8 @@ def perform_multiscale_analysis(
             'adaptive_search': stability_config.get('adaptive_search', False),
             'adaptive_target_stability': stability_config.get('adaptive_target_stability', 0.6),
             'adaptive_tolerance': stability_config.get('adaptive_tolerance', 0.05),
-            'adaptive_max_evaluations': stability_config.get('adaptive_max_evaluations')
+            'adaptive_max_evaluations': stability_config.get('adaptive_max_evaluations'),
+            'spatial_weight': spatial_weight,
         }
 
         # BUG FIX #9: Read resolution range from config instead of hardcoding
@@ -434,45 +475,6 @@ def perform_multiscale_analysis(
                 coabundance_opts = config.analysis.get('clustering', {}).get('coabundance_options', {})
             elif isinstance(config, dict):
                 coabundance_opts = config.get('analysis', {}).get('clustering', {}).get('coabundance_options', {})
-
-        # BUG FIX #9: Read spatial weight from config instead of hardcoding
-        spatial_weight_params = _extract_algorithm_params(config, 'spatial_weight')
-        sw_threshold = spatial_weight_params.get('fine_scale_threshold_um', 20.0)
-        fine_weight = spatial_weight_params.get('fine_scale_weight', 0.2)
-        coarse_weight = spatial_weight_params.get('coarse_scale_weight', 0.4)
-        spatial_weight = fine_weight if scale_um <= sw_threshold else coarse_weight
-
-        # Log spatial_weight override transparency
-        config_spatial_weight = None
-        if config is not None:
-            sw_clustering = {}
-            if hasattr(config, 'analysis'):
-                sw_analysis_section = getattr(config, 'analysis', {})
-                if isinstance(sw_analysis_section, dict):
-                    sw_clustering = sw_analysis_section.get('clustering', {}) or {}
-            elif isinstance(config, dict):
-                sw_clustering = config.get('analysis', {}).get('clustering', {}) or {}
-            if 'spatial_weight' in sw_clustering:
-                config_spatial_weight = sw_clustering['spatial_weight']
-
-        if config_spatial_weight is not None and spatial_weight != config_spatial_weight:
-            if spatial_weight_params:
-                logger.info(
-                    f"spatial_weight overridden: config.analysis.clustering.spatial_weight="
-                    f"{config_spatial_weight} -> {spatial_weight} "
-                    f"(scale-adaptive: {'fine' if scale_um <= sw_threshold else 'coarse'} weight "
-                    f"for {scale_um}um, threshold={sw_threshold}um)"
-                )
-            else:
-                logger.info(
-                    f"spatial_weight overridden: config.analysis.clustering.spatial_weight="
-                    f"{config_spatial_weight} -> {spatial_weight} "
-                    f"(hardcoded scale-adaptive default: {'fine' if scale_um <= sw_threshold else 'coarse'} "
-                    f"weight for {scale_um}um because config.spatial_weight is a scalar, "
-                    f"not a scale-adaptive dict)"
-                )
-        else:
-            logger.info(f"spatial_weight={spatial_weight} for {scale_um}um")
 
         cluster_labels, clustering_info = perform_spatial_clustering(
             features, spatial_coords,

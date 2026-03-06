@@ -43,37 +43,6 @@ def validate_generic_data(data, name="data"):
     if not np.isfinite(data).all():
         data = np.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
     return data
-    
-    def prepare_spatial_arrays_for_plotting(transformed_arrays, superpixel_labels, superpixel_coords, bounds):
-        """Fallback implementation for spatial array preparation."""
-        # Check if superpixel_labels is None or not a 2D array
-        if superpixel_labels is None or not hasattr(superpixel_labels, 'ndim'):
-            # Return empty dict if no valid labels
-            return {}
-            
-        if superpixel_labels.ndim != 2:
-            raise ValueError(f"superpixel_labels must be 2D, got {superpixel_labels.ndim}D")
-        
-        spatial_arrays = {}
-        
-        # Get unique superpixel labels (excluding background -1)
-        unique_labels = np.unique(superpixel_labels[superpixel_labels >= 0])
-        
-        for protein, values in transformed_arrays.items():
-            # Create spatial array initialized with NaN for background
-            spatial_array = np.full(superpixel_labels.shape, np.nan, dtype=float)
-            
-            # Map superpixel values to spatial positions
-            for i, superpixel_value in enumerate(values):
-                if i < len(unique_labels):
-                    superpixel_id = unique_labels[i]
-                    # Set all pixels belonging to this superpixel
-                    mask = superpixel_labels == superpixel_id
-                    spatial_array[mask] = superpixel_value
-            
-            spatial_arrays[protein] = spatial_array
-        
-        return spatial_arrays
 
 
 

@@ -12,7 +12,7 @@ Output: Neighborhood enrichment matrices and statistical tests
 """
 
 import json
-import gzip
+import hashlib
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -206,8 +206,8 @@ def analyze_roi_neighborhoods(
 
     results = []
 
-    # Deterministic seed per ROI (hash roi_id for reproducibility)
-    roi_seed = hash(roi_id) % (2**31)
+    # Deterministic seed per ROI (hashlib is session-independent, unlike hash())
+    roi_seed = int(hashlib.sha256(roi_id.encode()).hexdigest(), 16) % (2**31)
 
     for fi, focal_ct in enumerate(focal_cell_types):
         # Get observed neighborhood composition

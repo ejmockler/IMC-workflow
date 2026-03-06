@@ -179,7 +179,7 @@ Mean assignment rate: ~21% (range 10-48% across ROIs). The remaining ~79% of sup
 - Mann-Whitney U test on mouse-level means (n=2 per group)
 - Effect sizes: Hedges' g (small-sample corrected Cohen's d) with percentile bootstrap 95% CIs (10,000 iterations)
 - Multiple testing: Benjamini-Hochberg FDR across all pairwise comparisons
-- **Compositional awareness**: Centered log-ratio (CLR) transformed effect sizes reported alongside raw proportions. CLR(x_i) = log(x_i / geometric_mean(x)), with pseudocount 1e-6 for zero proportions. The CLR transform includes the unassigned fraction (~79%) as a component, addressing spurious negative correlations from the shared denominator.
+- **Compositional awareness**: Centered log-ratio (CLR) transformed effect sizes reported alongside raw proportions. CLR(x_i) = log(x_i / geometric_mean(x)), with pseudocount 1e-6 for zero proportions. The CLR transform includes the unassigned fraction (~79%) as a component, addressing spurious negative correlations from the shared denominator. Raw Hedges' g (unaffected by pseudocount choice) is the primary effect size; CLR-adjusted `hedges_g_clr` is supplementary. The pseudocount magnitude influences CLR values for rare cell types; sensitivity to this choice was not formally assessed in this pilot.
 
 With n=2 per group, most comparisons are expected to be non-significant. Effect sizes with CIs crossing zero are reported honestly.
 
@@ -193,7 +193,7 @@ With n=2 per group, most comparisons are expected to be non-significant. Effect 
 - k-nearest neighbors (k=10) neighborhood composition per superpixel
 - Permutation test (n=1000): global shuffle of cell type labels within each ROI, compare observed vs null neighbor proportions. P-values computed with Phipson & Smyth (2010) pseudocount: p = (n_extreme + 1) / (n_permutations + 1). Deterministic seeding per ROI × cell-type pair for reproducibility.
 - BH FDR correction within each ROI across all focal × neighbor pairs
-- Aggregation: weighted mean enrichment across ROIs (weights = n_focal_cells per ROI)
+- Aggregation: weighted mean enrichment across ROIs (weights = n_focal_cells per ROI). Note: weighted_mean(observed/expected) ≠ weighted_sum(observed)/weighted_sum(expected) by Jensen's inequality. The per-ROI enrichment ratio is the standard estimand (consistent with histoCAT/squidpy); pooled-ratio aggregation would measure a different quantity.
 
 > **Marker sharing and self-enrichment.** Several cell type definitions share positive markers (e.g., activated_endothelial_cd44 and activated_immune_cd44 both require CD44+; m2_macrophage and activated_immune share CD11b+). Because boolean gating assigns positivity based on continuous expression thresholds, cell types sharing markers will co-localize in marker expression space and consequently in physical space, producing self-enrichment that reflects shared gating criteria rather than independent biological co-localization. Self-enrichment scores (diagonal of the enrichment matrix) should be interpreted with this confound in mind.
 

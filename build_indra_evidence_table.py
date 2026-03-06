@@ -26,7 +26,6 @@ import json
 import csv
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from itertools import combinations
 
 from src.utils.paths import get_paths
 
