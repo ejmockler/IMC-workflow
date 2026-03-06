@@ -17,7 +17,7 @@ from .ion_count_processing import (
     optimize_cofactors_for_dataset
 )
 
-# Spatial clustering (NEW - replaces old clustering_optimization)
+# Spatial clustering
 from .spatial_clustering import (
     perform_spatial_clustering,
     stability_analysis,
@@ -51,9 +51,6 @@ from .memory_management import (
     get_memory_profile
 )
 
-# Configuration management
-# Config management now consolidated in src/config.py
-
 # SLIC morphology-aware segmentation
 from .slic_segmentation import (
     slic_pipeline,
@@ -73,7 +70,6 @@ try:
         compute_normalized_mutual_info
     )
 except ImportError:
-    # Multiscale analysis temporarily disabled due to import issues
     pass
 
 # Batch correction
@@ -81,34 +77,6 @@ from .batch_correction import (
     sham_anchored_normalize,
     detect_batch_effects
 )
-
-# Note: Validation moved to src/validation/core for clean separation
-
-# Reproducibility framework (lazy-loaded — not needed by main_pipeline.py)
-try:
-    from .reproducibility_framework import (
-        ReproducibilityFramework,
-        run_reproducibility_test,
-        EnvironmentFingerprint,
-        ReproducibilityResult
-    )
-except ImportError:
-    pass
-
-# Environment capture utilities (lazy-loaded — not needed by main_pipeline.py)
-try:
-    from .environment_capture import (
-        capture_execution_environment,
-        save_environment_snapshot,
-        validate_environment_compatibility,
-        EnvironmentCapture,
-        EnvironmentFingerprint as EnvFingerprint,
-        SystemInfo,
-        ComputationalEnvironment,
-        DependencyVersions
-    )
-except ImportError:
-    pass
 
 # Parallel processing
 from .parallel_processing import (
@@ -125,41 +93,11 @@ from .spatial_stats import (
     spatial_bootstrap
 )
 
-# Synthetic data generation for validation (lazy-loaded — not needed by main_pipeline.py)
-try:
-    from .synthetic_data_generator import (
-        SyntheticDataGenerator,
-        SyntheticDataConfig,
-        SyntheticDataValidator,
-        ProteinProperties,
-        TissueRegion,
-        SpatialPattern,
-        TissueType,
-        create_example_datasets,
-        validate_synthetic_dataset
-    )
-except ImportError:
-    pass
-
 # Threshold analysis
 from .threshold_analysis import (
     extract_threshold_features,
     compute_spatial_clustering
 )
-
-# Multiple testing control framework
-from .multiple_testing_control import (
-    HierarchicalMultipleTestingControl,
-    HierarchicalTestingConfig,
-    HypothesisFamily,
-    HypothesisType,
-    BootstrapConfidenceInterval,
-    create_standard_hypothesis_families,
-    integrate_with_multiscale_analysis,
-    bootstrap_effect_size_testing
-)
-
-# Note: Validation metrics moved to src/validation/ framework
 
 # Main pipeline orchestrator
 from .main_pipeline import (
@@ -195,7 +133,7 @@ __all__ = [
     'estimate_optimal_cofactor',
     'optimize_cofactors_for_dataset',
 
-    # Spatial Clustering (NEW)
+    # Spatial Clustering
     'perform_spatial_clustering',
     'stability_analysis',
     'compute_spatial_coherence',
@@ -220,9 +158,6 @@ __all__ = [
     'estimate_memory_requirements',
     'check_memory_availability',
     'get_memory_profile',
-
-    # Configuration Management
-    # Config management consolidated in src/config.py
 
     # SLIC Segmentation
     'slic_pipeline',
@@ -253,48 +188,9 @@ __all__ = [
     'compute_ripleys_k',
     'spatial_bootstrap',
 
-    # Synthetic Data Generation
-    'SyntheticDataGenerator',
-    'SyntheticDataConfig',
-    'SyntheticDataValidator',
-    'ProteinProperties',
-    'TissueRegion',
-    'SpatialPattern',
-    'TissueType',
-    'create_example_datasets',
-    'validate_synthetic_dataset',
-
     # Threshold Analysis
     'extract_threshold_features',
     'compute_spatial_clustering',
-
-    # Reproducibility Framework
-    'ReproducibilityFramework',
-    'run_reproducibility_test',
-    'EnvironmentFingerprint',
-    'ReproducibilityResult',
-
-    # Environment Capture
-    'capture_execution_environment',
-    'save_environment_snapshot',
-    'validate_environment_compatibility',
-    'EnvironmentCapture',
-    'EnvFingerprint',
-    'SystemInfo',
-    'ComputationalEnvironment',
-    'DependencyVersions',
-
-    # Multiple Testing Control
-    'HierarchicalMultipleTestingControl',
-    'HierarchicalTestingConfig',
-    'HypothesisFamily',
-    'HypothesisType',
-    'BootstrapConfidenceInterval',
-    'create_standard_hypothesis_families',
-    'integrate_with_multiscale_analysis',
-    'bootstrap_effect_size_testing',
-
-    # Note: Validation metrics moved to src/validation/ framework
 
     # Main Pipeline
     'run_complete_analysis',

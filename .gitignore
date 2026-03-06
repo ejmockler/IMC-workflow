@@ -12,11 +12,11 @@ build/
 .venv/
 venv/
 *.log
+*.backup
 
 # Data files - should not be in version control
 data/
 results/
-plots/
 *.txt
 *.csv
 *.mcd

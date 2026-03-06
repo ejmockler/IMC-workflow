@@ -5,50 +5,53 @@
 ### Directory Structure (Current Implementation)
 ```
 src/
-├── analysis/                    # Core analysis modules
+├── analysis/                    # Core analysis modules (21 modules)
 │   ├── main_pipeline.py         # Production pipeline orchestrator
-│   ├── ion_count_processing.py  # Ion count statistics & transformations
 │   ├── multiscale_analysis.py   # Multi-scale spatial analysis
+│   ├── ion_count_processing.py  # Ion count statistics & transformations
 │   ├── slic_segmentation.py     # SLIC superpixel generation
+│   ├── spatial_clustering.py    # Clustering optimization
 │   ├── batch_correction.py      # Quantile normalization for batches
 │   ├── coabundance_features.py  # Protein co-abundance analysis
 │   ├── hierarchical_multiscale.py # Hierarchical tissue organization
 │   ├── threshold_analysis.py    # Alternative threshold-based methods
-│   ├── memory_management.py     # Chunked processing for large data
-│   ├── data_storage.py          # HDF5/Parquet/JSON storage backends
 │   ├── spatial_stats.py         # Spatial statistics (Moran's I, etc.)
-│   ├── spatial_clustering.py    # Clustering optimization
-│   ├── quality_control.py       # QC metrics and validation
-│   ├── kidney_validation.py     # Kidney-specific validation
-│   ├── marker_validation.py     # Marker panel validation
-│   ├── error_handling.py        # Error handling utilities
-│   └── parallel_processing.py   # Multi-ROI parallel processing
+│   ├── spatial_utils.py         # Spatial helper functions
+│   ├── data_storage.py          # HDF5/Parquet/JSON storage backends
+│   ├── memory_management.py     # Chunked processing for large data
+│   ├── parallel_processing.py   # Multi-ROI parallel processing
+│   ├── analysis_manifest.py     # Scientific objectives & manifest
+│   ├── cell_type_annotation.py  # Boolean gating cell type assignment
+│   ├── clustering_comparison.py # Graph vs spatial clustering comparison
+│   ├── graph_clustering.py      # Graph-based clustering baseline
+│   ├── grid_segmentation.py     # Grid-based segmentation alternative
+│   ├── watershed_segmentation.py # Watershed segmentation alternative
+│   └── performance_profiling.py # Timing utilities
 ├── quality_control/             # QC framework
 │   ├── quality_gates.py         # Quality gate decisions
-│   ├── reporting.py             # QC reporting
+│   ├── config.py                # QC configuration
 │   └── statistical_monitoring.py # Statistical QC monitoring
 ├── validation/                  # Validation framework
 │   ├── framework.py             # Main validation framework
 │   ├── scientific_quality.py    # Scientific validation
 │   ├── data_integrity.py        # Data integrity checks
 │   ├── pipeline_state.py        # Pipeline state validation
+│   ├── practical_pipeline.py    # Practical validation pipeline
+│   ├── kidney_biological_validation.py # Kidney-specific validation
 │   └── core/                    # Core validation components
 │       ├── base.py              # Base validation classes
 │       └── metrics.py           # Validation metrics
 ├── utils/                       # Utilities
-│   ├── helpers.py               # Metadata classes and utilities
-│   ├── column_matching.py       # Column matching utilities
-│   ├── results_loader.py        # Results loading utilities
-│   └── streamlined_loader.py    # Streamlined data loading
+│   ├── paths.py                 # Centralized path management
+│   ├── metadata.py              # ROI metadata extraction
+│   ├── imc_loader.py            # Raw .txt pixel file loader
+│   ├── canonical_loader.py      # Processed gzipped JSON loader
+│   └── column_matching.py       # Column matching utilities
 ├── viz_utils/                   # Lightweight visualization utilities
 │   ├── plotting.py              # Stateless plotting functions
-│   ├── journal_figures.py       # Journal-quality figures
 │   └── comprehensive_figures.py # Comprehensive figure generation
-├── visualization/               # Minimal visualization components
-│   └── resolution_explorer.py   # Resolution exploration tools
-├── experiments/                 # Experiment-specific modules
-│   └── kidney/                  # Kidney experiment components
-└── config.py                    # Main configuration class
+├── config.py                    # Main configuration class
+└── config_schema.py             # Pydantic config validation
 ```
 
 ## Development Principles
