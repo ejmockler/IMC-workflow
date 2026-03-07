@@ -157,7 +157,7 @@ Resolution selected via bootstrap stability:
 
 **Current status:** Near-zero stability scores observed across all scales and resolutions. This is reported transparently; downstream analyses that depend on cluster assignments carry this uncertainty.
 
-> **Stability estimation.** Graph caching is enabled (`use_graph_caching=true`): a single kNN graph is built on the full dataset and subsampled per bootstrap iteration via vertex deletion. This is faster but may produce optimistic stability estimates. With near-zero stability observed across all scales and resolutions, the caching bias is negligible relative to the fundamental instability. The parameter can be set to `false` to rebuild the kNN graph from scratch per iteration at the cost of O(n_bootstrap × n²) graph construction.
+> **Stability estimation.** Graph caching is enabled (`use_graph_caching=true`): a single kNN graph is built on the full dataset and subsampled per bootstrap iteration via vertex deletion. This is faster but introduces bias: subsampled points lose neighbors (especially near subsample boundaries), producing degraded graph topology that may deflate stability scores via cluster fragmentation. Alternatively, the degraded topology could produce optimistic estimates via fewer, larger communities. The direction of bias is indeterminate. With near-zero stability observed across all scales and resolutions, the caching bias is negligible relative to the fundamental instability. The parameter can be set to `false` to rebuild the kNN graph from scratch per iteration at the cost of O(n_bootstrap × n²) graph construction.
 
 ## Cell Type Annotation
 
@@ -205,7 +205,7 @@ With n=2 per group, most comparisons are expected to be non-significant. Effect 
 
 ### Spatial Autocorrelation
 - **Marker-level**: Spearman correlation of marker expression with spatial coordinates
-- **Cluster-level**: Moran's I spatial coherence computed per ROI per scale as a quality metric for cluster spatial compactness (inverse-distance weights, cKDTree neighborhood). Higher values indicate spatially contiguous clusters. Used for quality assessment, not primary analysis.
+- **Cluster-level**: Moran's I spatial coherence computed per ROI per scale as a heuristic quality metric for cluster spatial compactness (inverse-distance weights, cKDTree neighborhood). Higher values indicate spatially contiguous clusters. Note: Moran's I treats cluster labels as numeric, which is technically inappropriate for nominal (categorical) data; the Join Count Statistic would be the formally correct alternative. Used for quality assessment only, not primary analysis.
 
 ## Quality Control
 

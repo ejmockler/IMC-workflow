@@ -11,7 +11,6 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 from scipy.spatial import KDTree
 from itertools import combinations
-import warnings
 
 
 def generate_coabundance_features(

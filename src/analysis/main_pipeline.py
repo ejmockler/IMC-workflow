@@ -1098,21 +1098,6 @@ class IMCAnalysisPipeline:
         return summary
 
 
-# Module-level function to avoid pickle issues
-def _pipeline_config_to_dict():
-    """Convert pipeline config to dictionary."""
-    return {
-        "analysis": {
-            "multiscale": {"scales_um": [10.0, 20.0, 40.0], "enable_scale_analysis": True},
-            "clustering": {"method": "leiden", "resolution": 1.0},
-            "normalization": {"method": "arcsinh", "cofactor": 1.0}
-        },
-        "segmentation": {
-            "slic": {"use_slic": True, "compactness": 10.0, "sigma": 2.0}
-        },
-        "storage": {"format": "json", "compression": True}
-    }
-
 
 def run_complete_analysis(
     config_path: str,

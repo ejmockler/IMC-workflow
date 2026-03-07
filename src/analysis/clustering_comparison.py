@@ -7,17 +7,13 @@ Enables systematic evaluation and benchmarking of clustering algorithms.
 """
 
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Any, Union
-from sklearn.metrics import (
-    adjusted_rand_score, normalized_mutual_info_score, silhouette_score,
-    homogeneity_score, completeness_score, v_measure_score
-)
-from scipy.stats import pearsonr, spearmanr
+from typing import Dict, List, Tuple, Optional, Any
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, silhouette_score
 import warnings
 
 # Import clustering modules
-from .spatial_clustering import perform_spatial_clustering, stability_analysis, compute_spatial_coherence
-from .graph_clustering import GraphClusteringBaseline, create_graph_clustering_baseline
+from .spatial_clustering import perform_spatial_clustering, compute_spatial_coherence
+from .graph_clustering import GraphClusteringBaseline
 from .coabundance_features import generate_coabundance_features
 
 

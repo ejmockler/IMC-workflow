@@ -17,7 +17,6 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Tuple
-from scipy.spatial import distance_matrix
 from scipy import stats
 from statsmodels.stats.multitest import multipletests
 from collections import Counter
@@ -43,14 +42,13 @@ def compute_knn_neighborhoods(coords: np.ndarray, k: int = 10) -> np.ndarray:
 
     Returns: (n_points, k) array of neighbor indices
     """
-    # Compute pairwise distances
-    dists = distance_matrix(coords, coords)
+    from scipy.spatial import cKDTree
 
-    # For each point, get k+1 nearest neighbors (including self)
-    # Then exclude self (first neighbor)
-    knn_indices = np.argsort(dists, axis=1)[:, 1:k+1]
-
-    return knn_indices
+    tree = cKDTree(coords)
+    # k+1 because query includes self as nearest neighbor
+    _, indices = tree.query(coords, k=k + 1)
+    # Exclude self (column 0)
+    return indices[:, 1:]
 
 def compute_neighborhood_composition(
     cell_types: np.ndarray,

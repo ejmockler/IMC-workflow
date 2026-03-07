@@ -8,12 +8,12 @@ direct comparison of graph-based vs spatial-aware clustering methodologies.
 """
 
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Union, Any
+from typing import Dict, List, Tuple, Optional, Any
 from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph, NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score, adjusted_rand_score, normalized_mutual_info_score
 from scipy.spatial.distance import pdist, squareform
-from scipy.sparse import csr_matrix, csc_matrix
+from scipy.sparse import csr_matrix
 import warnings
 
 # Optional dependencies with graceful fallbacks
@@ -25,13 +25,7 @@ except ImportError:
     LEIDEN_AVAILABLE = False
     warnings.warn("Leiden algorithm not available. Install with: pip install leidenalg python-igraph")
 
-try:
-    from sklearn.cluster import DBSCAN
-    from hdbscan import HDBSCAN
-    HDBSCAN_AVAILABLE = True
-except ImportError:
-    HDBSCAN_AVAILABLE = False
-    warnings.warn("HDBSCAN not available. Install with: pip install hdbscan")
+from sklearn.cluster import DBSCAN
 
 try:
     import networkx as nx
@@ -48,7 +42,7 @@ class GraphBuilder:
     
     def __init__(self, random_state: int = 42):
         self.random_state = random_state
-        np.random.seed(random_state)
+        self.rng = np.random.default_rng(random_state)
     
     def build_knn_graph(
         self,
@@ -924,7 +918,7 @@ class GraphClusteringBaseline:
         
         # Limit to n_trials
         if len(all_combinations) > n_trials:
-            indices = np.random.choice(len(all_combinations), n_trials, replace=False)
+            indices = self.rng.choice(len(all_combinations), n_trials, replace=False)
             all_combinations = [all_combinations[i] for i in indices]
         
         return all_combinations

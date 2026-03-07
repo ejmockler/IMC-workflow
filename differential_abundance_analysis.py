@@ -85,6 +85,12 @@ def compute_abundances(batch_summary: dict, metadata_df: pd.DataFrame) -> pd.Dat
 
     df = pd.DataFrame(rows)
 
+    # Fill NaN for cell types absent in some ROIs (zero count, not missing data)
+    count_cols = [c for c in df.columns if c.endswith('_count')]
+    prop_cols = [c for c in df.columns if c.endswith('_prop')]
+    df[count_cols] = df[count_cols].fillna(0)
+    df[prop_cols] = df[prop_cols].fillna(0.0)
+
     # Filter out test ROIs
     df = df[df['timepoint'] != 'Test']
 

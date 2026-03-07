@@ -296,8 +296,9 @@ def perform_multiscale_analysis(
             # Check if we have valid superpixel results
             if ('superpixel_counts' not in aggregation_result or
                 len(aggregation_result.get('superpixel_coords', [])) == 0):
-                # Empty or invalid data - return minimal result
-                return {
+                # Empty or invalid data - store minimal result and continue to next scale
+                logger.warning(f"Empty segmentation at {scale_um}μm — skipping this scale")
+                results[scale_um] = {
                     'scale_um': scale_um,
                     'method': segmentation_method,
                     'segmentation_method': segmentation_method,
@@ -307,40 +308,12 @@ def perform_multiscale_analysis(
                     'clustering_info': {'n_clusters': 0, 'method': 'none'},
                     'superpixel_labels': np.array([])
                 }
+                continue
 
             # Extract features from superpixels/cells
             features = np.array([aggregation_result['superpixel_counts'][protein]
                                 for protein in ion_counts.keys()]).T
             spatial_coords = aggregation_result['superpixel_coords']
-        else:
-            aggregation_result = ion_count_pipeline(
-                coords=coords,
-                ion_counts=ion_counts,
-                bin_size_um=scale_um
-            )
-            features = aggregation_result['feature_matrix']
-            # Create spatial coordinates from bin centers
-            bin_edges_x = aggregation_result['bin_edges_x']
-            bin_edges_y = aggregation_result['bin_edges_y']
-            valid_indices = aggregation_result['valid_indices']
-            
-            # Create bin center coordinates for valid bins
-            if len(bin_edges_x) > 1 and len(bin_edges_y) > 1:
-                x_centers = (bin_edges_x[:-1] + bin_edges_x[1:]) / 2
-                y_centers = (bin_edges_y[:-1] + bin_edges_y[1:]) / 2
-                
-                # Convert valid indices to 2D coordinates  
-                n_x_bins = len(bin_edges_x) - 1
-                y_indices = valid_indices // n_x_bins
-                x_indices = valid_indices % n_x_bins
-                
-                spatial_coords = np.column_stack([
-                    x_centers[x_indices],
-                    y_centers[y_indices]
-                ])
-            else:
-                spatial_coords = np.zeros((len(features), 2))
-        
         # Get protein names
         protein_names = list(ion_counts.keys())
         

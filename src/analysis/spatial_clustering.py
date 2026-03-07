@@ -241,7 +241,9 @@ def _test_single_resolution_parallel(
     n_bootstrap: int,
     subsample_ratio: float,
     random_state: int,
-    method: str
+    method: str,
+    spatial_weight: float = 0.3,
+    k_neighbors: int = 15
 ) -> Tuple[float, float, float]:
     """
     Evaluate stability for a single resolution; safe for parallel execution.
@@ -276,6 +278,8 @@ def _test_single_resolution_parallel(
                 coords_sub,
                 method=method,
                 resolution=resolution,
+                spatial_weight=spatial_weight,
+                k_neighbors=k_neighbors,
                 random_state=seed
             )
 
@@ -322,7 +326,9 @@ def _adaptive_resolution_search(
     random_state: int,
     target_stability: float,
     tolerance: float,
-    max_evaluations: int
+    max_evaluations: int,
+    spatial_weight: float = 0.3,
+    k_neighbors: int = 15
 ) -> Dict:
     """
     Adaptive resolution search that incrementally refines the most uncertain intervals.
@@ -354,7 +360,9 @@ def _adaptive_resolution_search(
             n_bootstrap,
             subsample_ratio,
             random_state,
-            method
+            method,
+            spatial_weight=spatial_weight,
+            k_neighbors=k_neighbors
         )
         evaluations[key] = (resolution, stability, clusters)
         return stability, clusters
@@ -502,7 +510,9 @@ def stability_analysis(
             random_state=random_state,
             target_stability=adaptive_target_stability,
             tolerance=adaptive_tolerance,
-            max_evaluations=max_evaluations
+            max_evaluations=max_evaluations,
+            spatial_weight=spatial_weight,
+            k_neighbors=k_neighbors
         )
         result['graph_caching_used'] = base_knn_graph is not None
         result['parallel_used'] = False
@@ -547,7 +557,9 @@ def stability_analysis(
                         n_bootstrap,
                         subsample_ratio,
                         random_state,
-                        method
+                        method,
+                        spatial_weight,
+                        k_neighbors
                     )
                     for resolution in resolutions
                 ]
@@ -568,7 +580,9 @@ def stability_analysis(
                         n_bootstrap,
                         subsample_ratio,
                         random_state,
-                        method
+                        method,
+                        spatial_weight,
+                        k_neighbors
                     )
                 if resolution_timer and resolution_timer.elapsed is not None:
                     record_timing("stability_resolution_iteration", resolution_timer.elapsed)
@@ -749,61 +763,49 @@ def compute_spatial_coherence(
 ) -> float:
     """
     Compute Moran's I for spatial autocorrelation of clusters.
-    
+
     Higher values indicate spatially coherent clusters.
+    Note: Moran's I treats cluster labels as numeric, which is only
+    meaningful as a heuristic for spatial compactness, not as a
+    formal test on nominal categories.
     """
     from scipy.spatial import cKDTree
     from scipy import sparse
-    
+
     if len(np.unique(cluster_labels)) <= 1:
         return 0.0
-    
+
     n = len(cluster_labels)
     if n < 2:
         return 0.0
-    
+
     # Use KDTree for efficient spatial neighbor finding
     tree = cKDTree(spatial_coords)
-    
+
     # Find neighbors within reasonable distance (avoid extremely long-range connections)
     max_distance = np.percentile(tree.query(spatial_coords, k=2)[0][:, 1], 95) * 3
-    
-    # Build sparse weights matrix using neighbor queries
-    row_indices = []
-    col_indices = []
-    weights_data = []
-    
-    for i in range(n):
-        # Find neighbors within max_distance
-        neighbors = tree.query_ball_point(spatial_coords[i], max_distance)
-        for j in neighbors:
-            if i != j:  # Exclude self-connections
-                dist = np.linalg.norm(spatial_coords[i] - spatial_coords[j])
-                weight = 1.0 / (dist + 1e-10)
-                row_indices.append(i)
-                col_indices.append(j)
-                weights_data.append(weight)
-    
-    # Create sparse weights matrix
+
+    # Build sparse inverse-distance weights matrix
+    weights_sparse = tree.sparse_distance_matrix(tree, max_distance, output_type='coo_matrix')
+    # Remove self-connections and convert distances to inverse-distance weights
+    mask = weights_sparse.row != weights_sparse.col
     weights_sparse = sparse.csr_matrix(
-        (weights_data, (row_indices, col_indices)), 
+        (1.0 / (weights_sparse.data[mask] + 1e-10),
+         (weights_sparse.row[mask], weights_sparse.col[mask])),
         shape=(n, n)
     )
-    
-    # Calculate Moran's I efficiently with sparse operations
+
+    # Calculate Moran's I via vectorized sparse algebra
     y = cluster_labels - cluster_labels.mean()
     W = weights_sparse.sum()
-    
-    # Compute weighted spatial autocovariance efficiently
-    numerator = 0.0
-    for i in range(n):
-        for j_idx in range(weights_sparse.indptr[i], weights_sparse.indptr[i+1]):
-            j = weights_sparse.indices[j_idx]
-            weight = weights_sparse.data[j_idx]
-            numerator += weight * y[i] * y[j]
-    
     denominator = np.sum(y ** 2)
-    
+
+    if W == 0 or denominator == 0:
+        return 0.0
+
+    # numerator = sum(w_ij * y_i * y_j) = y^T @ W @ y
+    numerator = y @ weights_sparse @ y
+
     morans_i = (n / W) * (numerator / denominator)
-    
+
     return float(morans_i)

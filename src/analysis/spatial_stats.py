@@ -6,7 +6,6 @@ No hypothesis testing - only effect sizes and descriptive measures.
 """
 
 import numpy as np
-from scipy import stats
 from typing import Tuple, Optional, Dict
 
 
