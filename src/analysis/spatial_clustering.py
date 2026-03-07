@@ -171,7 +171,9 @@ def _leiden_clustering(
     
     # Convert to igraph
     sources, targets = knn_graph.nonzero()
-    weights = knn_graph.data
+    # Convert distances to similarities (closer = stronger connection)
+    # Raw distances would cause Leiden to maximize intra-community distance
+    weights = 1.0 / (1.0 + knn_graph.data)
     edges = list(zip(sources, targets))
     
     g = ig.Graph(edges=edges, directed=False)
@@ -654,7 +656,8 @@ def _leiden_from_sparse_graph(
         return np.array([0])
 
     sources, targets = graph.nonzero()
-    weights = graph.data
+    # Convert distances to similarities (closer = stronger connection)
+    weights = 1.0 / (1.0 + graph.data)
 
     g = ig.Graph(n=graph.shape[0], edges=list(zip(sources.tolist(), targets.tolist())), directed=False)
 

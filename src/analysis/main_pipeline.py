@@ -839,19 +839,19 @@ class IMCAnalysisPipeline:
                 raise
 
         # Create efficient storage backend
-        storage_config = {}
+        self._storage_config = {}
         if hasattr(self.analysis_config, 'storage'):
-            storage_config = self.analysis_config.storage.__dict__
+            self._storage_config = self.analysis_config.storage.__dict__
         else:
             # Default storage config
-            storage_config = {
+            self._storage_config = {
                 'format': 'hdf5',
                 'compression': True,
                 'metadata_format': 'json'
             }
 
         storage_backend = create_storage_backend(
-            storage_config=storage_config,
+            storage_config=self._storage_config,
             base_path=output_dir
         )
 
@@ -969,7 +969,7 @@ class IMCAnalysisPipeline:
                         # PERFORMANCE FIX: Use efficient storage backend instead of JSON explosion
                         # Create storage backend for results (using module-level import)
                         storage_backend = create_storage_backend(
-                            storage_config=storage_config,
+                            storage_config=self._storage_config,
                             base_path=str(output_path)
                         )
                         
@@ -1084,7 +1084,7 @@ class IMCAnalysisPipeline:
         try:
             # Try to use the analysis config storage
             summary_storage = create_storage_backend(
-                storage_config=storage_config,
+                storage_config=self._storage_config,
                 base_path=Path(output_path).parent
             )
             summary_storage.save_roi_analysis('analysis_summary', summary)

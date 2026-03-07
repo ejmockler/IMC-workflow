@@ -317,19 +317,11 @@ def perform_multiscale_analysis(
         # Get protein names
         protein_names = list(ion_counts.keys())
         
-        # Step 2: Add spatial features for coarse scales
+        # Note: add_neighbor_composition_features was previously called here with
+        # placeholder all-zero labels, producing a single constant column (all 1.0)
+        # that added no information. Removed — composition features require real
+        # cluster labels to be meaningful.
         enhanced_protein_names = protein_names.copy()
-        if scale_um >= 20 and features.size > 0 and len(features.shape) == 2:
-            original_n_features = features.shape[1]
-            features = add_neighbor_composition_features(
-                features, spatial_coords, 
-                np.zeros(len(features)),  # Placeholder labels
-                radius_um=scale_um
-            )
-            # Add feature names for the composition features
-            n_composition_features = features.shape[1] - original_n_features
-            for i in range(n_composition_features):
-                enhanced_protein_names.append(f"neighborhood_comp_{i}")
         
         # Compute scale-adaptive k_neighbors (needed by both stability and clustering)
         n_samples = features.shape[0]

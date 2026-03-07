@@ -42,7 +42,7 @@ def compute_marker_positivity(
 
     # Get global threshold settings
     method = global_threshold_config.get('method', 'percentile')
-    global_percentile = global_threshold_config.get('percentile', 75)
+    global_percentile = global_threshold_config.get('percentile', 60)
 
     for i, marker in enumerate(marker_names):
         marker_values = expression_matrix[:, i]

@@ -107,10 +107,10 @@ For P=9 protein markers:
 
 1. **Original features** (9): Raw protein expression per superpixel
 2. **Pairwise products** (36): x_i * x_j — identifies co-expressing regions
-   - Products are RMS-normalized: product / sqrt(mean(product^2))
+   - Normalized by geometric mean of per-marker RMS: product / sqrt(RMS(x_i)² × RMS(x_j)²)
 3. **Pairwise ratios** (72): log1p((x_i + eps) / (x_j + eps)) — relative abundances
-   - Log-transformed for symmetry; eps = 25th percentile
-   - Clipped to [-10, +10] to prevent outlier domination
+   - Log-transformed for symmetry; eps = 25th percentile of positive values
+   - Inf/-inf values replaced with ±10 (finite values uncapped)
 4. **Spatial covariances** (36): Local neighborhood co-expression (r=20um)
 
 **Total: 153 features**
@@ -138,6 +138,8 @@ where:
 Both feature and spatial components are scaled by the weight parameter. Setting w_s=0 produces purely expression-based clustering.
 
 ### kNN Graph Construction
+kNN graphs are built with distance-mode edges, then converted to similarity weights via `w = 1/(1+d)` before Leiden partitioning. This ensures that closer neighbors receive stronger edge weights in the modularity optimization.
+
 Scale-adaptive k neighbors:
 - 10um (~2400 superpixels, median=2434): k=14
 - 20um (~580 superpixels, median=584): k=12
@@ -163,8 +165,9 @@ Resolution selected via bootstrap stability:
 
 ### Method
 Boolean gating on arcsinh-transformed superpixel-level expression (10um scale):
-- Default positivity threshold: 60th percentile per marker
+- Default positivity threshold: 60th percentile per marker, computed **per-ROI** (each ROI's own superpixel distribution determines the threshold). This normalizes for inter-ROI technical variation (acquisition conditions, signal degradation) but partially suppresses genuine inter-ROI expression differences.
 - Per-marker overrides: CD206 at 50th, Ly6G at 70th percentile
+- When a superpixel matches multiple cell type gates, the first-defined cell type in config wins (priority-order assignment). Cell type ordering in config.json determines resolution of ambiguous assignments.
 
 ### Assignment Rate
 Mean assignment rate: ~21% (range 10-48% across ROIs). The remaining ~79% of superpixels are unassigned due to the 9-marker panel lacking sufficient markers for complete tissue annotation. Spatial analyses operate only on the identifiable fraction.
@@ -227,7 +230,7 @@ When multiple acquisition batches detected:
 
 ## Computational Implementation
 
-- **Graph Caching**: Enabled (`use_graph_caching=true`); kNN graph built once on full dataset, subsampled per bootstrap iteration. Faster but potentially optimistic — moot given near-zero stability baseline
+- **Graph Caching**: Enabled (`use_graph_caching=true`); kNN graph built once on full dataset, subsampled per bootstrap iteration. Faster but bias direction is indeterminate (see Resolution Selection section) — moot given near-zero stability baseline
 - **Random Seeds**: Fixed (random_state=42) for reproducibility
 - **Configuration**: All parameters in config.json; Config class is single source of truth
 - **Scale-adaptive parameters**: Spatial weight and resolution range use scale-dependent defaults (fine scales: w=0.2, range=[0.5, 2.0]; coarse scales: w=0.4, range=[0.2, 1.0]). The scalar `spatial_weight` and list `resolution_range` in config.json are overridden by these scale-adaptive heuristics
