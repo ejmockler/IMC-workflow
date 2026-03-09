@@ -239,7 +239,7 @@ def analyze_roi_neighborhoods(
                 'observed_proportion': observed_prop,
                 'expected_proportion': expected_prop,
                 'enrichment_score': enrichment,
-                'log2_enrichment': np.log2(enrichment) if enrichment > 0 else np.nan,
+                'log2_enrichment': np.clip(np.log2(enrichment), -10, 10) if enrichment > 0 else np.nan,
                 'p_value': p_value,
                 'n_focal_cells': int(np.sum(cell_types == focal_ct))
             })
