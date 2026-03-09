@@ -625,8 +625,9 @@ def _build_knn_graph_cached(
         mode='distance',
         include_self=False
     )
-    # Symmetrize to keep graph undirected
-    graph = 0.5 * (graph + graph.T)
+    # Symmetrize to keep graph undirected (use max to preserve actual distances;
+    # averaging halves unidirectional edges where j is i's neighbor but not vice versa)
+    graph = graph.maximum(graph.T)
     return graph.tocsr()
 
 
@@ -793,7 +794,7 @@ def compute_spatial_coherence(
     # Remove self-connections and convert distances to inverse-distance weights
     mask = weights_sparse.row != weights_sparse.col
     weights_sparse = sparse.csr_matrix(
-        (1.0 / (weights_sparse.data[mask] + 1e-10),
+        (1.0 / (weights_sparse.data[mask] + 1e-6),
          (weights_sparse.row[mask], weights_sparse.col[mask])),
         shape=(n, n)
     )
