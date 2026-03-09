@@ -161,6 +161,8 @@ Resolution selected via bootstrap stability:
 
 > **Stability estimation.** Graph caching is enabled (`use_graph_caching=true`): a single kNN graph is built on the full dataset and subsampled per bootstrap iteration via vertex deletion. This is faster but introduces bias: subsampled points lose neighbors (especially near subsample boundaries), producing degraded graph topology that may deflate stability scores via cluster fragmentation. Alternatively, the degraded topology could produce optimistic estimates via fewer, larger communities. The direction of bias is indeterminate. With near-zero stability observed across all scales and resolutions, the caching bias is negligible relative to the fundamental instability. The parameter can be set to `false` to rebuild the kNN graph from scratch per iteration at the cost of O(n_bootstrap × n²) graph construction.
 
+> **Feature space mismatch.** Stability analysis optimizes the resolution parameter using the original 9 protein features, but final clustering operates on 30 coabundance-augmented features (9 original + 21 pairwise coabundance). Re-running resolution selection on the augmented feature space would require O(n_resolutions × n_bootstrap) coabundance computations per scale, which is impractical. The selected resolution may not be optimal for the augmented space; this is an acknowledged architectural trade-off.
+
 ## Cell Type Annotation
 
 ### Method
@@ -178,7 +180,7 @@ Mean assignment rate: ~21% (range 10-48% across ROIs). The remaining ~79% of sup
 
 ### Differential Abundance
 - **Unit of analysis**: Mouse (biological replicate), not ROI
-- ROI-level proportions averaged within each mouse before testing (temporal and regional)
+- ROI-level proportions averaged within each mouse before testing (temporal and regional). Each ROI contributes equally regardless of superpixel count (unweighted mean). Current ROI sizes are roughly balanced (~2400 superpixels each); if ROI sizes diverge substantially, size-weighted aggregation should be considered.
 - Mann-Whitney U test on mouse-level means (n=2 per group)
 - Effect sizes: Hedges' g (small-sample corrected Cohen's d) with percentile bootstrap 95% CIs (10,000 iterations)
 - Multiple testing: Benjamini-Hochberg FDR across all pairwise comparisons
