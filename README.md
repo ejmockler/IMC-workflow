@@ -30,6 +30,7 @@ Multi-scale spatial proteomics framework for Imaging Mass Cytometry data, applie
 ## Entry Points
 
 - **Methods**: `METHODS.md` (includes panel justification, ablation results, limitations)
+- **Results**: `RESULTS.md` (experiment-specific findings with actual numbers)
 - **Result schema**: `docs/DATA_SCHEMA.md`
 - **Loading results**: `src/utils/canonical_loader.py`
 - **INDRA knowledge base**: `results/biological_analysis/indra_panel_context.json`
@@ -66,10 +67,9 @@ All parameters live in `config.json`. The `Config` class (`src/config.py`) is th
 | **Storage** | `data_storage.py` (HDF5/Parquet/JSON) |
 | **Memory** | `memory_management.py` |
 | **Parallel** | `parallel_processing.py` |
-| **Provenance** | `provenance_tracker.py`, `environment_capture.py`, `analysis_manifest.py` |
-| **Statistics** | `multiple_testing_control.py`, `fdr_spatial.py`, `spatial_permutation.py`, `mixed_effects_models.py` |
-| **Validation** | `src/validation/` framework, `synthetic_data_generator.py` |
-| **Visualization** | `src/viz_utils/plotting.py`, `journal_figures.py`, `comprehensive_figures.py` |
+| **Provenance** | `analysis_manifest.py` |
+| **Validation** | `src/validation/` framework |
+| **Visualization** | `src/viz_utils/plotting.py`, `comprehensive_figures.py` |
 
 ## Output
 
