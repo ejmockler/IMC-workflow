@@ -417,35 +417,46 @@ class ComprehensiveFigureGenerator:
         ax.set_ylabel('Cluster')
     
     def _plot_example_spatial(self, ax):
-        """Plot example spatial map."""
+        """Plot example spatial map with DNA reference underlay when available."""
         # Select one representative ROI
-        injury_d3_rois = [roi for roi, data in self.roi_data.items() 
+        injury_d3_rois = [roi for roi, data in self.roi_data.items()
                          if data['condition'] == 'Injury' and data['timepoint'] == 3]
-        
+
         if injury_d3_rois:
             roi_id = injury_d3_rois[0]
             data = self.roi_data[roi_id]
-            
+
             if data['arrays'] is not None:
                 # Get spatial data
                 labels = data['arrays']['scale_20.0_superpixel_labels']
                 clusters = data['arrays']['scale_20.0_cluster_labels']
-                
+
                 # Create cluster map
                 cluster_map = np.zeros_like(labels, dtype=float)
                 for i in range(len(clusters)):
                     mask = labels == i
                     cluster_map[mask] = clusters[i]
-                
-                # Plot
-                im = ax.imshow(cluster_map, cmap='tab10', interpolation='nearest')
+
+                # Render DNA reference underlay if available
+                dna_key = 'scale_20.0_composite_dna'
+                if dna_key in data['arrays']:
+                    from src.viz_utils.plotting import _render_reference_underlay
+                    dna_img = data['arrays'][dna_key]
+                    bounds = (0, dna_img.shape[1], 0, dna_img.shape[0])
+                    _render_reference_underlay(ax, dna_img, bounds, alpha=0.4)
+                    extent = list(bounds)
+                    im = ax.imshow(cluster_map, cmap='tab10', interpolation='nearest',
+                                   extent=extent, alpha=0.7, zorder=2)
+                else:
+                    im = ax.imshow(cluster_map, cmap='tab10', interpolation='nearest')
+
                 ax.set_title(f'E. Example: {roi_id[:20]}\nDay 3 Injury', fontweight='bold', fontsize=8)
                 ax.axis('off')
-                
-                # Add scale bar (assuming 1μm per pixel)
+
+                # Add scale bar (1μm per pixel)
                 scalebar_length = 100  # 100 pixels = 100μm
                 ax.plot([10, 10 + scalebar_length], [480, 480], 'white', linewidth=2)
-                ax.text(10 + scalebar_length/2, 490, '100μm', color='white', 
+                ax.text(10 + scalebar_length/2, 490, '100μm', color='white',
                        ha='center', fontsize=7)
         else:
             ax.text(0.5, 0.5, 'No Day 3 Injury ROIs', ha='center', va='center')

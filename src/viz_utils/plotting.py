@@ -79,6 +79,44 @@ def validate_coordinate_data(coords: np.ndarray, values: np.ndarray) -> Tuple[np
     return coords, values
 
 
+def _render_reference_underlay(
+    ax: plt.Axes,
+    reference_image: np.ndarray,
+    reference_bounds: Tuple[float, float, float, float],
+    cmap: str = "gray",
+    alpha: float = 0.25,
+) -> None:
+    """
+    Render a DNA composite image as a grayscale tissue underlay on an axes.
+
+    Called by spatial plotting functions before they draw their own data on top.
+    The image provides morphological context — where tissue exists, where nuclei
+    are dense — so that overlaid scatter points or cluster colors are grounded in
+    physical space rather than floating in a void.
+
+    Args:
+        ax: Matplotlib axes to draw on.
+        reference_image: 2D array (DNA composite or similar reference channel).
+        reference_bounds: (x_min, x_max, y_min, y_max) in μm.
+        cmap: Colormap for the underlay (default gray).
+        alpha: Opacity of the underlay (default 0.4).
+    """
+    try:
+        from src.analysis.slic_segmentation import prepare_dna_for_visualization
+        img = prepare_dna_for_visualization(reference_image)
+    except (ImportError, Exception):
+        img = reference_image.astype(float)
+        rng = img.max() - img.min()
+        if rng > 0:
+            img = (img - img.min()) / rng
+        else:
+            img = np.zeros_like(reference_image, dtype=float)
+
+    extent = list(reference_bounds)
+    ax.imshow(img, extent=extent, origin='lower', cmap=cmap, alpha=alpha,
+              aspect='equal', zorder=0)
+
+
 def plot_roi_overview(
     coords: np.ndarray,
     values: np.ndarray,
@@ -87,11 +125,13 @@ def plot_roi_overview(
     figsize: Tuple[int, int] = (8, 8),
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
-    ax: Optional[plt.Axes] = None
+    ax: Optional[plt.Axes] = None,
+    reference_image: Optional[np.ndarray] = None,
+    reference_bounds: Optional[Tuple[float, float, float, float]] = None,
 ) -> Union[plt.Figure, plt.Axes]:
     """
     Plot spatial distribution of values across an ROI.
-    
+
     Args:
         coords: (N, 2) array of pixel coordinates
         values: (N,) array of values to plot
@@ -100,32 +140,49 @@ def plot_roi_overview(
         figsize: Figure size if creating new figure
         vmin, vmax: Color scale limits
         ax: Existing axes to plot on (if None, creates new figure)
-        
+        reference_image: Optional 2D DNA composite for tissue underlay
+        reference_bounds: (x_min, x_max, y_min, y_max) for the reference image
+
     Returns:
         Figure or Axes object
     """
     # Validate and clean input data
     coords, values = validate_coordinate_data(coords, values)
-    
+
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
         return_fig = True
     else:
         return_fig = False
-        
+
+    if reference_image is not None and reference_bounds is not None:
+        _render_reference_underlay(ax, reference_image, reference_bounds)
+        scatter_alpha = 0.85
+        # Scale point size to data density so superpixel centroids are visible
+        # against the tissue underlay. s=1 works for 250k pixels but not 600 superpixels.
+        x_span = reference_bounds[1] - reference_bounds[0]
+        y_span = reference_bounds[3] - reference_bounds[2]
+        area_per_point = (x_span * y_span) / max(len(coords), 1)
+        scatter_size = max(4, min(50, area_per_point * 0.08))
+    else:
+        scatter_alpha = 1.0
+        scatter_size = 1
+
+    edge_kw = dict(edgecolors='#333333', linewidths=0.3) if scatter_size > 3 else {}
     scatter = ax.scatter(
-        coords[:, 0], coords[:, 1], 
-        c=values, s=1, cmap=cmap,
-        vmin=vmin, vmax=vmax, rasterized=True
+        coords[:, 0], coords[:, 1],
+        c=values, s=scatter_size, cmap=cmap,
+        vmin=vmin, vmax=vmax, rasterized=True,
+        alpha=scatter_alpha, zorder=2, **edge_kw
     )
-    
+
     ax.set_title(title)
     ax.set_xlabel("X (μm)")
     ax.set_ylabel("Y (μm)")
     ax.set_aspect('equal')
-    
+
     plt.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
-    
+
     return fig if return_fig else ax
 
 
@@ -139,11 +196,13 @@ def plot_protein_expression(
     ncols: int = 3,
     figsize_per_plot: Tuple[float, float] = (4, 4),
     cmap: str = "viridis",
-    percentile_scale: Tuple[float, float] = (1, 99)
+    percentile_scale: Tuple[float, float] = (1, 99),
+    reference_image: Optional[np.ndarray] = None,
+    reference_bounds: Optional[Tuple[float, float, float, float]] = None,
 ) -> plt.Figure:
     """
     Plot multiple protein expression patterns in a grid.
-    
+
     Args:
         protein_data: Dictionary mapping protein names to expression values
         coords: (N, 2) array of coordinates
@@ -152,48 +211,52 @@ def plot_protein_expression(
         figsize_per_plot: Size of each subplot
         cmap: Colormap
         percentile_scale: Percentiles for color scaling
-        
+        reference_image: Optional 2D DNA composite for tissue underlay
+        reference_bounds: (x_min, x_max, y_min, y_max) for the reference image
+
     Returns:
         Figure object
     """
     if proteins_to_plot is None:
         proteins_to_plot = list(protein_data.keys())
-    
+
     n_proteins = len(proteins_to_plot)
     nrows = (n_proteins + ncols - 1) // ncols
-    
+
     fig, axes = plt.subplots(
-        nrows, ncols, 
+        nrows, ncols,
         figsize=(figsize_per_plot[0] * ncols, figsize_per_plot[1] * nrows)
     )
-    
+
     if nrows == 1:
         axes = axes.reshape(1, -1)
     elif ncols == 1:
         axes = axes.reshape(-1, 1)
-    
+
     for idx, protein in enumerate(proteins_to_plot):
         row = idx // ncols
         col = idx % ncols
         ax = axes[row, col]
-        
+
         values = protein_data[protein]
         vmin, vmax = np.percentile(values, percentile_scale)
-        
+
         plot_roi_overview(
             coords, values,
             title=protein,
             cmap=cmap,
             vmin=vmin, vmax=vmax,
-            ax=ax
+            ax=ax,
+            reference_image=reference_image,
+            reference_bounds=reference_bounds,
         )
-    
+
     # Hide empty subplots
     for idx in range(n_proteins, nrows * ncols):
         row = idx // ncols
         col = idx % ncols
         axes[row, col].set_visible(False)
-    
+
     plt.tight_layout()
     return fig
 
@@ -205,11 +268,13 @@ def plot_cluster_map(
     cmap: str = "tab20",
     figsize: Tuple[int, int] = (10, 8),
     ax: Optional[plt.Axes] = None,
-    show_legend: bool = True
+    show_legend: bool = True,
+    reference_image: Optional[np.ndarray] = None,
+    reference_bounds: Optional[Tuple[float, float, float, float]] = None,
 ) -> Union[plt.Figure, plt.Axes]:
     """
     Plot spatial distribution of clusters.
-    
+
     Args:
         coords: (N, 2) array of coordinates
         cluster_labels: (N,) array of cluster assignments
@@ -218,7 +283,9 @@ def plot_cluster_map(
         figsize: Figure size
         ax: Existing axes
         show_legend: Whether to show cluster legend
-        
+        reference_image: Optional 2D DNA composite for tissue underlay
+        reference_bounds: (x_min, x_max, y_min, y_max) for the reference image
+
     Returns:
         Figure or Axes object
     """
@@ -227,34 +294,46 @@ def plot_cluster_map(
         return_fig = True
     else:
         return_fig = False
-    
+
+    if reference_image is not None and reference_bounds is not None:
+        _render_reference_underlay(ax, reference_image, reference_bounds)
+        scatter_alpha = 0.85
+        x_span = reference_bounds[1] - reference_bounds[0]
+        y_span = reference_bounds[3] - reference_bounds[2]
+        area_per_point = (x_span * y_span) / max(len(coords), 1)
+        scatter_size = max(4, min(50, area_per_point * 0.08))
+    else:
+        scatter_alpha = 1.0
+        scatter_size = 1
+
     unique_clusters = np.unique(cluster_labels)
     n_clusters = len(unique_clusters)
-    
+
     # Get colors from colormap
     if isinstance(cmap, str):
         cmap = plt.get_cmap(cmap)
     colors = [cmap(i / max(n_clusters - 1, 1)) for i in range(n_clusters)]
-    
+
     # Plot each cluster
     for idx, cluster_id in enumerate(unique_clusters):
         mask = cluster_labels == cluster_id
         label = cluster_names.get(cluster_id, f"Cluster {cluster_id}") if cluster_names else f"Cluster {cluster_id}"
-        
+
+        edge_kw = dict(edgecolors='#333333', linewidths=0.3) if scatter_size > 3 else {}
         ax.scatter(
             coords[mask, 0], coords[mask, 1],
-            c=[colors[idx]], s=1, label=label,
-            rasterized=True
+            c=[colors[idx]], s=scatter_size, label=label,
+            rasterized=True, alpha=scatter_alpha, zorder=2, **edge_kw
         )
-    
+
     ax.set_title("Spatial Cluster Distribution")
     ax.set_xlabel("X (μm)")
     ax.set_ylabel("Y (μm)")
     ax.set_aspect('equal')
-    
+
     if show_legend and n_clusters <= 20:
         ax.legend(markerscale=5, frameon=True, loc='center left', bbox_to_anchor=(1, 0.5))
-    
+
     return fig if return_fig else ax
 
 
@@ -262,47 +341,59 @@ def plot_scale_comparison(
     multiscale_results: Dict[float, Dict],
     coords: np.ndarray,
     scales_to_plot: Optional[List[float]] = None,
-    figsize_per_scale: Tuple[float, float] = (5, 5)
+    figsize_per_scale: Tuple[float, float] = (5, 5),
+    include_reference: bool = True,
 ) -> plt.Figure:
     """
     Compare analysis results across multiple spatial scales.
-    
+
     Args:
         multiscale_results: Dictionary mapping scales to results
         coords: Original coordinate array
         scales_to_plot: Scales to visualize (default: all)
         figsize_per_scale: Size of each scale subplot
-        
+        include_reference: If True, render composite_dna underlay when available
+            in the results dict (default True)
+
     Returns:
         Figure object
     """
     # Validate input data
     coords = validate_generic_data(coords, "coordinates")
-    
+
     if not multiscale_results:
         raise ValueError("multiscale_results cannot be empty")
-    
+
     if scales_to_plot is None:
         scales_to_plot = sorted(multiscale_results.keys())
-    
+
     n_scales = len(scales_to_plot)
     fig, axes = plt.subplots(1, n_scales, figsize=(figsize_per_scale[0] * n_scales, figsize_per_scale[1]))
-    
+
     if n_scales == 1:
         axes = [axes]
-    
+
     for idx, scale in enumerate(scales_to_plot):
         ax = axes[idx]
         scale_result = multiscale_results[scale]
-        
+
+        # Extract reference image for this scale if available
+        ref_img = scale_result.get('composite_dna') if include_reference else None
+        ref_bounds = scale_result.get('bounds') if include_reference else None
+
         if 'cluster_map' in scale_result:
             # Plot cluster map for this scale
             cluster_map = scale_result['cluster_map']
             cluster_map = validate_spatial_data(cluster_map, f"cluster_map_scale_{scale}")
-            im = ax.imshow(cluster_map, cmap='tab20', origin='lower')
+            if ref_img is not None and ref_bounds is not None:
+                _render_reference_underlay(ax, ref_img, ref_bounds)
+                im = ax.imshow(cluster_map, cmap='tab20', origin='lower',
+                               extent=list(ref_bounds), alpha=0.7, zorder=2)
+            else:
+                im = ax.imshow(cluster_map, cmap='tab20', origin='lower')
             ax.set_title(f"Scale: {scale}μm")
-            ax.set_xlabel("X bins")
-            ax.set_ylabel("Y bins")
+            ax.set_xlabel("X (μm)")
+            ax.set_ylabel("Y (μm)")
         elif 'cluster_labels' in scale_result and 'superpixel_coords' in scale_result:
             # Plot superpixel clusters
             sp_coords = scale_result['superpixel_coords']
@@ -310,9 +401,10 @@ def plot_scale_comparison(
             # Validate superpixel data
             sp_coords = validate_generic_data(sp_coords, f"superpixel_coords_scale_{scale}")
             labels = validate_generic_data(labels, f"cluster_labels_scale_{scale}")
-            plot_cluster_map(sp_coords, labels, ax=ax, show_legend=False)
+            plot_cluster_map(sp_coords, labels, ax=ax, show_legend=False,
+                             reference_image=ref_img, reference_bounds=ref_bounds)
             ax.set_title(f"Scale: {scale}μm")
-    
+
     plt.tight_layout()
     return fig
 
