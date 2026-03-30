@@ -16,7 +16,6 @@ venv/
 
 # Data files - should not be in version control
 data/
-results/
 *.txt
 *.csv
 *.mcd
@@ -24,6 +23,10 @@ results/
 *.png
 *.pdf
 *.json.gz
+
+# Track results directory (negations override glob patterns above)
+!results/
+!results/**
 
 # IDE and OS files
 .DS_Store

@@ -1,0 +1,28 @@
+{
+  "n_superpixels": 2375,
+  "thresholds_used": {
+    "CD45": 1834.8927415075589,
+    "CD11b": 2332.0030173276864,
+    "Ly6G": 1451.6731392974482,
+    "CD140a": 1844.5414486628147,
+    "CD140b": 1326.599319372142,
+    "CD31": 2685.7497732850165,
+    "CD34": 1472.6324527148197,
+    "CD206": 2434.9565734831176,
+    "CD44": 4857.0879473350415
+  },
+  "assignment_counts": {
+    "activated_immune_cd44": 70,
+    "activated_immune_cd140b": 73,
+    "m2_macrophage": 24,
+    "activated_endothelial_cd44": 85,
+    "activated_endothelial_cd140b": 25,
+    "activated_fibroblast": 52,
+    "neutrophil": 81,
+    "resting_endothelial": 30,
+    "unassigned": 1935
+  },
+  "ambiguity_rate": 0.06947368421052631,
+  "n_multi_assigned": 165,
+  "unassigned_fraction": 0.8147368421052632
+}

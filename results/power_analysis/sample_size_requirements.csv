@@ -1,0 +1,9 @@
+cell_type,max_hedges_g,comparison_at_max,ci_lower,ci_upper,n_required_80pct,n_required_90pct
+activated_fibroblast,-8.7441,Sham_vs_D1,-15.8307,-8.7441,11,11
+activated_endothelial_cd140b,3.8109,Sham_vs_D1,3.7976,172.8151,4,4
+neutrophil,-3.7018,Sham_vs_D7,-11.1599,-3.7018,4,4
+m2_macrophage,-2.8302,Sham_vs_D1,-4.7559,-2.8302,5,5
+activated_immune_cd140b,-1.221,Sham_vs_D3,-62.5961,-1.2051,13,17
+resting_endothelial,1.2091,Sham_vs_D7,1.0804,5.2411,13,17
+activated_immune_cd44,-0.6762,D3_vs_D7,-2.218,-0.3617,38,50
+activated_endothelial_cd44,-0.4879,Sham_vs_D3,-1.8363,-0.0061,71,95

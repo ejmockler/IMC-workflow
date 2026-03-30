@@ -1,0 +1,1372 @@
+{
+  "metadata": {
+    "query_date": "2026-02-26",
+    "source": "INDRA/CoGEx via MCP tools",
+    "panel_size": 9,
+    "grounded_genes": 9,
+    "total_indra_statements": 117,
+    "shared_biology_entries": 7,
+    "mechanistic_narrative_entries": 8,
+    "shared_upstream_regulators": 6,
+    "mediated_paths": 4,
+    "note": "All data pre-queried from CoGEx knowledge graph. This is biological CONTEXT, not validation."
+  },
+  "marker_grounding": {
+    "CD45": {
+      "curie": "hgnc:9666",
+      "gene_name": "PTPRC",
+      "grounded": true
+    },
+    "CD11b": {
+      "curie": "hgnc:6149",
+      "gene_name": "ITGAM",
+      "grounded": true
+    },
+    "Ly6G": {
+      "curie": "uniprot:P35461",
+      "gene_name": "Ly6g",
+      "grounded": true,
+      "note": "Murine neutrophil marker; CoGEx entity type nonhuman_gene_protein"
+    },
+    "CD140a": {
+      "curie": "hgnc:8803",
+      "gene_name": "PDGFRA",
+      "grounded": true
+    },
+    "CD140b": {
+      "curie": "hgnc:8804",
+      "gene_name": "PDGFRB",
+      "grounded": true
+    },
+    "CD31": {
+      "curie": "hgnc:8823",
+      "gene_name": "PECAM1",
+      "grounded": true
+    },
+    "CD34": {
+      "curie": "hgnc:1662",
+      "gene_name": "CD34",
+      "grounded": true
+    },
+    "CD206": {
+      "curie": "hgnc:7228",
+      "gene_name": "MRC1",
+      "grounded": true
+    },
+    "CD44": {
+      "curie": "hgnc:1681",
+      "gene_name": "CD44",
+      "grounded": true
+    }
+  },
+  "gene_knowledge": {
+    "CD44": {
+      "kidney_pathways": [
+        "Hyaluronan metabolism (R-HSA-2160916)",
+        "ECM proteoglycans (R-HSA-3000178)",
+        "Interferon gamma signaling (R-HSA-877300)",
+        "Neutrophil degranulation (R-HSA-6798695)",
+        "Cell surface interactions at the vascular wall (R-HSA-202733)"
+      ],
+      "kidney_go_terms": [
+        "hyaluronic acid binding (GO:0005540)",
+        "inflammatory response (GO:0006954)",
+        "wound healing, spreading of cells (GO:0044319)",
+        "cell migration (GO:0016477)",
+        "T cell activation (GO:0042110)",
+        "positive regulation of ERK1 and ERK2 cascade (GO:0070374)",
+        "negative regulation of apoptotic process (GO:0043066)",
+        "monocyte aggregation (GO:0070487)",
+        "focal adhesion (GO:0005925)"
+      ],
+      "kidney_tissues": [
+        "kidney epithelium (UBERON:0004819)",
+        "metanephros cortex (UBERON:0010533)"
+      ],
+      "diseases": {
+        "Acute Kidney Injury": {
+          "curie": "MESH:D058186",
+          "direct": true
+        },
+        "IgA glomerulonephritis": {
+          "curie": "MESH:D005922",
+          "direct": true
+        }
+      },
+      "cell_types": [
+        "tissue-resident macrophage (CL:0000864)"
+      ],
+      "kidney_relevance": "CD44 is the hyaluronan receptor \u2014 implicated in AKI via HA-CD44 signaling in the literature. Reported to be upregulated in tubular injury and involved in leukocyte recruitment. Only panel gene with direct AKI disease association in INDRA."
+    },
+    "PDGFRA": {
+      "kidney_pathways": [
+        "Genes controlling nephrogenesis (WP4823)",
+        "PDGF receptor signaling (GO:0048008)",
+        "VEGF-activated PDGF receptor signaling (GO:0038091)",
+        "Positive regulation of fibroblast proliferation (GO:0048146)",
+        "Mesenchymal stem cell differentiation (GO:2000739)"
+      ],
+      "kidney_go_terms": [
+        "cellular response to reactive oxygen species (GO:0034614)",
+        "positive regulation of cell migration (GO:0030335)",
+        "positive regulation of ERK1 and ERK2 cascade (GO:0070374)",
+        "platelet-derived growth factor receptor-alpha signaling (GO:0035790)",
+        "regulation of mesenchymal stem cell differentiation (GO:2000739)"
+      ],
+      "kidney_tissues": [
+        "cortex of kidney (UBERON:0001225)",
+        "nephron tubule (UBERON:0001231)"
+      ],
+      "diseases": {
+        "Liver Cirrhosis": {
+          "curie": "MESH:D008103",
+          "direct": true
+        },
+        "Eosinophilia": {
+          "curie": "D004802",
+          "direct": true
+        }
+      },
+      "cell_types": [
+        "pericyte (CL:0000669)",
+        "fibroblast (CL:0000057)",
+        "mesenchymal stem cell (CL:0000134)"
+      ],
+      "kidney_relevance": "PDGFRA+ interstitial fibroblasts are the primary effector cells in kidney fibrosis. In nephrogenesis pathway (WP4823). Expressed in kidney cortex and nephron tubule. MSC differentiation regulator \u2014 key to understanding repair vs. fibrosis fate."
+    },
+    "PDGFRB": {
+      "kidney_pathways": [
+        "Genes controlling nephrogenesis (WP4823)",
+        "Markers of kidney cell lineage (WP5236)",
+        "Burn wound healing (WP5055)",
+        "PDGF receptor signaling (GO:0048008)",
+        "Positive regulation of smooth muscle cell migration (GO:0014911)"
+      ],
+      "kidney_go_terms": [
+        "angiogenesis (GO:0001525)",
+        "positive regulation of smooth muscle cell migration (GO:0014911)",
+        "positive regulation of smooth muscle cell proliferation (GO:0048661)",
+        "positive regulation of PI3K/AKT signaling (GO:0051897)",
+        "cell chemotaxis (GO:0060326)",
+        "positive regulation of ERK1 and ERK2 cascade (GO:0070374)"
+      ],
+      "kidney_tissues": [
+        "kidney epithelium (UBERON:0004819)",
+        "metanephros cortex (UBERON:0010533)",
+        "metanephric glomerulus (UBERON:0004736)",
+        "blood vessel layer (UBERON:0004797)"
+      ],
+      "diseases": {
+        "Myofibromatosis": {
+          "curie": "MESH:D047708",
+          "direct": true
+        }
+      },
+      "cell_types": [
+        "pericyte (CL:0000669)",
+        "vascular associated smooth muscle cell (CL:0000359)",
+        "fibroblast (CL:0000057)"
+      ],
+      "kidney_relevance": "PDGFRB marks pericytes/vascular mural cells \u2014 critical for glomerular and peritubular capillary integrity. In both nephrogenesis (WP4823) and kidney cell lineage markers (WP5236). Expressed in metanephric glomerulus. Pericyte detachment is a hallmark of AKI-induced microvascular injury."
+    },
+    "ITGAM": {
+      "kidney_go_terms": [
+        "integrin-mediated signaling pathway (GO:0007229)",
+        "positive regulation of neutrophil degranulation (GO:0043315)",
+        "positive regulation of superoxide anion generation (GO:0032930)",
+        "cell adhesion mediated by integrin (GO:0033627)"
+      ],
+      "kidney_pathways": [
+        "Neutrophil degranulation (R-HSA-6798695)",
+        "TLR4 Cascade (R-HSA-166016)",
+        "IL-4 and IL-13 signaling (R-HSA-6785807)",
+        "Cell surface interactions at the vascular wall (R-HSA-202733)"
+      ],
+      "kidney_tissues": [
+        "metanephros cortex (UBERON:0010533)",
+        "metanephric glomerulus (UBERON:0004736)",
+        "blood vessel layer (UBERON:0004797)"
+      ],
+      "diseases": {
+        "Systemic Lupus Erythematosus": {
+          "curie": "MESH:D008180",
+          "direct": true
+        }
+      },
+      "cell_types": [
+        "monocyte (CL:0000576)",
+        "macrophage (CL:0000235)",
+        "microglial cell (CL:0000129)",
+        "granulocyte (CL:0000094)"
+      ],
+      "kidney_relevance": "ITGAM (CD11b) forms the Mac-1 integrin (\u03b1M\u03b22) \u2014 primary receptor for complement iC3b on myeloid cells. Mediates neutrophil/macrophage adhesion to injured endothelium. TLR4 cascade involvement connects to DAMPs released during tubular necrosis. SLE disease association highlights its role in autoimmune nephritis.",
+      "phenotypes": [
+        "Lupus nephritis (HP:0033726)",
+        "Abnormal renal cortex morphology (HP:0011035)",
+        "Proteinuria (D011507)"
+      ]
+    },
+    "MRC1": {
+      "kidney_go_terms": [
+        "receptor-mediated endocytosis (GO:0006898)",
+        "cargo receptor activity (GO:0038024)"
+      ],
+      "kidney_pathways": [],
+      "kidney_tissues": [
+        "kidney epithelium (UBERON:0004819)",
+        "metanephros cortex (UBERON:0010533)",
+        "metanephric glomerulus (UBERON:0004736)",
+        "blood vessel layer (UBERON:0004797)"
+      ],
+      "diseases": {},
+      "cell_types": [
+        "alternatively activated macrophage (CL:0000890)",
+        "tissue-resident macrophage (CL:0000864)"
+      ],
+      "kidney_relevance": "MRC1 (CD206) is the canonical M2/alternatively activated macrophage marker \u2014 INDRA cell ontology maps to CL:0000890. In kidney, M2 macrophages are reported to mediate tissue repair and anti-inflammatory resolution after AKI. Expressed in metanephric glomerulus and kidney cortex."
+    },
+    "PTPRC": {
+      "kidney_go_terms": [
+        "T cell receptor signaling pathway (GO:0050852)",
+        "positive regulation of B cell proliferation (GO:0030890)",
+        "negative regulation of receptor signaling pathway via JAK-STAT (GO:0046426)",
+        "regulation of phagocytosis (GO:0050764)",
+        "hematopoietic progenitor cell differentiation (GO:0002244)"
+      ],
+      "kidney_pathways": [],
+      "kidney_tissues": [
+        "kidney epithelium (UBERON:0004819)",
+        "metanephros cortex (UBERON:0010533)",
+        "blood vessel layer (UBERON:0004797)"
+      ],
+      "diseases": {},
+      "cell_types": [
+        "leukocyte (CL:0000738)",
+        "monocyte (CL:0000576)",
+        "dendritic cell (CL:0000451)",
+        "T cell (CL:0000084)",
+        "B cell (CL:0000236)"
+      ],
+      "kidney_relevance": "PTPRC (CD45) is the pan-leukocyte marker. In AKI context, its expression quantifies total immune infiltration. JAK-STAT regulation connects to cytokine signaling cascades in injury response."
+    },
+    "PECAM1": {
+      "kidney_go_terms": [
+        "glomerular endothelium development (GO:0072011)",
+        "establishment of endothelial barrier (GO:0061028)",
+        "monocyte extravasation (GO:0035696)",
+        "neutrophil extravasation (GO:0072672)",
+        "leukocyte cell-cell adhesion (GO:0007159)",
+        "diapedesis (GO:0050904)",
+        "detection of mechanical stimulus (GO:0050982)",
+        "positive regulation of MAPK cascade (GO:0043410)"
+      ],
+      "kidney_pathways": [
+        "Markers of kidney cell lineage (WP5236)",
+        "Neutrophil degranulation (R-HSA-6798695)",
+        "Cell surface interactions at the vascular wall (R-HSA-202733)"
+      ],
+      "kidney_tissues": [
+        "kidney epithelium (UBERON:0004819)",
+        "metanephros cortex (UBERON:0010533)",
+        "blood vessel layer (UBERON:0004797)"
+      ],
+      "diseases": {
+        "Coronary Artery Disease": {
+          "curie": "MESH:D003324",
+          "direct": true
+        }
+      },
+      "cell_types": [
+        "endothelial cell (CL:0000115)",
+        "endothelial cell of vascular tree (CL:0002139)"
+      ],
+      "kidney_relevance": "PECAM1 (CD31) is THE endothelial marker. GO:0072011 (glomerular endothelium development) directly ties it to kidney vasculature. In kidney cell lineage markers (WP5236). Mediates leukocyte transendothelial migration \u2014 the gateway for immune cell infiltration into injured kidney tissue. Also a mechanosensor for shear stress."
+    },
+    "CD34": {
+      "kidney_go_terms": [
+        "glomerular filtration (GO:0003094)",
+        "glomerular endothelium development (GO:0072011)",
+        "vascular wound healing (GO:0061042)",
+        "endothelial cell proliferation (GO:0001935)",
+        "metanephric glomerular mesangial cell differentiation (GO:0072254)",
+        "positive regulation of angiogenesis (GO:0045766)",
+        "hematopoietic stem cell proliferation (GO:0071425)",
+        "tissue homeostasis (GO:0001894)"
+      ],
+      "kidney_pathways": [],
+      "kidney_tissues": [
+        "kidney epithelium (UBERON:0004819)",
+        "metanephros cortex (UBERON:0010533)",
+        "metanephric glomerulus (UBERON:0004736)"
+      ],
+      "diseases": {},
+      "cell_types": [
+        "endothelial progenitor cell (CL:0002619)",
+        "endothelial cell of vascular tree (CL:0002139)",
+        "hematopoietic stem cell (CL:0000037)"
+      ],
+      "kidney_relevance": "CD34 has the most kidney-specific GO terms in the panel: glomerular filtration (GO:0003094), glomerular endothelium development (GO:0072011), mesangial cell differentiation (GO:0072254), and vascular wound healing (GO:0061042). Marks both endothelial progenitors and peritubular capillary endothelium. Critical readout for vascular repair after AKI."
+    }
+  },
+  "indra_statements": [
+    {
+      "source": "PDGFRA",
+      "target": "PDGFRB",
+      "type": "Complex",
+      "evidence": 183,
+      "belief": 0.888,
+      "note": "Heterodimer \u2014 the core PDGF receptor signaling unit"
+    },
+    {
+      "source": "PDGFRB",
+      "target": "PDGFRA",
+      "type": "Complex",
+      "evidence": 183,
+      "belief": 0.888
+    },
+    {
+      "source": "PDGFRB",
+      "target": "PDGFRA",
+      "type": "Inhibition",
+      "evidence": 5,
+      "belief": 0.505,
+      "note": "Cross-inhibition between receptor isoforms"
+    },
+    {
+      "source": "PDGFRB",
+      "target": "PDGFRA",
+      "type": "Activation",
+      "evidence": 5,
+      "belief": 0.4
+    },
+    {
+      "source": "PDGFRA",
+      "target": "PDGFRB",
+      "type": "Inhibition",
+      "evidence": 4,
+      "belief": 0.602
+    },
+    {
+      "source": "PDGFRA",
+      "target": "PDGFRB",
+      "type": "Activation",
+      "evidence": 3,
+      "belief": 0.366
+    },
+    {
+      "source": "PDGFRA",
+      "target": "PDGFRB",
+      "type": "IncreaseAmount",
+      "evidence": 3,
+      "belief": 0.629
+    },
+    {
+      "source": "PDGFRB",
+      "target": "PDGFRA",
+      "type": "DecreaseAmount",
+      "evidence": 3,
+      "belief": 0.604
+    },
+    {
+      "source": "PDGFRB",
+      "target": "PDGFRA",
+      "type": "Phosphorylation",
+      "evidence": 3,
+      "belief": 0.827,
+      "note": "High-belief kinase activity: beta phosphorylates alpha"
+    },
+    {
+      "source": "PDGFRA",
+      "target": "PDGFRB",
+      "type": "DecreaseAmount",
+      "evidence": 2,
+      "belief": 0.474
+    },
+    {
+      "source": "PDGFRB",
+      "target": "PDGFRA",
+      "type": "IncreaseAmount",
+      "evidence": 1,
+      "belief": 0.484
+    },
+    {
+      "source": "PDGFRA",
+      "target": "PDGFRB",
+      "type": "Phosphorylation",
+      "evidence": 1,
+      "belief": 0.532
+    },
+    {
+      "source": "MRC1",
+      "target": "PTPRC",
+      "type": "Complex",
+      "evidence": 20,
+      "belief": 0.412,
+      "note": "CD45-MRC1 complex on macrophage surface"
+    },
+    {
+      "source": "PTPRC",
+      "target": "MRC1",
+      "type": "Complex",
+      "evidence": 20,
+      "belief": 0.412
+    },
+    {
+      "source": "PTPRC",
+      "target": "MRC1",
+      "type": "IncreaseAmount",
+      "evidence": 1,
+      "belief": 0.484
+    },
+    {
+      "source": "MRC1",
+      "target": "PTPRC",
+      "type": "Inhibition",
+      "evidence": 2,
+      "belief": 0.441
+    },
+    {
+      "source": "MRC1",
+      "target": "PTPRC",
+      "type": "IncreaseAmount",
+      "evidence": 1,
+      "belief": 0.484
+    },
+    {
+      "source": "ITGAM",
+      "target": "Ly6g",
+      "type": "Complex",
+      "evidence": 15,
+      "belief": 0.436,
+      "note": "CD11b-Ly6G complex \u2014 THE canonical neutrophil surface signature"
+    },
+    {
+      "source": "Ly6g",
+      "target": "ITGAM",
+      "type": "Complex",
+      "evidence": 15,
+      "belief": 0.436
+    },
+    {
+      "source": "Ly6g",
+      "target": "ITGAM",
+      "type": "Inhibition",
+      "evidence": 5,
+      "belief": 0.505
+    },
+    {
+      "source": "ITGAM",
+      "target": "Ly6g",
+      "type": "Activation",
+      "evidence": 2,
+      "belief": 0.367
+    },
+    {
+      "source": "Ly6g",
+      "target": "ITGAM",
+      "type": "Activation",
+      "evidence": 2,
+      "belief": 0.363
+    },
+    {
+      "source": "Ly6g",
+      "target": "ITGAM",
+      "type": "IncreaseAmount",
+      "evidence": 2,
+      "belief": 0.472
+    },
+    {
+      "source": "ITGAM",
+      "target": "Ly6g",
+      "type": "Inhibition",
+      "evidence": 1,
+      "belief": 0.436
+    },
+    {
+      "source": "ITGAM",
+      "target": "PTPRC",
+      "type": "Activation",
+      "evidence": 11,
+      "belief": 0.419,
+      "note": "CD11b activates CD45 \u2014 myeloid cell signaling"
+    },
+    {
+      "source": "PTPRC",
+      "target": "ITGAM",
+      "type": "Activation",
+      "evidence": 10,
+      "belief": 0.418
+    },
+    {
+      "source": "ITGAM",
+      "target": "PTPRC",
+      "type": "Inhibition",
+      "evidence": 4,
+      "belief": 0.492
+    },
+    {
+      "source": "PTPRC",
+      "target": "ITGAM",
+      "type": "IncreaseAmount",
+      "evidence": 4,
+      "belief": 0.526
+    },
+    {
+      "source": "ITGAM",
+      "target": "PTPRC",
+      "type": "IncreaseAmount",
+      "evidence": 2,
+      "belief": 0.472
+    },
+    {
+      "source": "PTPRC",
+      "target": "ITGAM",
+      "type": "Inhibition",
+      "evidence": 2,
+      "belief": 0.441
+    },
+    {
+      "source": "ITGAM",
+      "target": "PTPRC",
+      "type": "Complex",
+      "evidence": 1,
+      "belief": 0.444
+    },
+    {
+      "source": "PTPRC",
+      "target": "ITGAM",
+      "type": "Complex",
+      "evidence": 1,
+      "belief": 0.444
+    },
+    {
+      "source": "CD44",
+      "target": "PDGFRB",
+      "type": "Complex",
+      "evidence": 10,
+      "belief": 0.742,
+      "note": "CD44 physically associates with PDGFRB \u2014 immune-stromal axis"
+    },
+    {
+      "source": "PDGFRB",
+      "target": "CD44",
+      "type": "Complex",
+      "evidence": 10,
+      "belief": 0.742
+    },
+    {
+      "source": "CD44",
+      "target": "PDGFRB",
+      "type": "Activation",
+      "evidence": 1,
+      "belief": 0.535
+    },
+    {
+      "source": "CD44",
+      "target": "PDGFRB",
+      "type": "Inhibition",
+      "evidence": 1,
+      "belief": 0.436
+    },
+    {
+      "source": "CD34",
+      "target": "PTPRC",
+      "type": "Activation",
+      "evidence": 10,
+      "belief": 0.638
+    },
+    {
+      "source": "PTPRC",
+      "target": "CD34",
+      "type": "Activation",
+      "evidence": 5,
+      "belief": 0.375
+    },
+    {
+      "source": "PTPRC",
+      "target": "CD34",
+      "type": "Complex",
+      "evidence": 4,
+      "belief": 0.529
+    },
+    {
+      "source": "CD34",
+      "target": "PTPRC",
+      "type": "Complex",
+      "evidence": 4,
+      "belief": 0.529
+    },
+    {
+      "source": "PTPRC",
+      "target": "CD34",
+      "type": "Inhibition",
+      "evidence": 1,
+      "belief": 0.436
+    },
+    {
+      "source": "CD34",
+      "target": "PTPRC",
+      "type": "DecreaseAmount",
+      "evidence": 1,
+      "belief": 0.474
+    },
+    {
+      "source": "CD34",
+      "target": "PTPRC",
+      "type": "Inhibition",
+      "evidence": 1,
+      "belief": 0.436
+    },
+    {
+      "source": "ITGAM",
+      "target": "MRC1",
+      "type": "Inhibition",
+      "evidence": 7,
+      "belief": 0.493,
+      "note": "CD11b inhibits MRC1 \u2014 M1/M2 polarization switch"
+    },
+    {
+      "source": "ITGAM",
+      "target": "MRC1",
+      "type": "Complex",
+      "evidence": 5,
+      "belief": 0.426
+    },
+    {
+      "source": "MRC1",
+      "target": "ITGAM",
+      "type": "Complex",
+      "evidence": 5,
+      "belief": 0.426
+    },
+    {
+      "source": "MRC1",
+      "target": "ITGAM",
+      "type": "Activation",
+      "evidence": 3,
+      "belief": 0.406
+    },
+    {
+      "source": "ITGAM",
+      "target": "MRC1",
+      "type": "IncreaseAmount",
+      "evidence": 2,
+      "belief": 0.472
+    },
+    {
+      "source": "ITGAM",
+      "target": "MRC1",
+      "type": "Activation",
+      "evidence": 2,
+      "belief": 0.363
+    },
+    {
+      "source": "ITGAM",
+      "target": "MRC1",
+      "type": "DecreaseAmount",
+      "evidence": 1,
+      "belief": 0.474
+    },
+    {
+      "source": "PTPRC",
+      "target": "CD44",
+      "type": "Complex",
+      "evidence": 5,
+      "belief": 0.766,
+      "note": "High-belief CD45-CD44 complex \u2014 immune activation"
+    },
+    {
+      "source": "CD44",
+      "target": "PTPRC",
+      "type": "Complex",
+      "evidence": 5,
+      "belief": 0.766
+    },
+    {
+      "source": "PTPRC",
+      "target": "CD44",
+      "type": "IncreaseAmount",
+      "evidence": 2,
+      "belief": 0.472
+    },
+    {
+      "source": "PTPRC",
+      "target": "CD44",
+      "type": "Activation",
+      "evidence": 2,
+      "belief": 0.367
+    },
+    {
+      "source": "PTPRC",
+      "target": "CD44",
+      "type": "DecreaseAmount",
+      "evidence": 1,
+      "belief": 0.474
+    },
+    {
+      "source": "CD44",
+      "target": "PTPRC",
+      "type": "IncreaseAmount",
+      "evidence": 1,
+      "belief": 0.484
+    },
+    {
+      "source": "CD44",
+      "target": "PTPRC",
+      "type": "Activation",
+      "evidence": 1,
+      "belief": 0.372
+    },
+    {
+      "source": "PECAM1",
+      "target": "CD34",
+      "type": "Activation",
+      "evidence": 5,
+      "belief": 0.375,
+      "note": "CD31 activates CD34 \u2014 endothelial cross-talk"
+    },
+    {
+      "source": "PECAM1",
+      "target": "CD34",
+      "type": "Inhibition",
+      "evidence": 3,
+      "belief": 0.476
+    },
+    {
+      "source": "PECAM1",
+      "target": "CD34",
+      "type": "Complex",
+      "evidence": 2,
+      "belief": 0.457
+    },
+    {
+      "source": "CD34",
+      "target": "PECAM1",
+      "type": "Complex",
+      "evidence": 2,
+      "belief": 0.457
+    },
+    {
+      "source": "CD34",
+      "target": "PECAM1",
+      "type": "Activation",
+      "evidence": 2,
+      "belief": 0.367
+    },
+    {
+      "source": "PECAM1",
+      "target": "CD34",
+      "type": "DecreaseAmount",
+      "evidence": 1,
+      "belief": 0.474
+    },
+    {
+      "source": "CD34",
+      "target": "PECAM1",
+      "type": "DecreaseAmount",
+      "evidence": 1,
+      "belief": 0.474
+    },
+    {
+      "source": "CD34",
+      "target": "PECAM1",
+      "type": "Inhibition",
+      "evidence": 1,
+      "belief": 0.436
+    },
+    {
+      "source": "CD34",
+      "target": "PECAM1",
+      "type": "IncreaseAmount",
+      "evidence": 1,
+      "belief": 0.484
+    },
+    {
+      "source": "Ly6g",
+      "target": "PTPRC",
+      "type": "Activation",
+      "evidence": 4,
+      "belief": 0.376
+    },
+    {
+      "source": "PTPRC",
+      "target": "Ly6g",
+      "type": "Activation",
+      "evidence": 1,
+      "belief": 0.372
+    },
+    {
+      "source": "CD44",
+      "target": "CD34",
+      "type": "Activation",
+      "evidence": 4,
+      "belief": 0.376,
+      "note": "CD44 activates CD34 \u2014 injury drives progenitor?"
+    },
+    {
+      "source": "CD44",
+      "target": "CD34",
+      "type": "Inhibition",
+      "evidence": 2,
+      "belief": 0.441
+    },
+    {
+      "source": "CD44",
+      "target": "CD34",
+      "type": "DecreaseAmount",
+      "evidence": 1,
+      "belief": 0.474
+    },
+    {
+      "source": "CD34",
+      "target": "CD44",
+      "type": "IncreaseAmount",
+      "evidence": 2,
+      "belief": 0.472
+    },
+    {
+      "source": "CD34",
+      "target": "CD44",
+      "type": "Inhibition",
+      "evidence": 1,
+      "belief": 0.436
+    },
+    {
+      "source": "CD34",
+      "target": "CD44",
+      "type": "Activation",
+      "evidence": 1,
+      "belief": 0.372
+    },
+    {
+      "source": "CD34",
+      "target": "ITGAM",
+      "type": "Activation",
+      "evidence": 4,
+      "belief": 0.376
+    },
+    {
+      "source": "CD34",
+      "target": "ITGAM",
+      "type": "Inhibition",
+      "evidence": 2,
+      "belief": 0.441
+    },
+    {
+      "source": "CD34",
+      "target": "ITGAM",
+      "type": "Complex",
+      "evidence": 1,
+      "belief": 0.426
+    },
+    {
+      "source": "CD44",
+      "target": "ITGAM",
+      "type": "Complex",
+      "evidence": 2,
+      "belief": 0.411
+    },
+    {
+      "source": "CD44",
+      "target": "ITGAM",
+      "type": "Activation",
+      "evidence": 2,
+      "belief": 0.367
+    },
+    {
+      "source": "CD44",
+      "target": "ITGAM",
+      "type": "IncreaseAmount",
+      "evidence": 1,
+      "belief": 0.484
+    },
+    {
+      "source": "PDGFRA",
+      "target": "CD34",
+      "type": "Complex",
+      "evidence": 4,
+      "belief": 0.409
+    },
+    {
+      "source": "CD34",
+      "target": "PDGFRA",
+      "type": "Complex",
+      "evidence": 4,
+      "belief": 0.409
+    },
+    {
+      "source": "PDGFRA",
+      "target": "CD34",
+      "type": "Activation",
+      "evidence": 3,
+      "belief": 0.379
+    },
+    {
+      "source": "CD34",
+      "target": "PDGFRA",
+      "type": "Activation",
+      "evidence": 1,
+      "belief": 0.372
+    },
+    {
+      "source": "PTPRC",
+      "target": "PECAM1",
+      "type": "Inhibition",
+      "evidence": 3,
+      "belief": 0.476
+    },
+    {
+      "source": "PECAM1",
+      "target": "PTPRC",
+      "type": "Inhibition",
+      "evidence": 3,
+      "belief": 0.476
+    },
+    {
+      "source": "PTPRC",
+      "target": "PECAM1",
+      "type": "Activation",
+      "evidence": 1,
+      "belief": 0.372
+    },
+    {
+      "source": "PTPRC",
+      "target": "PECAM1",
+      "type": "Complex",
+      "evidence": 1,
+      "belief": 0.444
+    },
+    {
+      "source": "PTPRC",
+      "target": "PECAM1",
+      "type": "DecreaseAmount",
+      "evidence": 1,
+      "belief": 0.474
+    },
+    {
+      "source": "PECAM1",
+      "target": "PTPRC",
+      "type": "IncreaseAmount",
+      "evidence": 2,
+      "belief": 0.472
+    },
+    {
+      "source": "PECAM1",
+      "target": "PTPRC",
+      "type": "Activation",
+      "evidence": 2,
+      "belief": 0.367
+    },
+    {
+      "source": "PECAM1",
+      "target": "PTPRC",
+      "type": "Complex",
+      "evidence": 1,
+      "belief": 0.444
+    },
+    {
+      "source": "ITGAM",
+      "target": "PECAM1",
+      "type": "Complex",
+      "evidence": 3,
+      "belief": 0.452,
+      "note": "CD11b-PECAM1 complex \u2014 transendothelial migration"
+    },
+    {
+      "source": "PECAM1",
+      "target": "ITGAM",
+      "type": "Complex",
+      "evidence": 3,
+      "belief": 0.452
+    },
+    {
+      "source": "ITGAM",
+      "target": "PECAM1",
+      "type": "Activation",
+      "evidence": 1,
+      "belief": 0.372
+    },
+    {
+      "source": "PECAM1",
+      "target": "ITGAM",
+      "type": "DecreaseAmount",
+      "evidence": 1,
+      "belief": 0.474
+    },
+    {
+      "source": "PECAM1",
+      "target": "ITGAM",
+      "type": "Inhibition",
+      "evidence": 1,
+      "belief": 0.614
+    },
+    {
+      "source": "MRC1",
+      "target": "CD44",
+      "type": "Complex",
+      "evidence": 3,
+      "belief": 0.648,
+      "note": "Physical interaction on macrophage surface"
+    },
+    {
+      "source": "CD44",
+      "target": "MRC1",
+      "type": "Complex",
+      "evidence": 3,
+      "belief": 0.648
+    },
+    {
+      "source": "MRC1",
+      "target": "PDGFRB",
+      "type": "Complex",
+      "evidence": 3,
+      "belief": 0.423,
+      "note": "Pericyte-macrophage interaction complex"
+    },
+    {
+      "source": "PDGFRB",
+      "target": "MRC1",
+      "type": "Complex",
+      "evidence": 3,
+      "belief": 0.423
+    },
+    {
+      "source": "MRC1",
+      "target": "PECAM1",
+      "type": "Complex",
+      "evidence": 2,
+      "belief": 0.457
+    },
+    {
+      "source": "PECAM1",
+      "target": "MRC1",
+      "type": "Complex",
+      "evidence": 2,
+      "belief": 0.457
+    },
+    {
+      "source": "PDGFRB",
+      "target": "CD34",
+      "type": "Activation",
+      "evidence": 2,
+      "belief": 0.367
+    },
+    {
+      "source": "PDGFRB",
+      "target": "CD34",
+      "type": "Complex",
+      "evidence": 2,
+      "belief": 0.426
+    },
+    {
+      "source": "CD34",
+      "target": "PDGFRB",
+      "type": "Complex",
+      "evidence": 2,
+      "belief": 0.426
+    },
+    {
+      "source": "CD44",
+      "target": "PECAM1",
+      "type": "Activation",
+      "evidence": 2,
+      "belief": 0.417
+    },
+    {
+      "source": "CD44",
+      "target": "PECAM1",
+      "type": "IncreaseAmount",
+      "evidence": 1,
+      "belief": 0.484
+    },
+    {
+      "source": "PECAM1",
+      "target": "CD44",
+      "type": "Inhibition",
+      "evidence": 1,
+      "belief": 0.436
+    },
+    {
+      "source": "PTPRC",
+      "target": "PDGFRB",
+      "type": "IncreaseAmount",
+      "evidence": 2,
+      "belief": 0.472
+    },
+    {
+      "source": "PTPRC",
+      "target": "PDGFRA",
+      "type": "Activation",
+      "evidence": 1,
+      "belief": 0.372
+    },
+    {
+      "source": "PDGFRA",
+      "target": "CD44",
+      "type": "Complex",
+      "evidence": 1,
+      "belief": 0.83,
+      "note": "High-belief complex despite single evidence"
+    },
+    {
+      "source": "CD44",
+      "target": "PDGFRA",
+      "type": "Complex",
+      "evidence": 1,
+      "belief": 0.83
+    },
+    {
+      "source": "ITGAM",
+      "target": "CD34",
+      "type": "Inhibition",
+      "evidence": 1,
+      "belief": 0.436
+    },
+    {
+      "source": "ITGAM",
+      "target": "CD34",
+      "type": "Complex",
+      "evidence": 1,
+      "belief": 0.426
+    },
+    {
+      "source": "MRC1",
+      "target": "CD34",
+      "type": "Complex",
+      "evidence": 1,
+      "belief": 0.426
+    },
+    {
+      "source": "CD34",
+      "target": "MRC1",
+      "type": "Complex",
+      "evidence": 1,
+      "belief": 0.426
+    }
+  ],
+  "shared_biology": {
+    "CD34_PECAM1": {
+      "shared_processes": [
+        "glomerular endothelium development (GO:0072011)",
+        "cell-cell adhesion (GO:0098609)"
+      ],
+      "interpretation": "Both markers share the kidney-specific process \"glomerular endothelium development\" \u2014 their co-localization in kidney tissue would be expected from ontology. CD34+/CD31+ double-positive cells represent glomerular and peritubular capillary endothelium."
+    },
+    "CD44_PDGFRA": {
+      "shared_processes": [
+        "positive regulation of ERK1 and ERK2 cascade (GO:0070374)",
+        "cell migration (GO:0016477)"
+      ],
+      "interpretation": "CD44 and PDGFRA converge on ERK1/2 signaling \u2014 a central pathway in both injury response and fibroblast activation. Their co-localization may reflect coordinated ERK-driven cell migration during repair."
+    },
+    "CD44_PDGFRB": {
+      "shared_processes": [
+        "positive regulation of ERK1 and ERK2 cascade (GO:0070374)"
+      ],
+      "interpretation": "CD44-PDGFRB share ERK cascade activation AND form a physical complex (10 evidence, belief=0.74). Co-localization is mechanistically supported by direct protein interaction."
+    },
+    "PDGFRA_PDGFRB": {
+      "shared_processes": [
+        "platelet-derived growth factor receptor signaling pathway (GO:0048008)",
+        "positive regulation of ERK1 and ERK2 cascade (GO:0070374)",
+        "positive regulation of calcium-mediated signaling (GO:0050850)",
+        "VEGF binding (GO:0038085)",
+        "VEGF-activated PDGFR cell proliferation (GO:0038091)",
+        "positive regulation of cell migration (GO:0030335)",
+        "positive regulation of cell population proliferation (GO:0008284)",
+        "peptidyl-tyrosine phosphorylation (GO:0018108)",
+        "receptor protein tyrosine kinase signaling (GO:0007169)"
+      ],
+      "interpretation": "PDGFRA/PDGFRB are functional partners sharing 14+ GO processes. They form the strongest INDRA relationship in the panel (151 evidence). Their co-localization is a trivial biological expectation \u2014 these are the alpha and beta subunits of the same receptor system."
+    },
+    "ITGAM_PECAM1": {
+      "shared_processes": [
+        "leukocyte cell-cell adhesion (GO:0007159)",
+        "cell-cell adhesion (GO:0098609)"
+      ],
+      "interpretation": "Mac-1 (CD11b) on leukocytes binds PECAM1 on endothelium during transendothelial migration. If confirmed, their spatial proximity would be consistent with the leukocyte adhesion cascade."
+    },
+    "CD44_PECAM1": {
+      "shared_processes": [
+        "transmembrane signaling receptor activity (GO:0004888)"
+      ],
+      "interpretation": "Both are transmembrane receptors involved in cell adhesion. CD44 mediates rolling/arrest of leukocytes, PECAM1 mediates diapedesis \u2014 sequential steps in immune cell extravasation."
+    },
+    "PDGFRA_PECAM1": {
+      "shared_processes": [
+        "positive regulation of cell migration (GO:0030335)",
+        "protein homodimerization activity (GO:0042803)"
+      ],
+      "interpretation": "Fibroblast (PDGFRA) and endothelial (PECAM1) interaction during tissue remodeling. Shared cell migration regulation supports their co-localization at repair/fibrosis sites."
+    }
+  },
+  "kidney_context": {
+    "nephrogenesis_genes": [
+      "PDGFRA",
+      "PDGFRB"
+    ],
+    "kidney_lineage_markers": [
+      "PDGFRB",
+      "PECAM1"
+    ],
+    "glomerular_endothelium": [
+      "CD34",
+      "PECAM1"
+    ],
+    "glomerular_filtration": [
+      "CD34"
+    ],
+    "vascular_wound_healing": [
+      "CD34"
+    ],
+    "mesangial_differentiation": [
+      "CD34"
+    ],
+    "neutrophil_degranulation": [
+      "ITGAM",
+      "CD44",
+      "PECAM1"
+    ],
+    "leukocyte_extravasation": [
+      "ITGAM",
+      "PECAM1",
+      "CD44"
+    ],
+    "m2_macrophage_markers": [
+      "MRC1"
+    ],
+    "aki_direct": [
+      "CD44"
+    ],
+    "kidney_epithelium": [
+      "CD44",
+      "PDGFRB",
+      "MRC1",
+      "PTPRC",
+      "PECAM1",
+      "CD34"
+    ],
+    "metanephros_cortex": [
+      "CD44",
+      "PDGFRA",
+      "PDGFRB",
+      "ITGAM",
+      "MRC1",
+      "PTPRC",
+      "PECAM1",
+      "CD34"
+    ],
+    "metanephric_glomerulus": [
+      "PDGFRB",
+      "ITGAM",
+      "MRC1",
+      "CD34"
+    ]
+  },
+  "shared_upstream_regulators": {
+    "TGFB1": {
+      "targets": [
+        "PECAM1",
+        "PDGFRB",
+        "MRC1",
+        "CD44",
+        "CD34"
+      ],
+      "count": 5,
+      "relevance": "Master regulator of renal fibrosis. Regulates 5/8 panel genes spanning endothelial, stromal, immune, and injury axes."
+    },
+    "VEGFA": {
+      "targets": [
+        "PECAM1",
+        "PDGFRB",
+        "CD44",
+        "CD34"
+      ],
+      "count": 4,
+      "relevance": "Vascular homeostasis and angiogenesis. Regulates both endothelial markers and injury/stromal markers."
+    },
+    "KDR": {
+      "targets": [
+        "PECAM1",
+        "PDGFRB",
+        "PDGFRA",
+        "CD34"
+      ],
+      "count": 4,
+      "relevance": "VEGFR2 \u2014 connects VEGF signaling to endothelial and pericyte biology."
+    },
+    "LPS": {
+      "targets": [
+        "PECAM1",
+        "MRC1",
+        "CD44",
+        "CD34"
+      ],
+      "count": 4,
+      "relevance": "Innate immune activation. Relevant to DAMP-mediated sterile inflammation in AKI."
+    },
+    "TNF": {
+      "targets": [
+        "PECAM1",
+        "CD44",
+        "CD34"
+      ],
+      "count": 3,
+      "relevance": "Pro-inflammatory cytokine central to AKI pathogenesis."
+    },
+    "IL6": {
+      "targets": [
+        "MRC1",
+        "CD44",
+        "CD34"
+      ],
+      "count": 3,
+      "relevance": "Inflammatory cytokine; CD44 and MRC1 as targets connects injury to resolution."
+    }
+  },
+  "mediated_paths": [
+    {
+      "source": "CD44",
+      "intermediary": "CD74",
+      "target": "PDGFRB",
+      "source_evidence": 288,
+      "target_evidence": 29,
+      "interpretation": "MIF receptor axis: CD44-CD74 complex mediates MIF signaling to pericytes/fibroblasts."
+    },
+    {
+      "source": "CD44",
+      "intermediary": "EGFR",
+      "target": "PDGFRA",
+      "source_evidence": 218,
+      "target_evidence": 45,
+      "interpretation": "RTK crosstalk: CD44 activates EGFR, which cross-talks with PDGFRA signaling."
+    },
+    {
+      "source": "CD44",
+      "intermediary": "ITGB1",
+      "target": "PECAM1",
+      "source_evidence": 238,
+      "target_evidence": 16,
+      "interpretation": "Adhesion cascade: CD44-integrin complex mediates leukocyte-endothelial interaction."
+    },
+    {
+      "source": "PDGFRB",
+      "intermediary": "PDGFB",
+      "target": "PDGFRA",
+      "source_evidence": 236,
+      "target_evidence": 37,
+      "interpretation": "Ligand-receptor: PDGFRB sequesters PDGF-BB, controlling availability for PDGFRA."
+    }
+  ],
+  "mechanistic_narratives": {
+    "endothelial_endothelial": "Endothelial self-clustering reflects vascular network topology. CD31+/CD34+ endothelial cells in the peritubular capillary plexus are physically connected. PECAM1 mediates homophilic adhesion (GO:0007156). Both share glomerular endothelium development (GO:0072011).",
+    "fibroblast_fibroblast": "PDGFRA+ fibroblast clustering reflects interstitial compartment organization. PDGFRA is expressed in kidney cortex and nephron tubule interstitium. In nephrogenesis (WP4823), fibroblasts form the structural scaffold of the kidney.",
+    "macrophage_macrophage": "Myeloid cell clustering reflects immune niche formation. ITGAM+ cells accumulate at sites of injury via complement-mediated adhesion. MRC1+ M2 macrophages (CL:0000890) cluster in resolution zones.",
+    "endothelial_fibroblast": "Endothelial-fibroblast proximity reflects the vascular-interstitial interface. PDGFRB on pericytes physically contacts endothelial cells. PDGFRA/PECAM1 share cell migration regulation (GO:0030335). In AKI, this interface is reported to be where capillary rarefaction and fibrosis originate.",
+    "endothelial_macrophage": "Endothelial-macrophage proximity reflects leukocyte extravasation. PECAM1 mediates diapedesis (GO:0050904) and neutrophil extravasation (GO:0072672). ITGAM on myeloid cells adheres to PECAM1 via leukocyte cell-cell adhesion (GO:0007159). This is the transendothelial migration axis.",
+    "fibroblast_macrophage": "Fibroblast-macrophage proximity would be consistent with the repair/fibrosis niche. PDGFRB forms a physical complex with MRC1 (3 evidence). M2 macrophages (CD206+/MRC1+) are reported to secrete TGF-beta that activates fibroblasts via PDGFR signaling. In the literature, this interaction is implicated in determining whether repair resolves or progresses to fibrosis.",
+    "immune_endothelial": "Immune-endothelial proximity would be consistent with active inflammation. CD44-PECAM1 are sequential partners in the leukocyte adhesion cascade: CD44 mediates rolling, PECAM1 mediates transmigration in the literature. PTPRC+ cells are expected to cluster at endothelial surfaces during immune infiltration.",
+    "immune_fibroblast": "Immune-fibroblast proximity in AKI would be consistent with the inflammatory-fibrotic transition zone. CD44 physically complexes with PDGFRB (10 evidence, belief=0.74) \u2014 a known basis for immune-stromal interaction. CD44 also activates CD34 (4 evidence), which in the literature links injury signaling to progenitor mobilization."
+  },
+  "panel_coherence_summary": "Panel biological coverage was assessed against the INDRA/CoGEx knowledge graph (queried 2026-02-26 via systematic Cypher). All 9 markers grounded encode genes with 117 known intra-panel causal relationships, spanning immune infiltration (PTPRC, ITGAM), tissue injury/adhesion (CD44), vascular integrity (PECAM1, CD34), stromal/fibrotic response (PDGFRA, PDGFRB), and anti-inflammatory resolution (MRC1). 5/8 genes are regulated by TGF-beta, the master regulator of renal fibrosis; 4/8 by VEGF. The panel was not designed for pathway enrichment analysis (n=8 genes precludes meaningful ORA)."
+}

@@ -1,0 +1,247 @@
+{
+  "can_proceed": true,
+  "total_rois": 24,
+  "status_distribution": {
+    "EXCELLENT": 17,
+    "GOOD": 7
+  },
+  "critical_failures": 0,
+  "total_issues": 10,
+  "usable_rois": 24,
+  "execution_time_ms": 5316.479921340942,
+  "roi_results": [
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D1_M1_01_9.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 257.2159767150879
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D1_M1_02_10.txt",
+      "status": "GOOD",
+      "n_cells": 250000,
+      "issues": [
+        "High zero fraction CD11b: 0.94",
+        "High zero fraction CD140a: 0.91"
+      ],
+      "critical_issues": 0,
+      "total_issues": 2,
+      "execution_time_ms": 228.21998596191406
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D1_M1_03_11.txt",
+      "status": "GOOD",
+      "n_cells": 250000,
+      "issues": [
+        "High zero fraction CD11b: 0.95",
+        "High zero fraction CD140a: 0.91"
+      ],
+      "critical_issues": 0,
+      "total_issues": 2,
+      "execution_time_ms": 243.5319423675537
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D1_M2_01_12.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 207.82804489135742
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D1_M2_02_13.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 212.62001991271973
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D1_M2_03_14.txt",
+      "status": "GOOD",
+      "n_cells": 250000,
+      "issues": [
+        "High zero fraction CD11b: 0.91",
+        "High zero fraction CD140a: 0.91"
+      ],
+      "critical_issues": 0,
+      "total_issues": 2,
+      "execution_time_ms": 216.30191802978516
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D3_M1_01_15.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 231.28271102905273
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D3_M1_02_16.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 242.03920364379883
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D3_M1_03_17.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 232.60784149169922
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D3_M2_01_18.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 248.96693229675293
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D3_M2_02_19.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 225.51798820495605
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D3_M2_03_20.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 211.6110324859619
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D7_M1_01_21.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 215.21425247192383
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D7_M1_02_22.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 206.64000511169434
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D7_M1_03_23.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 197.12376594543457
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D7_M2_01_24.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 219.1460132598877
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D7_M2_02_25.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 217.10205078125
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_D7_M2_03_26.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 208.82201194763184
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_Sam1_01_2.txt",
+      "status": "GOOD",
+      "n_cells": 250000,
+      "issues": [
+        "High zero fraction CD11b: 0.92"
+      ],
+      "critical_issues": 0,
+      "total_issues": 1,
+      "execution_time_ms": 203.16171646118164
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_Sam1_02_3.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 217.42010116577148
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_Sam1_03_4.txt",
+      "status": "EXCELLENT",
+      "n_cells": 250000,
+      "issues": [],
+      "critical_issues": 0,
+      "total_issues": 0,
+      "execution_time_ms": 232.82098770141602
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_Sam2_01_6.txt",
+      "status": "GOOD",
+      "n_cells": 250000,
+      "issues": [
+        "High zero fraction CD11b: 0.92"
+      ],
+      "critical_issues": 0,
+      "total_issues": 1,
+      "execution_time_ms": 223.35290908813477
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_Sam2_02_7.txt",
+      "status": "GOOD",
+      "n_cells": 250000,
+      "issues": [
+        "High zero fraction CD11b: 0.93"
+      ],
+      "critical_issues": 0,
+      "total_issues": 1,
+      "execution_time_ms": 217.09275245666504
+    },
+    {
+      "roi_file": "IMC_241218_Alun_ROI_Sam2_03_8.txt",
+      "status": "GOOD",
+      "n_cells": 250000,
+      "issues": [
+        "High zero fraction CD11b: 0.92"
+      ],
+      "critical_issues": 0,
+      "total_issues": 1,
+      "execution_time_ms": 198.12679290771484
+    }
+  ]
+}

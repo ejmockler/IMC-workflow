@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-03-08T21:56:07.159849",
+  "version": "git-62d0290",
+  "config_hash": "b77e0a71",
+  "config_file": "config_snapshot_b77e0a71.json",
+  "roi_id": "IMC_241218_Alun_ROI_D7_M2_03_26",
+  "dependencies": {
+    "python": "3.12.10",
+    "numpy": "2.3.4",
+    "pandas": "2.3.0",
+    "scipy": "1.16.3",
+    "sklearn": "1.7.2",
+    "leidenalg": "0.10.2",
+    "skimage": "0.25.0"
+  },
+  "results_summary": {
+    "n_scales": 4,
+    "scales_um": [
+      10.0,
+      20.0,
+      40.0,
+      "hierarchy"
+    ],
+    "total_superpixels": 3227
+  }
+}
