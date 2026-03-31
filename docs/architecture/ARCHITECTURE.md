@@ -45,7 +45,7 @@ src/analysis/coabundance_features.py
 ```
 - Leiden clustering with spatial weighting
 - Coabundance feature generation (products, ratios, covariances)
-- LASSO feature selection
+- Variance-based feature selection
 - Resolution optimization with bootstrap stability
 
 ### Pipeline Orchestration
@@ -61,7 +61,6 @@ src/analysis/main_pipeline.py
 
 ### Quality Control
 ```
-src/analysis/quality_control.py
 src/quality_control/quality_gates.py
 src/quality_control/statistical_monitoring.py
 ```
@@ -81,26 +80,14 @@ src/analysis/batch_correction.py
 ### Data Storage & Provenance
 ```
 src/analysis/data_storage.py
-src/analysis/provenance_tracker.py
 src/analysis/analysis_manifest.py
-src/analysis/environment_capture.py
 ```
 - HDF5/Parquet/JSON backends
 - Config versioning (SHA256)
 - Dependency tracking
 
-### Statistical Methods
-```
-src/analysis/multiple_testing_control.py
-src/analysis/fdr_spatial.py
-src/analysis/spatial_permutation.py
-src/analysis/spatial_resampling.py
-src/analysis/mixed_effects_models.py
-```
-
 ### Validation & Testing
 ```
-src/analysis/synthetic_data_generator.py
 src/validation/framework.py
 src/validation/scientific_quality.py
 src/validation/data_integrity.py
@@ -138,8 +125,7 @@ Results Storage (HDF5/Parquet/JSON)
 ```
 src/viz_utils/
   plotting.py                    # Stateless plotting functions
-  journal_figures.py             # Publication-quality figures
-  comprehensive_figures.py       # Comprehensive visualization
+  comprehensive_figures.py       # Annotation-driven figures (ternary maps, interface composition, type distributions)
 ```
 
 Analysis and visualization are decoupled. Notebooks consume analysis outputs.
@@ -154,7 +140,6 @@ Analysis and visualization are decoupled. Notebooks consume analysis outputs.
 - `spatial_clustering.py`
 - `coabundance_features.py`
 - `batch_correction.py`
-- `quality_control.py`
 
 ### Research/Experimental (Available)
 - `graph_clustering.py`

@@ -31,6 +31,18 @@ from src.utils.paths import get_paths
 
 _PATHS = get_paths()
 
+# Load cell type annotation config for marker/lineage lookups
+def _load_cell_type_config():
+    """Load cell type definitions and lineage mappings from config.json."""
+    config_path = Path(__file__).parent / 'config.json'
+    with open(config_path) as f:
+        config = json.load(f)
+    cell_types = config.get('cell_type_annotation', {}).get('cell_types', {})
+    lineages = config.get('cell_type_annotation', {}).get('membership_axes', {}).get('lineages', {})
+    return cell_types, lineages
+
+_CELL_TYPE_CONFIG, _LINEAGE_CONFIG = _load_cell_type_config()
+
 
 # ============================================================================
 # MARKER → GENE GROUNDING (via INDRA/CoGEx ground_entity)
@@ -753,33 +765,19 @@ MECHANISTIC_NARRATIVES = {
 # ============================================================================
 
 def extract_markers_from_cell_type(cell_type: str) -> List[str]:
-    """Extract marker names from cell type labels like 'activated_immune_cd44'."""
-    markers = []
+    """Extract positive markers for a cell type from config.json definitions."""
+    # Direct config lookup
+    if cell_type in _CELL_TYPE_CONFIG:
+        return list(_CELL_TYPE_CONFIG[cell_type].get('positive_markers', []))
+
+    # Fallback: try case-insensitive match
     ct_lower = cell_type.lower()
+    for name, defn in _CELL_TYPE_CONFIG.items():
+        if name.lower() == ct_lower:
+            return list(defn.get('positive_markers', []))
 
-    marker_map = {
-        'cd44': 'CD44', 'cd140b': 'CD140b', 'cd140a': 'CD140a',
-        'cd206': 'CD206', 'cd11b': 'CD11b', 'cd45': 'CD45',
-        'cd31': 'CD31', 'cd34': 'CD34', 'ly6g': 'Ly6G',
-    }
-
-    for key, marker in marker_map.items():
-        if key in ct_lower:
-            markers.append(marker)
-
-    # Infer from cell type lineage
-    if 'immune' in ct_lower and 'CD45' not in markers:
-        markers.append('CD45')
-    if 'macrophage' in ct_lower and 'CD11b' not in markers:
-        markers.append('CD11b')
-    if 'endothelial' in ct_lower and 'CD31' not in markers:
-        markers.append('CD31')
-    if 'fibroblast' in ct_lower and 'CD140a' not in markers:
-        markers.append('CD140a')
-    if 'neutrophil' in ct_lower and 'Ly6G' not in markers:
-        markers.append('Ly6G')
-
-    return markers
+    # Unknown type: return empty list
+    return []
 
 
 def get_gene_for_marker(marker: str) -> Optional[str]:
@@ -791,20 +789,35 @@ def get_gene_for_marker(marker: str) -> Optional[str]:
 
 
 def get_lineage(cell_type: str) -> str:
-    """Classify cell type into a lineage category."""
-    ct = cell_type.lower()
-    if 'endothelial' in ct or 'cd31' in ct or 'cd34' in ct:
-        return 'endothelial'
-    if 'fibroblast' in ct or 'cd140a' in ct or 'stromal' in ct:
-        return 'fibroblast'
-    if 'macrophage' in ct or 'cd206' in ct or 'cd11b' in ct:
-        return 'macrophage'
-    if 'immune' in ct or 'cd45' in ct:
-        return 'immune'
-    if 'neutrophil' in ct or 'ly6g' in ct:
-        return 'neutrophil'
-    if 'pericyte' in ct or 'cd140b' in ct:
-        return 'pericyte'
+    """Classify cell type into a lineage category using config.json family field.
+
+    Derives lineage from the cell type's 'family' field by extracting the
+    top-level lineage prefix (e.g., 'immune_m2' -> 'immune').
+    Falls back to matching positive markers against lineage definitions.
+    """
+    # Direct config lookup
+    defn = _CELL_TYPE_CONFIG.get(cell_type)
+    if not defn:
+        # Case-insensitive fallback
+        ct_lower = cell_type.lower()
+        for name, d in _CELL_TYPE_CONFIG.items():
+            if name.lower() == ct_lower:
+                defn = d
+                break
+
+    if defn:
+        family = defn.get('family', '')
+        # Extract top-level lineage from family (e.g., "immune_neutrophil" -> "immune")
+        for lineage_name in _LINEAGE_CONFIG:
+            if family.startswith(lineage_name):
+                return lineage_name
+        # Family doesn't match a lineage prefix — try marker overlap
+        markers = set(defn.get('positive_markers', []))
+        for lineage_name, lineage_def in _LINEAGE_CONFIG.items():
+            lineage_markers = set(lineage_def.get('markers', []))
+            if markers & lineage_markers:
+                return lineage_name
+
     return 'unknown'
 
 

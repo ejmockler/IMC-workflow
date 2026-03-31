@@ -21,7 +21,6 @@ Multi-scale spatial proteomics framework for Imaging Mass Cytometry data, applie
 .venv/bin/python build_indra_evidence_table.py         # Panel context + finding annotations
 
 # 5. Figures
-.venv/bin/python generate_spatial_figures.py            # Representative IMC images (4 timepoints)
 .venv/bin/python generate_enrichment_heatmaps.py       # Temporal neighborhood heatmaps
 .venv/bin/python generate_power_analysis.py             # Effect size forest plot + sample size table
 .venv/bin/python run_bodenmiller_benchmark.py           # Steinbock concordance validation
@@ -57,8 +56,7 @@ All parameters live in `config.json`. The `Config` class (`src/config.py`) is th
 | `batch_correction.py` | Sham-anchored z-score normalization |
 | `spatial_stats.py` | Spatial coherence, coordinate correlations |
 | `hierarchical_multiscale.py` | Hierarchical tissue organization |
-| `cell_type_annotation.py` | Boolean gating cell type annotation |
-| `quality_control.py` | QC metrics |
+| `cell_type_annotation.py` | Boolean gating + continuous membership annotation |
 
 ## Supporting Infrastructure
 
@@ -69,7 +67,7 @@ All parameters live in `config.json`. The `Config` class (`src/config.py`) is th
 | **Parallel** | `parallel_processing.py` |
 | **Provenance** | `analysis_manifest.py` |
 | **Validation** | `src/validation/` framework |
-| **Visualization** | `src/viz_utils/plotting.py`, `comprehensive_figures.py` |
+| **Visualization** | `src/viz_utils/plotting.py`, `comprehensive_figures.py` (ternary maps, interface composition, type distributions) |
 
 ## Output
 

@@ -21,7 +21,7 @@ src/
 │   ├── memory_management.py     # Chunked processing for large data
 │   ├── parallel_processing.py   # Multi-ROI parallel processing
 │   ├── analysis_manifest.py     # Scientific objectives & manifest
-│   ├── cell_type_annotation.py  # Boolean gating cell type assignment
+│   ├── cell_type_annotation.py  # Boolean gating + continuous membership annotation
 │   ├── clustering_comparison.py # Graph vs spatial clustering comparison
 │   ├── graph_clustering.py      # Graph-based clustering baseline
 │   ├── grid_segmentation.py     # Grid-based segmentation alternative
@@ -49,7 +49,7 @@ src/
 │   └── column_matching.py       # Column matching utilities
 ├── viz_utils/                   # Lightweight visualization utilities
 │   ├── plotting.py              # Stateless plotting functions
-│   └── comprehensive_figures.py # Comprehensive figure generation
+│   └── comprehensive_figures.py # Annotation-driven figures (ternary maps, interface composition, type distributions)
 ├── config.py                    # Main configuration class
 └── config_schema.py             # Pydantic config validation
 ```
