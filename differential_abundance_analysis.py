@@ -73,13 +73,29 @@ def compute_abundances(batch_summary: dict, metadata_df: pd.DataFrame) -> pd.Dat
             'assignment_rate': summary['assignment_rate']
         }
 
-        # Cell type counts and proportions
+        # Cell type counts and proportions (discrete gating)
         cell_type_counts = summary['cell_type_counts']
         n_total = summary['n_superpixels']
 
         for cell_type, count in cell_type_counts.items():
             row[f'{cell_type}_count'] = count
             row[f'{cell_type}_prop'] = count / n_total if n_total > 0 else 0.0
+
+        # Continuous lineage membership scores (if available)
+        membership = summary.get('membership', {})
+        lineage_means = membership.get('lineage_means', {})
+        for lineage_name, mean_score in lineage_means.items():
+            row[f'lineage_{lineage_name}_mean'] = mean_score
+
+        # Subtype proportions from continuous decomposition
+        subtype_counts = membership.get('subtype_counts', {})
+        for subtype_name, count in subtype_counts.items():
+            row[f'subtype_{subtype_name}_count'] = count
+            row[f'subtype_{subtype_name}_prop'] = count / n_total if n_total > 0 else 0.0
+
+        # Multi-lineage interface fraction
+        n_mixed = membership.get('n_mixed', 0)
+        row['mixed_fraction'] = n_mixed / n_total if n_total > 0 else 0.0
 
         rows.append(row)
 
@@ -222,12 +238,16 @@ def aggregate_to_mouse_level(df: pd.DataFrame) -> pd.DataFrame:
     """
     prop_cols = [c for c in df.columns if c.endswith('_prop')]
     count_cols = [c for c in df.columns if c.endswith('_count')]
+    lineage_mean_cols = [c for c in df.columns if c.startswith('lineage_') and c.endswith('_mean')]
 
     agg_dict = {col: 'mean' for col in prop_cols}
     agg_dict.update({col: 'sum' for col in count_cols})
+    agg_dict.update({col: 'mean' for col in lineage_mean_cols})
     agg_dict['n_total'] = 'sum'
     agg_dict['n_assigned'] = 'sum'
     agg_dict['assignment_rate'] = 'mean'
+    if 'mixed_fraction' in df.columns:
+        agg_dict['mixed_fraction'] = 'mean'
     agg_dict['roi_id'] = 'count'  # n_rois per mouse
 
     group_cols = ['timepoint', 'mouse']
@@ -347,6 +367,77 @@ def perform_differential_abundance(df: pd.DataFrame, cell_types: List[str]) -> p
             results_df['significant_fdr'] = False
 
     return results_df
+
+def perform_differential_abundance_continuous(
+    df: pd.DataFrame, score_cols: List[str], feature_names: List[str]
+) -> pd.DataFrame:
+    """
+    Perform pairwise DA tests on continuous membership scores (e.g., lineage means).
+
+    Same statistical framework as discrete DA (Hedges' g, Mann-Whitney, FDR),
+    but operates on continuous mean scores per ROI rather than discrete proportions.
+    """
+    mouse_df = aggregate_to_mouse_level(df)
+
+    results = []
+    timepoint_pairs = [
+        ('Sham', 'D1'), ('Sham', 'D3'), ('Sham', 'D7'),
+        ('D1', 'D3'), ('D3', 'D7'),
+    ]
+
+    for score_col, feature_name in zip(score_cols, feature_names):
+        if score_col not in mouse_df.columns:
+            continue
+        if mouse_df[score_col].sum() == 0:
+            continue
+
+        for tp1, tp2 in timepoint_pairs:
+            group1 = mouse_df[mouse_df['timepoint'] == tp1][score_col].values
+            group2 = mouse_df[mouse_df['timepoint'] == tp2][score_col].values
+
+            if len(group1) == 0 or len(group2) == 0:
+                continue
+
+            mean1, mean2 = np.mean(group1), np.mean(group2)
+            std1 = np.std(group1, ddof=1) if len(group1) > 1 else 0
+            std2 = np.std(group2, ddof=1) if len(group2) > 1 else 0
+            u_stat, p_value = mann_whitney_test(group1, group2)
+            g = hedges_g(group1, group2)
+            ci_lower, ci_upper = bootstrap_effect_size_ci(group1, group2)
+
+            results.append({
+                'cell_type': f'lineage:{feature_name}',
+                'comparison': f'{tp1}_vs_{tp2}',
+                'timepoint_1': tp1,
+                'timepoint_2': tp2,
+                'n_mice_1': len(group1),
+                'n_mice_2': len(group2),
+                'mean_1': mean1,
+                'mean_2': mean2,
+                'std_1': std1,
+                'std_2': std2,
+                'fold_change': (mean2 + 1e-6) / (mean1 + 1e-6),
+                'log2_fc': np.log2((mean2 + 1e-6) / (mean1 + 1e-6)),
+                'u_statistic': u_stat,
+                'p_value_raw': p_value,
+                'hedges_g': g,
+                'ci_lower_95': ci_lower,
+                'ci_upper_95': ci_upper,
+            })
+
+    results_df = pd.DataFrame(results)
+
+    if len(results_df) > 0:
+        valid_mask = results_df['p_value_raw'].notna()
+        if valid_mask.sum() > 0:
+            reject, pvals_corrected, _, _ = multipletests(
+                results_df.loc[valid_mask, 'p_value_raw'], method='fdr_bh'
+            )
+            results_df.loc[valid_mask, 'p_value_fdr'] = pvals_corrected
+            results_df.loc[valid_mask, 'significant_fdr'] = reject
+
+    return results_df
+
 
 def perform_regional_analysis(df: pd.DataFrame, cell_types: List[str]) -> pd.DataFrame:
     """
@@ -473,6 +564,12 @@ def main():
         total_count = abundance_df[f'{ct}_count'].sum()
         print(f"    - {ct}: {total_count} total")
 
+    # Lineage-level continuous analysis (if available)
+    lineage_cols = [c for c in abundance_df.columns if c.startswith('lineage_') and c.endswith('_mean')]
+    lineage_names = [c.replace('lineage_', '').replace('_mean', '') for c in lineage_cols]
+    if lineage_names:
+        print(f"  Lineage scores: {lineage_names}")
+
     # Perform differential abundance analysis (mouse-level)
     print("\n" + "-"*80)
     print("Temporal Differential Abundance (Mouse-Level, FDR-Corrected)")
@@ -480,6 +577,14 @@ def main():
     print("  Unit of analysis: mouse (ROI proportions averaged within each mouse)")
 
     temporal_results = perform_differential_abundance(abundance_df, cell_types)
+
+    # Also run DA on continuous lineage scores
+    if lineage_names:
+        lineage_temporal = perform_differential_abundance_continuous(
+            abundance_df, lineage_cols, lineage_names
+        )
+        if len(lineage_temporal) > 0:
+            temporal_results = pd.concat([temporal_results, lineage_temporal], ignore_index=True)
 
     print(f"\n  {len(temporal_results)} comparisons, BH FDR applied")
     n_sig_fdr = temporal_results['significant_fdr'].sum() if 'significant_fdr' in temporal_results.columns else 0

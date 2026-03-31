@@ -460,10 +460,11 @@
     },
     "cell_type_annotation": {
       "_comment": "Spatial region phenotyping via boolean gating. Superpixels (10\u03bcm) represent tissue microregions, not individual cells. This approach captures tissue-level protein expression patterns and spatial organization.",
+      "_comment_priority": "Definition order = gating priority (first match wins). Most-specific gates listed first within each lineage to prevent greedy capture by broader gates.",
       "cell_types": {
         "activated_endothelial_cd140b": {
           "color": "#086788",
-          "description": "Activated endothelial cells with PDGFR-beta expression",
+          "description": "Endothelial cells with PDGFR-beta co-expression, suggesting endothelial-mesenchymal transition.",
           "expected_regions": [
             "cortex",
             "medulla"
@@ -472,6 +473,7 @@
             "day_3",
             "day_7"
           ],
+          "family": "endothelial",
           "functional_role": "endothelial_mesenchymal_transition",
           "label": "Activated Endothelial (CD140b+)",
           "negative_markers": [
@@ -485,7 +487,7 @@
         },
         "activated_endothelial_cd44": {
           "color": "#06AED5",
-          "description": "Activated endothelial cells",
+          "description": "Endothelial cells with CD44 activation.",
           "expected_regions": [
             "cortex"
           ],
@@ -494,6 +496,7 @@
             "day_3",
             "day_7"
           ],
+          "family": "endothelial",
           "functional_role": "vascular_activation",
           "label": "Activated Endothelial (CD44+)",
           "negative_markers": [
@@ -505,9 +508,9 @@
             "CD44"
           ]
         },
-        "activated_fibroblast": {
-          "color": "#2A9D8F",
-          "description": "Activated fibroblasts (CD45-/CD31-/CD140b+/CD44+)",
+        "activated_fibroblast_cd140b": {
+          "color": "#264653",
+          "description": "PDGFR-alpha+ fibroblasts with PDGFR-beta co-expression, suggesting myofibroblast differentiation.",
           "expected_regions": [
             "medulla",
             "cortex"
@@ -515,20 +518,46 @@
           "expected_timepoints": [
             "day_7"
           ],
-          "functional_role": "fibrosis_or_repair",
-          "label": "Activated Fibroblast",
+          "family": "stromal",
+          "functional_role": "myofibroblast_differentiation",
+          "label": "Activated Fibroblast (CD140b+)",
           "negative_markers": [
             "CD45",
-            "CD31"
+            "CD31",
+            "CD34"
           ],
           "positive_markers": [
-            "CD140b",
+            "CD140a",
+            "CD140b"
+          ]
+        },
+        "activated_fibroblast_cd44": {
+          "color": "#2A9D8F",
+          "description": "PDGFR-alpha+ fibroblasts with CD44 activation.",
+          "expected_regions": [
+            "medulla",
+            "cortex"
+          ],
+          "expected_timepoints": [
+            "day_3",
+            "day_7"
+          ],
+          "family": "stromal",
+          "functional_role": "fibroblast_activation",
+          "label": "Activated Fibroblast (CD44+)",
+          "negative_markers": [
+            "CD45",
+            "CD31",
+            "CD34"
+          ],
+          "positive_markers": [
+            "CD140a",
             "CD44"
           ]
         },
-        "activated_immune_cd140b": {
-          "color": "#F77F00",
-          "description": "Activated immune cells with stromal marker co-expression",
+        "activated_immune": {
+          "color": "#C44569",
+          "description": "Non-myeloid leukocytes (CD11b-) co-expressing CD44 and CD140b.",
           "expected_regions": [
             "cortex",
             "medulla"
@@ -537,9 +566,88 @@
             "day_3",
             "day_7"
           ],
-          "label": "Activated Immune (CD140b+)",
+          "family": "immune_other",
+          "functional_role": "non_myeloid_activation",
+          "label": "Activated Immune",
           "negative_markers": [
+            "CD34",
+            "CD31",
+            "CD11b"
+          ],
+          "positive_markers": [
+            "CD45",
+            "CD44",
+            "CD140b"
+          ]
+        },
+        "activated_m2_cd140b": {
+          "color": "#DAA520",
+          "description": "M2-polarized macrophages with PDGFR-beta co-expression, suggesting stromal interaction.",
+          "expected_regions": [
+            "cortex",
+            "medulla"
+          ],
+          "expected_timepoints": [
+            "day_3",
+            "day_7"
+          ],
+          "family": "immune_m2",
+          "functional_role": "stromal_interaction",
+          "label": "Activated M2 (CD140b+)",
+          "negative_markers": [
+            "CD34",
             "CD31"
+          ],
+          "positive_markers": [
+            "CD45",
+            "CD11b",
+            "CD206",
+            "CD140b"
+          ]
+        },
+        "activated_m2_cd44": {
+          "color": "#E6A817",
+          "description": "M2-polarized macrophages with CD44 activation. Most specific M2 gate.",
+          "expected_regions": [
+            "cortex",
+            "medulla"
+          ],
+          "expected_timepoints": [
+            "day_3",
+            "day_7"
+          ],
+          "family": "immune_m2",
+          "functional_role": "activated_repair",
+          "label": "Activated M2 (CD44+)",
+          "negative_markers": [
+            "CD34",
+            "CD31"
+          ],
+          "positive_markers": [
+            "CD45",
+            "CD11b",
+            "CD206",
+            "CD44"
+          ]
+        },
+        "activated_myeloid_cd140b": {
+          "color": "#F77F00",
+          "description": "CD11b+ myeloid cells with PDGFR-beta co-expression, CD206-negative (excludes M2).",
+          "expected_regions": [
+            "cortex",
+            "medulla"
+          ],
+          "expected_timepoints": [
+            "day_3",
+            "day_7"
+          ],
+          "family": "immune_myeloid",
+          "functional_role": "myeloid_stromal_interaction",
+          "label": "Activated Myeloid (CD140b+)",
+          "negative_markers": [
+            "CD34",
+            "CD31",
+            "CD206"
           ],
           "positive_markers": [
             "CD45",
@@ -547,9 +655,9 @@
             "CD140b"
           ]
         },
-        "activated_immune_cd44": {
+        "activated_myeloid_cd44": {
           "color": "#E63946",
-          "description": "Activated immune cells with adhesion molecule expression",
+          "description": "CD11b+ myeloid cells with CD44 activation, CD206-negative (excludes M2).",
           "expected_regions": [
             "cortex",
             "medulla"
@@ -559,9 +667,13 @@
             "day_3",
             "day_7"
           ],
-          "label": "Activated Immune (CD44+)",
+          "family": "immune_myeloid",
+          "functional_role": "myeloid_activation",
+          "label": "Activated Myeloid (CD44+)",
           "negative_markers": [
-            "CD31"
+            "CD34",
+            "CD31",
+            "CD206"
           ],
           "positive_markers": [
             "CD45",
@@ -569,52 +681,9 @@
             "CD44"
           ]
         },
-        "m2_macrophage": {
-          "_comment_gating_fix": "CRITICAL FIX (2025-01-31): Reduced from 4-marker to 3-marker core gate. CD44 and CD140b are activation markers, not M2 requirements. Previous 4-marker AND gate failed to detect any M2s (contradicts published flow/scRNA-seq data).",
-          "color": "#FCBF49",
-          "description": "M2-like macrophages (CD45+/CD11b+/CD206+). 3-marker core definition ensures myeloid lineage specificity while permitting detection of rare population. CD206 alone insufficient (endothelial cells also express CD206). Published UUO studies show M2s present at 5-10% by D7.",
-          "expected_regions": [
-            "cortex",
-            "medulla"
-          ],
-          "expected_timepoints": [
-            "day_3",
-            "day_7"
-          ],
-          "functional_role": "anti-inflammatory_repair",
-          "label": "M2 Macrophage",
-          "negative_markers": [
-            "CD31"
-          ],
-          "positive_markers": [
-            "CD45",
-            "CD11b",
-            "CD206"
-          ]
-        },
-        "neutrophil": {
-          "color": "#D62828",
-          "description": "Neutrophils (Ly6G+ granulocytes)",
-          "expected_regions": [
-            "cortex",
-            "medulla"
-          ],
-          "expected_timepoints": [
-            "day_1"
-          ],
-          "functional_role": "acute_inflammation",
-          "label": "Neutrophil",
-          "negative_markers": [
-            "CD31"
-          ],
-          "positive_markers": [
-            "CD45",
-            "Ly6G"
-          ]
-        },
-        "resting_endothelial": {
+        "endothelial": {
           "color": "#457B9D",
-          "description": "Quiescent endothelial cells (CD31+/CD34+, activation markers low)",
+          "description": "Quiescent endothelial cells (CD31+/CD34+), activation markers negative.",
           "expected_regions": [
             "cortex",
             "medulla"
@@ -622,8 +691,9 @@
           "expected_timepoints": [
             "sham"
           ],
+          "family": "endothelial",
           "functional_role": "vascular_homeostasis",
-          "label": "Resting Endothelial",
+          "label": "Endothelial Cells",
           "negative_markers": [
             "CD45",
             "CD44",
@@ -632,6 +702,136 @@
           "positive_markers": [
             "CD31",
             "CD34"
+          ]
+        },
+        "fibroblast": {
+          "color": "#8AB17D",
+          "description": "PDGFR-alpha+ resident fibroblasts, activation markers negative. Stromal catch-all.",
+          "expected_regions": [
+            "cortex",
+            "medulla"
+          ],
+          "expected_timepoints": [
+            "sham",
+            "day_1",
+            "day_3",
+            "day_7"
+          ],
+          "family": "stromal",
+          "functional_role": "stromal_baseline",
+          "label": "Fibroblast",
+          "negative_markers": [
+            "CD45",
+            "CD31",
+            "CD34",
+            "CD44",
+            "CD140b"
+          ],
+          "positive_markers": [
+            "CD140a"
+          ]
+        },
+        "immune_cells": {
+          "color": "#E8A0BF",
+          "description": "CD45+ non-myeloid leukocytes, activation markers negative. Broadest immune catch-all.",
+          "expected_regions": [
+            "cortex",
+            "medulla"
+          ],
+          "expected_timepoints": [
+            "sham",
+            "day_1",
+            "day_3",
+            "day_7"
+          ],
+          "family": "immune_other",
+          "functional_role": "immune_baseline",
+          "label": "Immune Cells",
+          "negative_markers": [
+            "CD34",
+            "CD31",
+            "CD11b",
+            "CD44",
+            "CD140b"
+          ],
+          "positive_markers": [
+            "CD45"
+          ]
+        },
+        "m2_macrophage": {
+          "color": "#FCBF49",
+          "description": "M2-polarized macrophages (CD45+/CD11b+/CD206+), activation markers negative. Catch-all for M2 lineage after activated variants.",
+          "expected_regions": [
+            "cortex",
+            "medulla"
+          ],
+          "expected_timepoints": [
+            "day_3",
+            "day_7"
+          ],
+          "family": "immune_m2",
+          "functional_role": "anti-inflammatory_repair",
+          "label": "M2 Macrophage",
+          "negative_markers": [
+            "CD34",
+            "CD31",
+            "CD44",
+            "CD140b"
+          ],
+          "positive_markers": [
+            "CD45",
+            "CD11b",
+            "CD206"
+          ]
+        },
+        "myeloid": {
+          "color": "#FF6B6B",
+          "description": "CD11b+ myeloid cells, all activation and polarization markers negative. Catch-all for myeloid lineage.",
+          "expected_regions": [
+            "cortex",
+            "medulla"
+          ],
+          "expected_timepoints": [
+            "sham",
+            "day_1",
+            "day_3",
+            "day_7"
+          ],
+          "family": "immune_myeloid",
+          "functional_role": "myeloid_baseline",
+          "label": "Myeloid Cells",
+          "negative_markers": [
+            "CD34",
+            "CD31",
+            "CD44",
+            "CD140b",
+            "CD206"
+          ],
+          "positive_markers": [
+            "CD45",
+            "CD11b"
+          ]
+        },
+        "neutrophil": {
+          "color": "#D62828",
+          "description": "Ly6G+ granulocytes. Gated first \u2014 Ly6G is definitive for neutrophils regardless of CD11b co-expression.",
+          "expected_regions": [
+            "cortex",
+            "medulla"
+          ],
+          "expected_timepoints": [
+            "day_1"
+          ],
+          "family": "immune_neutrophil",
+          "functional_role": "acute_inflammation",
+          "label": "Neutrophil",
+          "negative_markers": [
+            "CD31",
+            "CD34"
+          ],
+          "positive_markers": [
+            "CD45",
+            "Ly6G"
           ]
         }
       },

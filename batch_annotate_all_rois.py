@@ -1,15 +1,14 @@
 """
 Batch Cell Type Annotation for All ROIs
 
-Processes all 25 ROIs from the kidney injury time course with optimized parameters:
-- 60th percentile global threshold (validated to capture sparse IMC signal)
-- DNA-based segmentation (consistent across ROI heterogeneity)
-- Config-driven cell type definitions
+Two annotation modes, both config-driven and experiment-agnostic:
+1. Discrete boolean gating: strict positive/negative marker gates → 15 cell types
+2. Continuous multi-label memberships: lineage scores, subtypes, activation overlays
 
-Outputs:
-- Per-ROI cell type annotations (Parquet format)
-- Per-ROI cluster-to-celltype mappings (JSON)
-- Batch summary statistics
+Outputs per ROI:
+- Parquet: discrete labels + continuous lineage/activation scores per superpixel
+- JSON: annotation metadata, cluster annotations, membership summary
+- Batch summary: aggregate statistics across all ROIs
 """
 
 import json
@@ -120,7 +119,7 @@ def main():
             scale_results = roi_results['multiscale_results'][scale]
             coords = scale_results.get('superpixel_coords', np.zeros((len(cell_type_labels), 2)))
 
-            # Save superpixel-level annotations (JSON)
+            # Build annotation dataframe
             import pandas as pd
             annotation_df = pd.DataFrame({
                 'superpixel_id': np.arange(len(cell_type_labels)),
@@ -129,6 +128,16 @@ def main():
                 'cell_type': cell_type_labels,
                 'confidence': confidence_scores
             })
+
+            # Add continuous membership columns if available
+            memberships = annotations.get('memberships')
+            if memberships is not None:
+                for lineage_name, scores in memberships['lineage_scores'].items():
+                    annotation_df[f'lineage_{lineage_name}'] = scores
+                annotation_df['subtype'] = memberships['subtype_labels']
+                for act_name, scores in memberships['activation_scores'].items():
+                    annotation_df[f'activation_{act_name}'] = scores
+                annotation_df['composite_label'] = memberships['composite_labels']
 
             parquet_file = output_dir / f"{roi_id}_cell_types.parquet"
             annotation_df.to_parquet(parquet_file, index=False)
@@ -166,17 +175,39 @@ def main():
 
             if cluster_annotations is not None and isinstance(cluster_annotations, dict):
                 summary['n_clusters'] = len(cluster_annotations)
-                # Get mean confidence across cluster annotations
                 confidences = [ann.get('confidence', 0.0) for ann in cluster_annotations.values()]
                 summary['cluster_confidence_mean'] = float(np.mean(confidences)) if confidences else 0.0
+
+            # Add continuous membership summary
+            if memberships is not None:
+                ls = memberships['lineage_scores']
+                above_thresh = {ln: (scores > 0.3).sum() for ln, scores in ls.items()}
+                n_lineages = sum((scores > 0.3).astype(int) for scores in ls.values())
+                summary['membership'] = {
+                    'lineage_means': {ln: float(scores.mean()) for ln, scores in ls.items()},
+                    'lineage_above_threshold': {ln: int(c) for ln, c in above_thresh.items()},
+                    'n_mixed': int((n_lineages >= 2).sum()),
+                    'n_single_lineage': int((n_lineages == 1).sum()),
+                    'n_no_lineage': int((n_lineages == 0).sum()),
+                    'composite_counts': dict(zip(*np.unique(memberships['composite_labels'], return_counts=True))),
+                    'subtype_counts': dict(zip(*np.unique(memberships['subtype_labels'], return_counts=True))),
+                }
+                # Convert numpy int64 to int for JSON serialization
+                for key in ['composite_counts', 'subtype_counts']:
+                    summary['membership'][key] = {
+                        str(k): int(v) for k, v in summary['membership'][key].items()
+                    }
 
             batch_stats['roi_summaries'][roi_id] = summary
             batch_stats['n_rois_processed'] += 1
 
+            n_mixed = summary.get('membership', {}).get('n_mixed', 0)
+            n_single = summary.get('membership', {}).get('n_single_lineage', 0)
+            n_no_lin = summary.get('membership', {}).get('n_no_lineage', 0)
+
             print(f"  ✓ Complete")
-            print(f"    Assigned: {summary['n_assigned']}/{n_total} ({summary['assignment_rate']*100:.1f}%)")
-            print(f"    Ambiguous: {n_ambiguous} ({summary['ambiguity_rate']*100:.1f}%)")
-            print(f"    Top type: {summary['top_cell_type']} ({summary['top_cell_type_fraction']*100:.1f}%)")
+            print(f"    Discrete: {summary['n_assigned']}/{n_total} assigned ({summary['assignment_rate']*100:.1f}%)")
+            print(f"    Continuous: {n_single} single-lineage, {n_mixed} mixed, {n_no_lin} unresolved")
 
         except Exception as e:
             print(f"  ❌ Error: {e}")
@@ -206,15 +237,27 @@ def main():
         print(f"  Assignment rate: {np.mean(all_assignment_rates)*100:.1f}% ± {np.std(all_assignment_rates)*100:.1f}%")
         print(f"  Ambiguity rate: {np.mean(all_ambiguity_rates)*100:.1f}% ± {np.std(all_ambiguity_rates)*100:.1f}%")
 
-        # Count cell types across all ROIs
+        # Count discrete cell types across all ROIs
         all_cell_types = {}
         for roi_summary in batch_stats['roi_summaries'].values():
             for ct, count in roi_summary['cell_type_counts'].items():
                 all_cell_types[ct] = all_cell_types.get(ct, 0) + count
 
-        print(f"\nCell Type Distribution (All ROIs):")
+        print(f"\nDiscrete Cell Type Distribution (All ROIs):")
         for ct, count in sorted(all_cell_types.items(), key=lambda x: x[1], reverse=True):
             print(f"  {ct:40s}: {count:6d}")
+
+        # Continuous membership summary
+        any_membership = any('membership' in s for s in batch_stats['roi_summaries'].values())
+        if any_membership:
+            total_mixed = sum(s.get('membership', {}).get('n_mixed', 0) for s in batch_stats['roi_summaries'].values())
+            total_single = sum(s.get('membership', {}).get('n_single_lineage', 0) for s in batch_stats['roi_summaries'].values())
+            total_no = sum(s.get('membership', {}).get('n_no_lineage', 0) for s in batch_stats['roi_summaries'].values())
+            total_sp = total_mixed + total_single + total_no
+            print(f"\nContinuous Membership Summary (All ROIs):")
+            print(f"  Single-lineage:  {total_single:6d} ({100*total_single/total_sp:.1f}%)")
+            print(f"  Multi-lineage:   {total_mixed:6d} ({100*total_mixed/total_sp:.1f}%)")
+            print(f"  No lineage:      {total_no:6d} ({100*total_no/total_sp:.1f}%)")
 
     # Save batch summary
     summary_file = output_dir / 'batch_annotation_summary.json'

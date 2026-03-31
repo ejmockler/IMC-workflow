@@ -12,17 +12,24 @@
     "CD44": 862.1953873056232
   },
   "assignment_counts": {
-    "activated_immune_cd44": 122,
-    "activated_immune_cd140b": 45,
-    "m2_macrophage": 28,
+    "neutrophil": 35,
+    "activated_m2_cd44": 45,
+    "activated_m2_cd140b": 19,
+    "m2_macrophage": 20,
+    "activated_myeloid_cd44": 16,
+    "activated_myeloid_cd140b": 2,
+    "myeloid": 9,
+    "activated_immune": 16,
+    "immune_cells": 81,
     "activated_endothelial_cd44": 83,
     "activated_endothelial_cd140b": 87,
-    "activated_fibroblast": 53,
-    "neutrophil": 33,
-    "resting_endothelial": 46,
-    "unassigned": 1968
+    "endothelial": 46,
+    "activated_fibroblast_cd44": 75,
+    "activated_fibroblast_cd140b": 22,
+    "fibroblast": 76,
+    "unassigned": 1833
   },
-  "ambiguity_rate": 0.08275862068965517,
-  "n_multi_assigned": 204,
-  "unassigned_fraction": 0.7983772819472617
+  "ambiguity_rate": 0.05030425963488844,
+  "n_multi_assigned": 124,
+  "unassigned_fraction": 0.7436105476673428
 }

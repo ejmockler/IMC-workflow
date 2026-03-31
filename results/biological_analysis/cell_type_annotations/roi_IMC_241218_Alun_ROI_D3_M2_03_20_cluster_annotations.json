@@ -1,7 +1,7 @@
 {
   "0": {
     "cell_type": "neutrophil",
-    "confidence": 0.3333333333333333,
+    "confidence": 0.5,
     "n_cells": 482,
     "marker_enrichment": {
       "CD45": 0.9156653515972416,
@@ -16,8 +16,8 @@
     }
   },
   "1": {
-    "cell_type": "resting_endothelial",
-    "confidence": 0.6,
+    "cell_type": "immune_cells",
+    "confidence": 0.8333333333333334,
     "n_cells": 457,
     "marker_enrichment": {
       "CD45": 0.415374984321271,
@@ -32,8 +32,8 @@
     }
   },
   "2": {
-    "cell_type": "activated_immune_cd44",
-    "confidence": 0.75,
+    "cell_type": "activated_fibroblast_cd44",
+    "confidence": 0.6,
     "n_cells": 429,
     "marker_enrichment": {
       "CD45": 1.7693186095475122,
@@ -48,8 +48,8 @@
     }
   },
   "3": {
-    "cell_type": "resting_endothelial",
-    "confidence": 0.4,
+    "cell_type": "immune_cells",
+    "confidence": 0.8333333333333334,
     "n_cells": 421,
     "marker_enrichment": {
       "CD45": 0.9098091871030377,
@@ -64,8 +64,8 @@
     }
   },
   "4": {
-    "cell_type": "activated_immune_cd44",
-    "confidence": 0.75,
+    "cell_type": "activated_m2_cd44",
+    "confidence": 0.6666666666666666,
     "n_cells": 195,
     "marker_enrichment": {
       "CD45": 1.7942993837580576,
@@ -80,8 +80,8 @@
     }
   },
   "5": {
-    "cell_type": "resting_endothelial",
-    "confidence": 0.6,
+    "cell_type": "fibroblast",
+    "confidence": 0.8333333333333334,
     "n_cells": 125,
     "marker_enrichment": {
       "CD45": 0.3704249690975696,
@@ -112,8 +112,8 @@
     }
   },
   "7": {
-    "cell_type": "resting_endothelial",
-    "confidence": 0.6,
+    "cell_type": "fibroblast",
+    "confidence": 0.8333333333333334,
     "n_cells": 121,
     "marker_enrichment": {
       "CD45": 0.30355489833952826,
@@ -128,8 +128,8 @@
     }
   },
   "8": {
-    "cell_type": "neutrophil",
-    "confidence": 0.3333333333333333,
+    "cell_type": "immune_cells",
+    "confidence": 0.6666666666666666,
     "n_cells": 11,
     "marker_enrichment": {
       "CD45": 1.0123656535075964,
