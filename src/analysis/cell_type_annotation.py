@@ -210,85 +210,6 @@ def annotate_cell_types(
     return cell_type_labels, confidence_scores, annotation_metadata
 
 
-def hierarchical_annotation(
-    expression_matrix: np.ndarray,
-    marker_names: List[str],
-    hierarchical_config: Dict[str, Any],
-    threshold_config: Dict[str, Any]
-) -> Dict[str, np.ndarray]:
-    """
-    Perform hierarchical cell type annotation (lineage -> activation -> cell type).
-
-    Args:
-        expression_matrix: [n_superpixels, n_markers] arcsinh-transformed expression
-        marker_names: List of marker names
-        hierarchical_config: Hierarchical annotation configuration
-        threshold_config: Positivity threshold configuration
-
-    Returns:
-        Dictionary with hierarchical labels at each level
-    """
-    n_superpixels = expression_matrix.shape[0]
-
-    # Compute marker positivity
-    positivity_matrix, _ = compute_marker_positivity(
-        expression_matrix,
-        marker_names,
-        threshold_config.get('per_marker_override', {}),
-        threshold_config
-    )
-
-    results = {}
-
-    # Level 1: Lineage classification
-    if 'level_1_lineage' in hierarchical_config:
-        lineage_labels = np.array(['unknown'] * n_superpixels, dtype=object)
-
-        for lineage_name, lineage_def in hierarchical_config['level_1_lineage'].items():
-            gate_mask = apply_boolean_gate(
-                positivity_matrix,
-                marker_names,
-                lineage_def.get('positive', []),
-                lineage_def.get('negative', [])
-            )
-            # Priority: first match wins
-            unassigned = lineage_labels == 'unknown'
-            lineage_labels[gate_mask & unassigned] = lineage_name
-
-        results['lineage'] = lineage_labels
-
-    # Level 2: Activation state
-    if 'level_2_activation' in hierarchical_config:
-        activation_labels = np.array(['unknown'] * n_superpixels, dtype=object)
-
-        for activation_state, activation_def in hierarchical_config['level_2_activation'].items():
-            if 'any_positive' in activation_def:
-                # Any marker positive
-                any_positive_mask = np.zeros(n_superpixels, dtype=bool)
-                for marker in activation_def['any_positive']:
-                    if marker in marker_names:
-                        marker_idx = marker_names.index(marker)
-                        any_positive_mask |= positivity_matrix[:, marker_idx]
-
-                unassigned = activation_labels == 'unknown'
-                activation_labels[any_positive_mask & unassigned] = activation_state
-
-            elif 'all_negative' in activation_def:
-                # All markers negative
-                all_negative_mask = np.ones(n_superpixels, dtype=bool)
-                for marker in activation_def['all_negative']:
-                    if marker in marker_names:
-                        marker_idx = marker_names.index(marker)
-                        all_negative_mask &= ~positivity_matrix[:, marker_idx]
-
-                unassigned = activation_labels == 'unknown'
-                activation_labels[all_negative_mask & unassigned] = activation_state
-
-        results['activation'] = activation_labels
-
-    return results
-
-
 def compute_continuous_memberships(
     expression_matrix: np.ndarray,
     marker_names: List[str],
@@ -412,13 +333,6 @@ def compute_continuous_memberships(
     subtype_threshold = subtype_config.get('subtype_threshold', 0.3)
     subtype_defs = subtype_config.get('definitions', {})
 
-    # Reuse boolean thresholds already computed above (avoid duplicate call)
-    positivity_matrix, _ = compute_marker_positivity(
-        expression_matrix,
-        marker_names,
-        threshold_config.get('per_marker_override', {}),
-        threshold_config
-    )
     thresholds_used = boolean_thresholds
 
     # Compute subtype scores using geometric mean to normalize across marker count.
@@ -639,50 +553,6 @@ def annotate_clusters_by_enrichment(
     return cluster_annotations
 
 
-def save_cell_type_annotations(
-    roi_id: str,
-    cell_type_labels: np.ndarray,
-    confidence_scores: np.ndarray,
-    superpixel_ids: np.ndarray,
-    annotation_metadata: Dict[str, Any],
-    output_dir: Path
-) -> Path:
-    """
-    Save cell type annotations to disk in Parquet format.
-
-    Args:
-        roi_id: ROI identifier
-        cell_type_labels: [n_superpixels] cell type assignments
-        confidence_scores: [n_superpixels] confidence scores
-        superpixel_ids: [n_superpixels] superpixel identifiers
-        annotation_metadata: Annotation QC metadata
-        output_dir: Output directory path
-
-    Returns:
-        Path to saved Parquet file
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Create DataFrame
-    df = pd.DataFrame({
-        'roi_id': roi_id,
-        'superpixel_id': superpixel_ids,
-        'cell_type': cell_type_labels,
-        'confidence': confidence_scores
-    })
-
-    # Save to Parquet
-    output_path = output_dir / f"{roi_id}_cell_types.parquet"
-    df.to_parquet(output_path, compression='snappy', index=False)
-
-    # Save metadata separately
-    metadata_path = output_dir / f"{roi_id}_annotation_metadata.json"
-    with open(metadata_path, 'w') as f:
-        json.dump(annotation_metadata, f, indent=2)
-
-    return output_path
-
-
 def annotate_roi_from_results(
     roi_results: Dict[str, Any],
     config: 'Config',
@@ -775,65 +645,3 @@ def annotate_roi_from_results(
             results['cluster_annotations'] = cluster_annotations
 
     return results
-
-
-def batch_annotate_rois(
-    roi_results_dict: Dict[str, Dict[str, Any]],
-    config: 'Config',
-    scale: str = '10.0',
-    save_outputs: bool = True
-) -> Dict[str, Dict[str, Any]]:
-    """
-    Annotate multiple ROIs in batch.
-
-    Args:
-        roi_results_dict: Dictionary mapping ROI ID to results
-        config: Configuration object
-        scale: Spatial scale to annotate
-        save_outputs: Whether to save annotations to disk
-
-    Returns:
-        Dictionary mapping ROI ID to annotation results
-    """
-    all_annotations = {}
-
-    output_dir = Path(config.output_dir) / 'biological_analysis' / 'cell_type_annotations'
-
-    for roi_id, roi_results in roi_results_dict.items():
-        try:
-            annotations = annotate_roi_from_results(roi_results, config, scale)
-            all_annotations[roi_id] = annotations
-
-            # Save if requested
-            if save_outputs and 'cell_type_labels' in annotations:
-                # Generate superpixel IDs
-                n_superpixels = len(annotations['cell_type_labels'])
-                superpixel_ids = np.arange(n_superpixels)
-
-                save_cell_type_annotations(
-                    roi_id,
-                    annotations['cell_type_labels'],
-                    annotations['confidence_scores'],
-                    superpixel_ids,
-                    annotations['annotation_metadata'],
-                    output_dir
-                )
-
-        except Exception as e:
-            print(f"Warning: Failed to annotate ROI {roi_id}: {e}")
-            all_annotations[roi_id] = {'status': 'failed', 'error': str(e)}
-
-    # Save summary
-    if save_outputs:
-        summary = {
-            'n_rois_annotated': len([a for a in all_annotations.values() if 'cell_type_labels' in a]),
-            'n_rois_failed': len([a for a in all_annotations.values() if a.get('status') == 'failed']),
-            'scale_um': float(scale),
-            'cell_type_definitions': config.raw.get('cell_type_annotation', {}).get('cell_types', {})
-        }
-
-        summary_path = output_dir / 'annotation_summary.json'
-        with open(summary_path, 'w') as f:
-            json.dump(summary, f, indent=2)
-
-    return all_annotations
