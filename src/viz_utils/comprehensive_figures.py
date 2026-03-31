@@ -1,747 +1,645 @@
 """
-Comprehensive IMC Figure Generation - Using ALL Data
+Comprehensive IMC Figure Generation
 
-This module creates publication-quality figures that actually use all 25 ROIs
-and properly quantify the biological claims about kidney injury progression.
+Generates publication-quality figures from the dual annotation system:
+- Ternary lineage maps (RGB = immune/endothelial/stromal)
+- Temporal evolution grids
+- Interface composition analysis
+- Discrete cell type distributions
+- Activation overlays
+
+All figures are experiment-agnostic: type names, lineage axes, and
+temporal metadata are read from data products, never hardcoded.
+
+Data sources:
+- Per-ROI parquet: results/biological_analysis/cell_type_annotations/*.parquet
+- DA results: results/biological_analysis/differential_abundance/*.csv
+- Neighborhood results: results/biological_analysis/spatial_neighborhoods/*.csv
 """
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-from matplotlib.patches import Rectangle
-try:
-    import seaborn as sns
-    sns.set_style('whitegrid')
-except ImportError:
-    sns = None
-from scipy import stats
-from sklearn.neighbors import NearestNeighbors
-from typing import Dict, List, Optional, Tuple, Any
-import json
-import glob
+import matplotlib.colors as mcolors
+from matplotlib.patches import Patch
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 import logging
+
+from src.utils.metadata import parse_roi_metadata
+from src.utils.paths import get_paths
 
 logger = logging.getLogger(__name__)
 
-# Set publication-quality defaults
-plt.rcParams['font.family'] = 'Arial'
-plt.rcParams['font.size'] = 8
-plt.rcParams['axes.linewidth'] = 0.5
-plt.rcParams['lines.linewidth'] = 1
-plt.rcParams['xtick.major.width'] = 0.5
-plt.rcParams['ytick.major.width'] = 0.5
+# Palette for up to 8 ordered timepoints — extended dynamically if needed
+_DEFAULT_PALETTE = ['#4DAF4A', '#E41A1C', '#FF7F00', '#377EB8',
+                    '#984EA3', '#A65628', '#F781BF', '#999999']
+
+_PUBLICATION_RCPARAMS = {
+    'font.family': 'Arial',
+    'font.size': 8,
+    'axes.linewidth': 0.5,
+    'lines.linewidth': 1,
+    'xtick.major.width': 0.5,
+    'ytick.major.width': 0.5,
+}
 
 
-class ComprehensiveFigureGenerator:
-    """Generate figures using ALL ROI data with proper quantification."""
-    
-    def __init__(self, results_dir: str):
-        """Initialize with results directory.
-        
-        Args:
-            results_dir: Path to roi_results directory
-        """
-        self.results_dir = Path(results_dir)
-        self.roi_data = {}
-        self.cluster_phenotypes = {}
-        self.protein_names = ['CD45', 'CD11b', 'Ly6G', 'CD140a', 'CD140b', 
-                              'CD31', 'CD34', 'CD206', 'CD44']
-        
-        # Load all data
-        self._load_all_roi_data()
-        self._characterize_clusters()
-    
-    def _load_all_roi_data(self):
-        """Load data from ALL 25 ROIs."""
-        metadata_files = sorted(self.results_dir.glob("*_metadata.json"))
-        
-        for metadata_file in metadata_files:
-            roi_id = metadata_file.stem.replace('_metadata', '')
-            
-            # Load metadata
-            with open(metadata_file, 'r') as f:
-                metadata = json.load(f)
-            
-            # Load arrays
-            array_file = metadata_file.parent / f"{roi_id}_arrays.npz"
-            if array_file.exists():
-                arrays = np.load(array_file)
+def _infer_timepoint_order(timepoints: list) -> list:
+    """Order timepoints naturally: 'Sham'/'Control' first, then by numeric suffix."""
+    def _sort_key(tp: str):
+        tp_lower = tp.lower()
+        if tp_lower in ('sham', 'control', 'baseline'):
+            return (0, 0, tp)
+        # Extract numeric part (D1→1, D3→3, Day_7→7, etc.)
+        import re
+        nums = re.findall(r'\d+', tp)
+        return (1, int(nums[0]) if nums else 999, tp)
+    return sorted(timepoints, key=_sort_key)
+
+
+def _timepoint_colors(timepoints: list) -> dict:
+    """Assign colors to timepoints from palette."""
+    return {tp: _DEFAULT_PALETTE[i % len(_DEFAULT_PALETTE)]
+            for i, tp in enumerate(timepoints)}
+
+
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
+
+def load_all_annotations(annotations_dir: Optional[Path] = None) -> pd.DataFrame:
+    """Load all per-ROI annotation parquets into a single DataFrame with metadata."""
+    if annotations_dir is None:
+        annotations_dir = get_paths().annotations_dir
+
+    parquet_files = sorted(annotations_dir.glob('roi_*_cell_types.parquet'))
+    if not parquet_files:
+        raise FileNotFoundError(f"No annotation parquets in {annotations_dir}")
+
+    frames = []
+    for pf in parquet_files:
+        roi_id = pf.stem.replace('_cell_types', '')
+        df = pd.read_parquet(pf)
+        df['roi_id'] = roi_id
+
+        meta = parse_roi_metadata(roi_id)
+        df['timepoint'] = meta.get('timepoint', 'Unknown')
+        df['region'] = meta.get('region', 'Unknown')
+        df['mouse'] = meta.get('mouse', 'Unknown')
+
+        frames.append(df)
+
+    combined = pd.concat(frames, ignore_index=True)
+    combined = combined[combined['timepoint'] != 'Test']
+    return combined
+
+
+def _detect_lineage_cols(df: pd.DataFrame) -> List[str]:
+    """Return lineage column names found in DataFrame."""
+    return sorted([c for c in df.columns if c.startswith('lineage_')])
+
+
+def _detect_activation_cols(df: pd.DataFrame) -> List[str]:
+    """Return activation column names found in DataFrame."""
+    return sorted([c for c in df.columns if c.startswith('activation_')])
+
+
+def _lineage_display_name(col: str) -> str:
+    return col.replace('lineage_', '').capitalize()
+
+
+# ---------------------------------------------------------------------------
+# Figure 1: Ternary lineage map — the hero figure
+# ---------------------------------------------------------------------------
+
+def ternary_lineage_map(
+    roi_df: pd.DataFrame,
+    ax: plt.Axes,
+    lineage_cols: Optional[List[str]] = None,
+    title: Optional[str] = None,
+    point_size: float = 1.0,
+) -> None:
+    """
+    Plot a single ROI as an RGB ternary scatter of lineage scores.
+
+    Each superpixel's color is a blend:
+      R = immune score, G = stromal score, B = endothelial score.
+    Pure types are saturated primaries; interfaces are blends.
+    No-lineage superpixels are dark gray.
+    """
+    if lineage_cols is None:
+        lineage_cols = _detect_lineage_cols(roi_df)
+
+    if len(lineage_cols) < 3:
+        ax.text(0.5, 0.5, 'Need 3 lineage columns', ha='center', va='center',
+                transform=ax.transAxes)
+        return
+
+    # Map lineage columns to RGB channels (alphabetical → endothelial, immune, stromal)
+    # Force consistent mapping: immune=R, stromal=G, endothelial=B
+    col_map = {}
+    for col in lineage_cols:
+        name = col.replace('lineage_', '').lower()
+        if 'immune' in name:
+            col_map['R'] = col
+        elif 'stromal' in name:
+            col_map['G'] = col
+        elif 'endothelial' in name:
+            col_map['B'] = col
+
+    if len(col_map) < 3:
+        # Fallback: assign in order
+        for i, (channel, col) in enumerate(zip('RGB', lineage_cols[:3])):
+            col_map[channel] = col
+
+    r = roi_df[col_map['R']].values
+    g = roi_df[col_map['G']].values
+    b = roi_df[col_map['B']].values
+
+    # Build RGB array, already in [0, 1] from sigmoid normalization
+    rgb = np.column_stack([r, g, b])
+    rgb = np.clip(rgb, 0, 1)
+
+    # Global contrast stretch: map [p5, p95] of max-channel to [0.2, 1.0].
+    # Preserves relative intensity differences between superpixels (a dim
+    # interface stays dimmer than a bright pure-lineage region).
+    row_max = rgb.max(axis=1)
+    p5, p95 = np.percentile(row_max, [5, 95])
+    denom = max(p95 - p5, 0.01)
+    brightness = np.clip((row_max - p5) / denom, 0.0, 1.0) * 0.8 + 0.2
+
+    # Scale each pixel's RGB so its max channel equals the computed brightness
+    current_max = np.maximum(row_max, 1e-6)
+    rgb_boosted = rgb * (brightness / current_max)[:, np.newaxis]
+    rgb_boosted = np.clip(rgb_boosted, 0, 1)
+
+    # Darken no-lineage superpixels (all scores below threshold)
+    no_signal = (row_max < 0.15)
+    rgb_boosted[no_signal] = 0.15  # dark gray
+
+    x = roi_df['x'].values
+    y = roi_df['y'].values
+
+    ax.scatter(x, y, c=rgb_boosted, s=point_size, marker='s', edgecolors='none')
+    ax.set_aspect('equal')
+    ax.invert_yaxis()
+    ax.axis('off')
+
+    if title:
+        ax.set_title(title, fontsize=8, fontweight='bold')
+
+
+def figure_ternary_legend(ax: plt.Axes, lineage_cols: List[str]) -> None:
+    """Draw an RGB legend for the ternary lineage map."""
+    labels = {
+        'R': ('Immune', '#FF0000'),
+        'G': ('Stromal', '#00FF00'),
+        'B': ('Endothelial', '#0000FF'),
+    }
+    # Blends
+    blend_labels = [
+        ('Immune + Endothelial', '#FF00FF'),
+        ('Immune + Stromal', '#FFFF00'),
+        ('Endothelial + Stromal', '#00FFFF'),
+        ('No lineage', '#262626'),
+    ]
+    patches = [Patch(facecolor=color, label=label) for label, color in labels.values()]
+    patches += [Patch(facecolor=color, label=label) for label, color in blend_labels]
+    ax.legend(handles=patches, loc='center', fontsize=7, frameon=False, ncol=2)
+    ax.axis('off')
+
+
+# ---------------------------------------------------------------------------
+# Figure 2: Temporal ternary grid
+# ---------------------------------------------------------------------------
+
+def figure_temporal_ternary_grid(
+    all_df: pd.DataFrame,
+    figsize: Tuple[float, float] = (16, 12),
+    max_rois_per_timepoint: int = 6,
+) -> plt.Figure:
+    """
+    Grid of ternary lineage maps: rows = timepoints, columns = ROIs.
+
+    Shows how the tissue lineage landscape evolves from Sham through injury.
+    """
+    lineage_cols = _detect_lineage_cols(all_df)
+    timepoints = _infer_timepoint_order([tp for tp in all_df['timepoint'].unique()])
+
+    # Group ROIs by timepoint
+    roi_groups = {}
+    for tp in timepoints:
+        rois = sorted(all_df[all_df['timepoint'] == tp]['roi_id'].unique())
+        roi_groups[tp] = rois[:max_rois_per_timepoint]
+
+    n_cols = max(len(rois) for rois in roi_groups.values()) + 1  # +1 for legend
+    n_rows = len(timepoints)
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
+    if n_rows == 1:
+        axes = axes[np.newaxis, :]
+
+    for row_idx, tp in enumerate(timepoints):
+        rois = roi_groups[tp]
+        for col_idx in range(n_cols - 1):
+            ax = axes[row_idx, col_idx]
+            if col_idx < len(rois):
+                roi_id = rois[col_idx]
+                roi_df = all_df[all_df['roi_id'] == roi_id]
+                meta = parse_roi_metadata(roi_id)
+                region = meta.get('region', '')
+                label = f"{tp} — {region}"
+                ternary_lineage_map(roi_df, ax, lineage_cols, title=label)
             else:
-                arrays = None
-            
-            # Store both
-            self.roi_data[roi_id] = {
-                'metadata': metadata,
-                'arrays': arrays,
-                'condition': metadata['roi_metadata']['condition'],
-                'timepoint': metadata['roi_metadata']['timepoint'],
-                'region': metadata['roi_metadata']['region'],
-                'replicate': metadata['roi_metadata'].get('replicate_id', 'Unknown')
-            }
-        
-        logger.info(f"Loaded {len(self.roi_data)} ROIs")
-        
-        # Verify balanced design
-        self._verify_experimental_design()
-    
-    def _verify_experimental_design(self):
-        """Check the experimental design balance."""
-        design = {}
-        for roi_id, data in self.roi_data.items():
-            key = f"{data['condition']}_D{data['timepoint']}_{data['region']}"
-            if key not in design:
-                design[key] = []
-            design[key].append(roi_id)
-        
-        print("Experimental Design:")
-        for key in sorted(design.keys()):
-            print(f"  {key}: {len(design[key])} ROIs")
-    
-    def _characterize_clusters(self):
-        """Determine biological identity of clusters using ALL ROIs."""
-        # Collect cluster centroids from all ROIs
-        all_centroids = {str(i): [] for i in range(8)}
-        
-        for roi_id, data in self.roi_data.items():
-            if 'multiscale_metadata' in data['metadata']:
-                # Use 20μm scale as standard
-                scale_data = data['metadata']['multiscale_metadata'].get('scale_20.0', {})
-                centroids = scale_data.get('cluster_centroids', {})
-                
-                for cluster_id, expression in centroids.items():
-                    if cluster_id in all_centroids:
-                        all_centroids[cluster_id].append(expression)
-        
-        # Calculate mean expression across all ROIs
-        cluster_profiles = {}
-        for cluster_id, expression_list in all_centroids.items():
-            if expression_list:
-                # Average across all ROIs
-                mean_expression = {}
-                for protein in self.protein_names:
-                    values = [expr[protein] for expr in expression_list if protein in expr]
-                    mean_expression[protein] = np.mean(values) if values else 0
-                cluster_profiles[cluster_id] = mean_expression
-        
-        # Assign biological names based on marker patterns
-        self._assign_cluster_names(cluster_profiles)
-    
-    def _assign_cluster_names(self, cluster_profiles: Dict):
-        """Assign biological names to clusters based on expression patterns."""
-        cluster_names = {}
-        
-        for cluster_id, profile in cluster_profiles.items():
-            # Find dominant markers
-            sorted_markers = sorted(profile.items(), key=lambda x: x[1], reverse=True)
-            top_marker = sorted_markers[0][0]
-            top_value = sorted_markers[0][1]
-            
-            # Biological interpretation
-            if top_value < -0.5:
-                # All markers low
-                cluster_names[cluster_id] = "Background/Low"
-            elif top_marker == 'CD45':
-                if profile.get('CD11b', 0) > 0.5:
-                    if profile.get('Ly6G', 0) > 0.5:
-                        cluster_names[cluster_id] = "CD45+CD11b+Ly6G+ Neutrophils"
-                    else:
-                        cluster_names[cluster_id] = "CD45+CD11b+ Myeloid"
-                else:
-                    cluster_names[cluster_id] = "CD45+ Leukocytes"
-            elif top_marker == 'CD31':
-                cluster_names[cluster_id] = "CD31+ Endothelial"
-            elif top_marker == 'CD140a' or top_marker == 'CD140b':
-                cluster_names[cluster_id] = "CD140a/b+ Fibroblasts"
-            elif top_marker == 'CD206':
-                cluster_names[cluster_id] = "CD206+ M2 Macrophages"
-            elif top_marker == 'CD44':
-                cluster_names[cluster_id] = "CD44+ Activated/Stem"
-            elif top_marker == 'CD34':
-                cluster_names[cluster_id] = "CD34+ Progenitor"
-            else:
-                cluster_names[cluster_id] = f"{top_marker}+ Cells"
-        
-        self.cluster_phenotypes = cluster_names
-        self.cluster_profiles = cluster_profiles
-    
-    def figure1_cluster_quantification(self) -> plt.Figure:
-        """Create Figure 1: Cluster identity and quantification across ALL ROIs.
-        
-        Returns:
-            Figure with comprehensive cluster analysis
-        """
-        fig = plt.figure(figsize=(18, 10))
-        
-        # Create a more organized grid layout
-        gs = gridspec.GridSpec(2, 4, figure=fig, 
-                              hspace=0.35, wspace=0.4,
-                              width_ratios=[1, 1, 1, 0.8])
-        
-        # Top row
-        # Panel A: Cluster phenotype heatmap (top left, wider)
-        ax_heatmap = fig.add_subplot(gs[0, :2])
-        self._plot_cluster_heatmap(ax_heatmap)
-        
-        # Panel B: Cluster frequency heatmap (top right)
-        ax_stats = fig.add_subplot(gs[0, 2:])
-        self._plot_statistical_tests(ax_stats)
-        
-        # Bottom row
-        # Panel C: Temporal abundance (bottom left, 2 cols)
-        ax_abundance = fig.add_subplot(gs[1, :2])
-        self._plot_cluster_abundance(ax_abundance)
-        
-        # Panel D: Regional distribution (bottom middle)
-        ax_regional = fig.add_subplot(gs[1, 2])
-        self._plot_regional_distribution(ax_regional)
-        
-        # Panel E: Representative spatial map (bottom right)
-        ax_spatial = fig.add_subplot(gs[1, 3])
-        self._plot_example_spatial(ax_spatial)
-        
-        plt.suptitle('Figure 1: Comprehensive Cluster Analysis Across All 25 ROIs', 
-                    fontsize=14, fontweight='bold', y=0.98)
-        
-        return fig
-    
-    def _plot_cluster_heatmap(self, ax):
-        """Plot cluster phenotype heatmap with log scale."""
-        # Create matrix for heatmap
-        matrix = []
-        cluster_labels = []
-        
-        for cluster_id in sorted(self.cluster_profiles.keys()):
-            row = [self.cluster_profiles[cluster_id].get(protein, 0) 
-                   for protein in self.protein_names]
-            matrix.append(row)
-            cluster_labels.append(f"C{cluster_id}: {self.cluster_phenotypes.get(cluster_id, 'Unknown')[:20]}")
-        
-        # Convert to numpy array and apply log transformation
-        matrix = np.array(matrix)
-        # Add small constant to avoid log(0)
-        matrix_log = np.log10(matrix + 0.1)
-        
-        # Plot heatmap with better color intensity
-        im = ax.imshow(matrix_log, aspect='auto', cmap='viridis', 
-                      vmin=np.log10(0.1), vmax=np.log10(2))
-        
-        # Add gridlines for clarity
-        for i in range(len(cluster_labels)):
-            ax.axhline(i + 0.5, color='white', linewidth=0.5)
-        for i in range(len(self.protein_names)):
-            ax.axvline(i + 0.5, color='white', linewidth=0.5)
-        
-        # Add labels
-        ax.set_xticks(range(len(self.protein_names)))
-        ax.set_xticklabels(self.protein_names, rotation=45, ha='right', fontsize=9)
-        ax.set_yticks(range(len(cluster_labels)))
-        ax.set_yticklabels(cluster_labels, fontsize=8)
-        
-        # Add colorbar with log scale labels
-        cbar = plt.colorbar(im, ax=ax, label='Log10(Expression + 0.1)')
-        # Set colorbar tick labels to show actual values
-        cbar_ticks = [np.log10(0.1), np.log10(0.5), np.log10(1.0), np.log10(2.0)]
-        cbar.set_ticks(cbar_ticks)
-        cbar.set_ticklabels(['0.1', '0.5', '1.0', '2.0'])
-        
-        ax.set_title('A. Cluster Phenotypes (Log Scale)', fontweight='bold')
-        ax.set_xlabel('Protein Markers')
-        ax.set_ylabel('Cluster Identity')
-    
-    def _plot_cluster_abundance(self, ax):
-        """Plot cluster abundance across all conditions and timepoints."""
-        # Calculate cluster frequencies for each ROI
-        cluster_data = []
-        
-        for roi_id, data in self.roi_data.items():
-            if data['arrays'] is not None:
-                # Get cluster labels at 20μm scale
-                cluster_labels = data['arrays']['scale_20.0_cluster_labels']
-                
-                # Calculate frequencies
-                unique, counts = np.unique(cluster_labels, return_counts=True)
-                total = len(cluster_labels)
-                
-                for cluster_id, count in zip(unique, counts):
-                    cluster_data.append({
-                        'ROI': roi_id,
-                        'Condition': data['condition'],
-                        'Timepoint': data['timepoint'],
-                        'Region': data['region'],
-                        'Cluster': str(cluster_id),
-                        'Frequency': count / total * 100,
-                        'ClusterName': self.cluster_phenotypes.get(str(cluster_id), f'Cluster {cluster_id}')
-                    })
-        
-        # Convert to DataFrame
-        df = pd.DataFrame(cluster_data)
-        
-        # Create grouped bar plot
-        conditions_order = ['Sham', 'Injury', 'Test']
-        timepoints = sorted(df['Timepoint'].unique())
-        
-        x = np.arange(len(timepoints))
-        width = 0.8 / 8  # Width for 8 clusters
-        
-        for i, cluster_id in enumerate(sorted(df['Cluster'].unique())):
-            cluster_df = df[df['Cluster'] == cluster_id]
-            
-            means = []
-            sems = []
-            
-            for tp in timepoints:
-                # Get data for this timepoint (across all conditions)
-                tp_data = cluster_df[cluster_df['Timepoint'] == tp]['Frequency']
-                means.append(tp_data.mean() if len(tp_data) > 0 else 0)
-                sems.append(tp_data.sem() if len(tp_data) > 0 else 0)
-            
-            # Plot bars
-            bars = ax.bar(x + i * width, means, width, yerr=sems,
-                          label=self.cluster_phenotypes.get(cluster_id, f'C{cluster_id}')[:15],
-                          capsize=2)
-        
-        ax.set_xlabel('Days Post-Injury')
-        ax.set_ylabel('Cluster Frequency (%)')
-        ax.set_title('C. Temporal Dynamics of Cluster Abundance', fontweight='bold')
-        ax.set_xticks(x + width * 3.5)
-        ax.set_xticklabels([f'D{tp}' for tp in timepoints])
-        # Place legend inside the plot area
-        ax.legend(loc='upper right', fontsize=7, ncol=2, framealpha=0.9)
-        ax.grid(axis='y', alpha=0.3)
-    
-    def _plot_regional_distribution(self, ax):
-        """Plot regional differences in cluster distribution - simplified."""
-        # Prepare data
-        cluster_data = []
-        
-        for roi_id, data in self.roi_data.items():
-            if data['arrays'] is not None:
-                cluster_labels = data['arrays']['scale_20.0_cluster_labels']
-                unique, counts = np.unique(cluster_labels, return_counts=True)
-                total = len(cluster_labels)
-                
-                for cluster_id, count in zip(unique, counts):
-                    cluster_data.append({
-                        'Region': data['region'],
-                        'Cluster': str(cluster_id),
-                        'Frequency': count / total * 100
-                    })
-        
-        if cluster_data:
-            df = pd.DataFrame(cluster_data)
-            
-            # Aggregate by region
-            pivot = df.pivot_table(
-                values='Frequency',
-                index='Cluster', 
-                columns='Region',
-                aggfunc='mean'
-            )
-            
-            # Simple bar plot
-            pivot.plot(kind='bar', ax=ax, width=0.7, 
-                      color=['skyblue', 'salmon'], alpha=0.8)
-            
-            ax.set_xlabel('Cluster')
-            ax.set_ylabel('Mean Frequency (%)')
-            ax.set_title('D. Regional Distribution', fontweight='bold', fontsize=10)
-            ax.legend(title='Region', loc='upper right', fontsize=8)
-            ax.set_xticklabels([f'C{i}' for i in range(8)], rotation=0)
-            ax.grid(axis='y', alpha=0.3)
-    
-    def _plot_statistical_tests(self, ax):
-        """Plot descriptive heatmap of mean cluster frequencies by timepoint.
-
-        Note: Significance tests removed. With n=2 mice per timepoint,
-        formal hypothesis testing is underpowered and misleading.
-        Descriptive summaries are shown instead.
-        """
-        cluster_data = []
-        for roi_id, data in self.roi_data.items():
-            if data['arrays'] is not None and data['condition'] == 'Injury':
-                cluster_labels = data['arrays']['scale_20.0_cluster_labels']
-                unique, counts = np.unique(cluster_labels, return_counts=True)
-                total = len(cluster_labels)
-
-                for cluster_id, count in zip(unique, counts):
-                    cluster_data.append({
-                        'Timepoint': data['timepoint'],
-                        'Cluster': str(cluster_id),
-                        'Frequency': count / total * 100
-                    })
-
-        if not cluster_data:
-            ax.text(0.5, 0.5, 'Insufficient data', ha='center', va='center',
-                    transform=ax.transAxes)
-            ax.set_title('B. Cluster Frequency by Timepoint', fontweight='bold', fontsize=10)
-            return
-
-        df = pd.DataFrame(cluster_data)
-
-        # Build mean-frequency pivot: clusters (rows) x timepoints (cols)
-        pivot = df.pivot_table(
-            values='Frequency',
-            index='Cluster',
-            columns='Timepoint',
-            aggfunc='mean'
-        )
-        pivot = pivot.sort_index()
-
-        # Relabel rows with phenotype names
-        row_labels = [self.cluster_phenotypes.get(c, f'C{c}')[:20] for c in pivot.index]
-        col_labels = [str(tp) for tp in pivot.columns]
-
-        im = ax.imshow(pivot.values, aspect='auto', cmap='YlOrRd')
-
-        ax.set_xticks(range(len(col_labels)))
-        ax.set_xticklabels(col_labels, fontsize=8)
-        ax.set_yticks(range(len(row_labels)))
-        ax.set_yticklabels(row_labels, fontsize=7)
-
-        # Annotate cells with frequency values
-        for i in range(pivot.shape[0]):
-            for j in range(pivot.shape[1]):
-                val = pivot.values[i, j]
-                text_color = 'white' if val > pivot.values.max() * 0.6 else 'black'
-                ax.text(j, i, f'{val:.1f}%', ha='center', va='center',
-                        fontsize=7, color=text_color)
-
-        cbar = plt.colorbar(im, ax=ax, label='Mean Frequency (%)')
-        cbar.ax.tick_params(labelsize=7)
-
-        ax.set_title('B. Cluster Frequency by Timepoint\n(Injury ROIs, descriptive)',
-                      fontweight='bold', fontsize=10)
-        ax.set_xlabel('Days Post-Injury')
-        ax.set_ylabel('Cluster')
-    
-    def _plot_example_spatial(self, ax):
-        """Plot example spatial map with DNA reference underlay when available."""
-        # Select one representative ROI
-        injury_d3_rois = [roi for roi, data in self.roi_data.items()
-                         if data['condition'] == 'Injury' and data['timepoint'] == 3]
-
-        if injury_d3_rois:
-            roi_id = injury_d3_rois[0]
-            data = self.roi_data[roi_id]
-
-            if data['arrays'] is not None:
-                # Get spatial data
-                labels = data['arrays']['scale_20.0_superpixel_labels']
-                clusters = data['arrays']['scale_20.0_cluster_labels']
-
-                # Create cluster map
-                cluster_map = np.zeros_like(labels, dtype=float)
-                for i in range(len(clusters)):
-                    mask = labels == i
-                    cluster_map[mask] = clusters[i]
-
-                # Render DNA reference underlay if available
-                dna_key = 'scale_20.0_composite_dna'
-                if dna_key in data['arrays']:
-                    from src.viz_utils.plotting import _render_reference_underlay
-                    dna_img = data['arrays'][dna_key]
-                    bounds = (0, dna_img.shape[1], 0, dna_img.shape[0])
-                    _render_reference_underlay(ax, dna_img, bounds, alpha=0.4)
-                    extent = list(bounds)
-                    im = ax.imshow(cluster_map, cmap='tab10', interpolation='nearest',
-                                   extent=extent, alpha=0.7, zorder=2)
-                else:
-                    im = ax.imshow(cluster_map, cmap='tab10', interpolation='nearest')
-
-                ax.set_title(f'E. Example: {roi_id[:20]}\nDay 3 Injury', fontweight='bold', fontsize=8)
                 ax.axis('off')
 
-                # Add scale bar (1μm per pixel)
-                scalebar_length = 100  # 100 pixels = 100μm
-                ax.plot([10, 10 + scalebar_length], [480, 480], 'white', linewidth=2)
-                ax.text(10 + scalebar_length/2, 490, '100μm', color='white',
-                       ha='center', fontsize=7)
+        # Legend in last column
+        ax_legend = axes[row_idx, -1]
+        if row_idx == 0:
+            figure_ternary_legend(ax_legend, lineage_cols)
         else:
-            ax.text(0.5, 0.5, 'No Day 3 Injury ROIs', ha='center', va='center')
+            ax_legend.axis('off')
+
+    fig.suptitle(f'Lineage Landscape: {" → ".join(timepoints)}',
+                 fontsize=14, fontweight='bold', y=1.01)
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Figure 3: Interface composition heatmap
+# ---------------------------------------------------------------------------
+
+def figure_interface_composition(
+    all_df: pd.DataFrame,
+    figsize: Tuple[float, float] = (14, 5),
+    threshold: float = 0.3,
+) -> plt.Figure:
+    """
+    Heatmap showing what fraction of tissue is occupied by each lineage pair,
+    across timepoints. Captures the interface biology.
+    """
+    lineage_cols = _detect_lineage_cols(all_df)
+    lineage_names = [c.replace('lineage_', '') for c in lineage_cols]
+    timepoints = _infer_timepoint_order([tp for tp in all_df['timepoint'].unique()])
+
+    # For each superpixel, determine which lineages are above threshold
+    n_tp = len(timepoints)
+    n_combos = len(lineage_names) + len(lineage_names) * (len(lineage_names) - 1) // 2 + 1
+
+    # Build combo labels: single lineages, pairs, and "none"
+    combo_labels = []
+    for ln in lineage_names:
+        combo_labels.append(ln)
+    for i, ln1 in enumerate(lineage_names):
+        for ln2 in lineage_names[i + 1:]:
+            combo_labels.append(f"{ln1}+{ln2}")
+    combo_labels.append("none")
+
+    # Count per timepoint
+    data = np.zeros((len(combo_labels), n_tp))
+
+    for tp_idx, tp in enumerate(timepoints):
+        tp_df = all_df[all_df['timepoint'] == tp]
+        n_total = len(tp_df)
+        if n_total == 0:
+            continue
+
+        above = {}
+        for col, name in zip(lineage_cols, lineage_names):
+            above[name] = (tp_df[col].values > threshold)
+
+        for sp_idx in range(n_total):
+            active = [name for name in lineage_names if above[name][sp_idx]]
+
+            if len(active) == 0:
+                label = "none"
+            elif len(active) == 1:
+                label = active[0]
+            else:
+                # Take the top 2 lineages for pair label
+                scores = [(name, tp_df.iloc[sp_idx][f'lineage_{name}']) for name in active]
+                scores.sort(key=lambda x: -x[1])
+                pair = sorted([scores[0][0], scores[1][0]])
+                label = f"{pair[0]}+{pair[1]}"
+
+            if label in combo_labels:
+                data[combo_labels.index(label), tp_idx] += 1
+
+        data[:, tp_idx] = data[:, tp_idx] / n_total * 100
+
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(data, aspect='auto', cmap='YlOrRd')
+
+    ax.set_xticks(range(n_tp))
+    ax.set_xticklabels(timepoints, fontsize=10)
+    ax.set_yticks(range(len(combo_labels)))
+    ax.set_yticklabels([n.replace('_', ' ').title() for n in combo_labels], fontsize=9)
+
+    # Annotate cells
+    for i in range(len(combo_labels)):
+        for j in range(n_tp):
+            val = data[i, j]
+            color = 'white' if val > data.max() * 0.5 else 'black'
+            ax.text(j, i, f'{val:.1f}%', ha='center', va='center',
+                    fontsize=8, color=color)
+
+    plt.colorbar(im, ax=ax, label='% of Superpixels', shrink=0.8)
+    ax.set_title('Tissue Composition by Lineage Combinations',
+                 fontsize=12, fontweight='bold')
+    ax.set_xlabel('Timepoint')
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Figure 4: Discrete cell type distribution
+# ---------------------------------------------------------------------------
+
+def figure_discrete_type_distribution(
+    all_df: pd.DataFrame,
+    figsize: Tuple[float, float] = (14, 6),
+) -> plt.Figure:
+    """
+    Stacked bar chart of discrete cell type proportions by timepoint.
+    Type names read from data, not hardcoded.
+    """
+    timepoints = _infer_timepoint_order([tp for tp in all_df['timepoint'].unique()])
+
+    # Get all cell types (excluding unassigned)
+    all_types = sorted([t for t in all_df['cell_type'].unique() if t != 'unassigned'])
+
+    # Compute proportions per timepoint (mouse-level mean)
+    data = []
+    for tp in timepoints:
+        tp_df = all_df[all_df['timepoint'] == tp]
+        mice = tp_df['mouse'].unique()
+        mouse_props = []
+        for mouse in mice:
+            m_df = tp_df[tp_df['mouse'] == mouse]
+            n_assigned = (m_df['cell_type'] != 'unassigned').sum()
+            if n_assigned == 0:
+                n_assigned = 1  # avoid div by zero
+            props = {}
+            for ct in all_types:
+                props[ct] = (m_df['cell_type'] == ct).sum() / n_assigned * 100
+            mouse_props.append(props)
+
+        # Mean across mice
+        mean_props = {}
+        for ct in all_types:
+            vals = [mp[ct] for mp in mouse_props]
+            mean_props[ct] = np.mean(vals)
+        data.append(mean_props)
+
+    # Build color palette from config if available, otherwise generate
+    colors = {}
+    try:
+        from src.config import Config
+        config = Config('config.json')
+        ct_defs = config.raw.get('cell_type_annotation', {}).get('cell_types', {})
+        colors = {name: defn.get('color', None) for name, defn in ct_defs.items()}
+    except Exception:
+        pass
+
+    # Fallback palette
+    cmap = plt.cm.get_cmap('tab20', len(all_types))
+    for i, ct in enumerate(all_types):
+        if ct not in colors or colors[ct] is None:
+            colors[ct] = mcolors.to_hex(cmap(i))
+
+    fig, ax = plt.subplots(figsize=figsize)
+    x = np.arange(len(timepoints))
+    bottom = np.zeros(len(timepoints))
+
+    for ct in all_types:
+        vals = [data[i].get(ct, 0) for i in range(len(timepoints))]
+        ax.bar(x, vals, bottom=bottom, label=ct.replace('_', ' ').title(),
+               color=colors.get(ct, '#888888'), width=0.6, edgecolor='white',
+               linewidth=0.3)
+        bottom += vals
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(timepoints, fontsize=11)
+    ax.set_ylabel('% of Assigned Superpixels (Mouse-Level Mean)')
+    ax.set_title('Discrete Cell Type Composition by Timepoint',
+                 fontsize=12, fontweight='bold')
+    ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=7)
+    ax.set_xlim(-0.5, len(timepoints) - 0.5)
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Figure 5: Activation overlay on ternary map
+# ---------------------------------------------------------------------------
+
+def figure_activation_overlay(
+    all_df: pd.DataFrame,
+    activation_col: str = 'activation_cd44',
+    figsize: Tuple[float, float] = (16, 4),
+) -> plt.Figure:
+    """
+    Ternary lineage map with brightness modulated by activation score.
+
+    One panel per timepoint (representative ROI). Activated regions glow
+    brighter; resting regions are dimmer.
+    """
+    lineage_cols = _detect_lineage_cols(all_df)
+    timepoints = _infer_timepoint_order([tp for tp in all_df['timepoint'].unique()])
+
+    fig, axes = plt.subplots(1, len(timepoints), figsize=figsize)
+    if len(timepoints) == 1:
+        axes = [axes]
+
+    for i, tp in enumerate(timepoints):
+        ax = axes[i]
+        tp_df = all_df[all_df['timepoint'] == tp]
+
+        # Pick representative ROI (first one)
+        roi_id = sorted(tp_df['roi_id'].unique())[0]
+        roi_df = tp_df[tp_df['roi_id'] == roi_id].copy()
+
+        if activation_col not in roi_df.columns:
+            ax.text(0.5, 0.5, f'No {activation_col}', ha='center', va='center',
+                    transform=ax.transAxes)
             ax.axis('off')
-    
-    def figure2_spatial_analysis(self) -> plt.Figure:
-        """Create Figure 2: Spatial neighborhood analysis.
-        
-        Returns:
-            Figure with spatial metrics
-        """
-        fig = plt.figure(figsize=(18, 12))
-        gs = gridspec.GridSpec(3, 3, figure=fig, 
-                              hspace=0.4, wspace=0.35,
-                              height_ratios=[1.2, 1, 1])
-        
-        # Panel A: Spatial heterogeneity (full width top)
-        ax_neighbor = fig.add_subplot(gs[0, :])
-        self._plot_neighborhood_composition(ax_neighbor)
-        
-        # Panel B-D: Protein colocalization (middle row)
-        for i in range(3):
-            ax = fig.add_subplot(gs[1, i])
-            self._plot_protein_colocalization(ax, i)
-        
-        # Panel E: Temporal clustering changes (bottom row, spans 2 columns)
-        ax_clustering = fig.add_subplot(gs[2, :2])
-        self._plot_clustering_metrics(ax_clustering)
-        
-        # Panel F: Regional differences (bottom right)
-        ax_regional = fig.add_subplot(gs[2, 2])
-        self._plot_regional_heterogeneity(ax_regional)
-        
-        plt.suptitle('Figure 2: Spatial Analysis of Cellular Organization', 
-                    fontsize=14, fontweight='bold', y=0.98)
-        
-        return fig
-    
-    def _plot_neighborhood_composition(self, ax):
-        """Plot spatial heterogeneity metrics instead of meaningless cluster neighbors."""
-        heterogeneity_data = []
-        
-        for roi_id, data in self.roi_data.items():
-            if data['arrays'] is not None:
-                # Get protein expression for each superpixel
-                proteins_data = {}
-                for protein in self.protein_names:
-                    key = f'scale_20.0_transformed_arrays_{protein}'
-                    if key in data['arrays']:
-                        proteins_data[protein] = data['arrays'][key]
-                
-                if proteins_data:
-                    # Get coordinates
-                    coords = data['arrays']['scale_20.0_superpixel_coords']
-                    
-                    # Calculate spatial heterogeneity for each protein
-                    if len(coords) > 10:
-                        nbrs = NearestNeighbors(n_neighbors=min(6, len(coords)-1))
-                        nbrs.fit(coords)
-                        distances, indices = nbrs.kneighbors(coords)
-                        
-                        for protein, expression in proteins_data.items():
-                            # Calculate local variance in expression
-                            local_variances = []
-                            for i in range(len(coords)):
-                                neighbor_idx = indices[i]
-                                neighbor_expr = expression[neighbor_idx]
-                                local_var = np.var(neighbor_expr)
-                                local_variances.append(local_var)
-                            
-                            # Global variance for comparison
-                            global_var = np.var(expression)
-                            
-                            # Heterogeneity index: ratio of mean local to global variance
-                            heterogeneity = np.mean(local_variances) / (global_var + 1e-10)
-                            
-                            heterogeneity_data.append({
-                                'ROI': roi_id,
-                                'Condition': data['condition'],
-                                'Timepoint': data['timepoint'],
-                                'Region': data['region'],
-                                'Protein': protein,
-                                'Heterogeneity': heterogeneity,
-                                'GlobalVar': global_var,
-                                'LocalVar': np.mean(local_variances)
-                            })
-        
-        if heterogeneity_data:
-            df = pd.DataFrame(heterogeneity_data)
-            
-            # Plot heterogeneity by condition and protein
-            conditions = ['Sham', 'Injury']
-            n_proteins = len(self.protein_names)
-            
-            # Create grouped bar plot
-            x = np.arange(n_proteins)
-            width = 0.35
-            
-            for i, condition in enumerate(conditions):
-                cond_data = df[df['Condition'] == condition]
-                means = []
-                errors = []
-                
-                for protein in self.protein_names:
-                    protein_data = cond_data[cond_data['Protein'] == protein]['Heterogeneity']
-                    if len(protein_data) > 0:
-                        means.append(protein_data.mean())
-                        errors.append(protein_data.std() / np.sqrt(len(protein_data)))
-                    else:
-                        means.append(0)
-                        errors.append(0)
-                
-                ax.bar(x + i*width - width/2, means, width, 
-                      label=condition, yerr=errors, capsize=3,
-                      alpha=0.8, edgecolor='black', linewidth=1)
-            
-            ax.set_xlabel('Protein')
-            ax.set_ylabel('Spatial Heterogeneity Index')
-            ax.set_title('A. Spatial Heterogeneity of Protein Expression', fontweight='bold')
-            ax.set_xticks(x)
-            ax.set_xticklabels(self.protein_names, rotation=45, ha='right')
-            ax.legend(title='Condition')
-            ax.grid(axis='y', alpha=0.3)
-            
-            # Note: Significance annotations removed. With n=2 mice per condition,
-            # Mann-Whitney on superpixel-level data is pseudoreplicated.
-            # Effect sizes should be computed at mouse level; see
-            # differential_abundance_analysis.py for correct statistical tests.
-        else:
-            ax.text(0.5, 0.5, 'Insufficient data for heterogeneity analysis',
-                   ha='center', va='center')
-    
-    def _plot_clustering_metrics(self, ax):
-        """Plot spatial clustering metrics."""
-        metrics_data = []
-        
-        for roi_id, data in self.roi_data.items():
-            if data['arrays'] is not None:
-                coords = data['arrays']['scale_20.0_superpixel_coords']
-                clusters = data['arrays']['scale_20.0_cluster_labels']
-                
-                # Calculate clustering coefficient (how clustered are cells of same type)
-                for cluster_id in range(8):
-                    cluster_mask = clusters == cluster_id
-                    if np.sum(cluster_mask) > 3:
-                        cluster_coords = coords[cluster_mask]
-                        
-                        # Calculate mean nearest neighbor distance
-                        if len(cluster_coords) > 1:
-                            nbrs = NearestNeighbors(n_neighbors=2)
-                            nbrs.fit(cluster_coords)
-                            distances, _ = nbrs.kneighbors(cluster_coords)
-                            mean_nn_distance = distances[:, 1].mean()
-                            
-                            metrics_data.append({
-                                'Condition': data['condition'],
-                                'Timepoint': data['timepoint'],
-                                'Cluster': self.cluster_phenotypes.get(str(cluster_id), f'C{cluster_id}'),
-                                'MeanNNDistance': mean_nn_distance
-                            })
-        
-        if metrics_data:
-            df = pd.DataFrame(metrics_data)
-            
-            # Plot by condition and timepoint
-            injury_df = df[df['Condition'] == 'Injury']
-            
-            if not injury_df.empty:
-                pivot = injury_df.pivot_table(
-                    values='MeanNNDistance',
-                    index='Cluster',
-                    columns='Timepoint',
-                    aggfunc='mean'
-                )
-                
-                # Plot with better colors for each timepoint
-                colors = ['#66c2a5', '#fc8d62', '#8da0cb']  # Distinct colors
-                pivot.plot(kind='bar', ax=ax, width=0.8, color=colors[:len(pivot.columns)])
-                ax.set_ylabel('Mean NN Distance (pixels)')
-                ax.set_xlabel('Cluster Phenotype')
-                ax.set_title('E. Temporal Changes in Spatial Clustering', fontweight='bold')
-                ax.legend(title='Day Post-Injury', loc='upper right', ncol=3, framealpha=0.9)
-                
-                # Rotate x labels for readability
-                ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
-        else:
-            ax.text(0.5, 0.5, 'Insufficient data', ha='center', va='center')
-    
-    def _plot_regional_heterogeneity(self, ax):
-        """Plot heterogeneity differences between Cortex and Medulla."""
-        heterogeneity_data = []
-        
-        for roi_id, data in self.roi_data.items():
-            if data['arrays'] is not None:
-                # Get protein expression
-                proteins_data = {}
-                for protein in self.protein_names[:6]:  # Focus on key proteins
-                    key = f'scale_20.0_transformed_arrays_{protein}'
-                    if key in data['arrays']:
-                        proteins_data[protein] = data['arrays'][key]
-                
-                if proteins_data:
-                    for protein, expression in proteins_data.items():
-                        heterogeneity_data.append({
-                            'Region': data['region'],
-                            'Protein': protein,
-                            'CV': np.std(expression) / (np.mean(expression) + 1e-10)
-                        })
-        
-        if heterogeneity_data:
-            df = pd.DataFrame(heterogeneity_data)
-            
-            # Box plot comparing regions
-            proteins = self.protein_names[:6]
-            cortex_data = []
-            medulla_data = []
-            
-            for protein in proteins:
-                cortex_cv = df[(df['Region'] == 'Cortex') & (df['Protein'] == protein)]['CV']
-                medulla_cv = df[(df['Region'] == 'Medulla') & (df['Protein'] == protein)]['CV']
-                cortex_data.append(cortex_cv.values)
-                medulla_data.append(medulla_cv.values)
-            
-            positions = np.arange(len(proteins))
-            bp1 = ax.boxplot(cortex_data, positions=positions - 0.2, widths=0.35,
-                             patch_artist=True, boxprops=dict(facecolor='skyblue', alpha=0.7))
-            bp2 = ax.boxplot(medulla_data, positions=positions + 0.2, widths=0.35,
-                             patch_artist=True, boxprops=dict(facecolor='salmon', alpha=0.7))
-            
-            ax.set_xticks(positions)
-            ax.set_xticklabels(proteins, rotation=45, ha='right')
-            ax.set_ylabel('Coefficient of Variation')
-            ax.set_title('F. Regional Heterogeneity', fontweight='bold')
-            ax.legend([bp1["boxes"][0], bp2["boxes"][0]], ['Cortex', 'Medulla'])
-            ax.grid(axis='y', alpha=0.3)
-        else:
-            ax.text(0.5, 0.5, 'Insufficient data', ha='center', va='center')
-    
-    def _plot_protein_colocalization(self, ax, pair_idx: int):
-        """Plot protein colocalization analysis."""
-        # Define interesting protein pairs
-        protein_pairs = [
-            ('CD45', 'CD31', 'Immune-Vascular'),
-            ('CD11b', 'CD206', 'M1-M2 Transition'),
-            ('CD140a', 'CD44', 'Fibroblast-Activation')
-        ]
-        
-        if pair_idx >= len(protein_pairs):
-            ax.axis('off')
-            return
-        
-        protein1, protein2, pair_name = protein_pairs[pair_idx]
-        
-        # Calculate colocalization across all ROIs
-        coloc_data = []
-        
-        for roi_id, data in self.roi_data.items():
-            if data['arrays'] is not None:
-                # Get protein expression
-                expr1 = data['arrays'][f'scale_20.0_transformed_arrays_{protein1}']
-                expr2 = data['arrays'][f'scale_20.0_transformed_arrays_{protein2}']
-                
-                # Calculate correlation
-                if len(expr1) > 10:
-                    corr, pval = stats.spearmanr(expr1, expr2)
-                    
-                    coloc_data.append({
-                        'Condition': data['condition'],
-                        'Timepoint': data['timepoint'],
-                        'Correlation': corr
-                    })
-        
-        if coloc_data:
-            df = pd.DataFrame(coloc_data)
-            
-            # Plot by timepoint
-            injury_df = df[df['Condition'] == 'Injury']
-            
-            if not injury_df.empty:
-                injury_df.boxplot(column='Correlation', by='Timepoint', ax=ax)
-                ax.set_xlabel('Days Post-Injury')
-                ax.set_ylabel('Spatial Correlation')
-                panel_label = chr(66 + pair_idx)  # B, C, D
-                ax.set_title(f'{panel_label}. {pair_name}\n{protein1}-{protein2}', 
-                           fontweight='bold', fontsize=10)
-                ax.get_figure().suptitle('')  # Remove automatic title
-        else:
-            ax.text(0.5, 0.5, f'{pair_name}\nNo data', ha='center', va='center')
+            continue
+
+        # Build RGB from lineage
+        col_map = {}
+        for col in lineage_cols:
+            name = col.replace('lineage_', '').lower()
+            if 'immune' in name:
+                col_map['R'] = col
+            elif 'stromal' in name:
+                col_map['G'] = col
+            elif 'endothelial' in name:
+                col_map['B'] = col
+
+        r = roi_df[col_map.get('R', lineage_cols[0])].values
+        g = roi_df[col_map.get('G', lineage_cols[1])].values
+        b = roi_df[col_map.get('B', lineage_cols[2])].values
+
+        rgb = np.column_stack([r, g, b])
+        rgb = np.clip(rgb, 0, 1)
+
+        # Apply same global contrast stretch as ternary map
+        row_max = rgb.max(axis=1)
+        p5, p95 = np.percentile(row_max, [5, 95])
+        denom = max(p95 - p5, 0.01)
+        base_brightness = np.clip((row_max - p5) / denom, 0.0, 1.0) * 0.8 + 0.2
+        current_max = np.maximum(row_max, 1e-6)
+        rgb_contrast = rgb * (base_brightness / current_max)[:, np.newaxis]
+
+        # Modulate brightness by activation score: low activation → 30% brightness
+        activation = roi_df[activation_col].values
+        act_factor = 0.3 + 0.7 * np.clip(activation, 0, 1)
+        rgb_modulated = rgb_contrast * act_factor[:, np.newaxis]
+        rgb_modulated = np.clip(rgb_modulated, 0, 1)
+
+        x = roi_df['x'].values
+        y = roi_df['y'].values
+        ax.scatter(x, y, c=rgb_modulated, s=1.0, marker='s', edgecolors='none')
+        ax.set_aspect('equal')
+        ax.invert_yaxis()
+        ax.axis('off')
+
+        act_name = activation_col.replace('activation_', '').upper()
+        ax.set_title(f'{tp} — {act_name} activation', fontsize=9, fontweight='bold')
+
+    fig.suptitle(f'Lineage × Activation Overlay',
+                 fontsize=12, fontweight='bold')
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Figure 6: Lineage score distributions
+# ---------------------------------------------------------------------------
+
+def figure_lineage_distributions(
+    all_df: pd.DataFrame,
+    figsize: Tuple[float, float] = (14, 4),
+) -> plt.Figure:
+    """
+    Violin/box plots of lineage scores by timepoint — shows distributional shifts.
+    """
+    lineage_cols = _detect_lineage_cols(all_df)
+    timepoints = _infer_timepoint_order([tp for tp in all_df['timepoint'].unique()])
+    tp_colors = _timepoint_colors(timepoints)
+    n_lineages = len(lineage_cols)
+
+    fig, axes = plt.subplots(1, n_lineages, figsize=figsize, sharey=True)
+    if n_lineages == 1:
+        axes = [axes]
+
+    for i, col in enumerate(lineage_cols):
+        ax = axes[i]
+        name = _lineage_display_name(col)
+
+        plot_data = []
+        positions = []
+        colors_list = []
+        for j, tp in enumerate(timepoints):
+            vals = all_df[all_df['timepoint'] == tp][col].values
+            plot_data.append(vals)
+            positions.append(j)
+            colors_list.append(tp_colors.get(tp, '#888888'))
+
+        parts = ax.violinplot(plot_data, positions=positions, showmedians=True,
+                              showextrema=False)
+        for pc, color in zip(parts['bodies'], colors_list):
+            pc.set_facecolor(color)
+            pc.set_alpha(0.6)
+        parts['cmedians'].set_color('black')
+
+        ax.set_xticks(positions)
+        ax.set_xticklabels(timepoints, fontsize=9)
+        ax.set_title(name, fontsize=10, fontweight='bold')
+        ax.axhline(0.5, color='gray', linestyle='--', linewidth=0.5, alpha=0.5)
+        ax.set_ylim(-0.05, 1.05)
+
+        if i == 0:
+            ax.set_ylabel('Lineage Score')
+
+    fig.suptitle('Lineage Score Distributions by Timepoint',
+                 fontsize=12, fontweight='bold')
+    fig.tight_layout()
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+def generate_all_figures(
+    output_dir: Optional[Path] = None,
+    dpi: int = 150,
+) -> Dict[str, Path]:
+    """
+    Generate all figures and save to output directory.
+
+    Returns dict mapping figure name to saved file path.
+    """
+    paths = get_paths()
+    if output_dir is None:
+        output_dir = paths.figures_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Apply publication style within this function only (no module-level side effects)
+    plt.rcParams.update(_PUBLICATION_RCPARAMS)
+
+    logger.info("Loading annotation data...")
+    all_df = load_all_annotations()
+    logger.info(f"Loaded {len(all_df)} superpixels from {all_df['roi_id'].nunique()} ROIs")
+
+    saved = {}
+
+    # Figure 1: Temporal ternary grid
+    logger.info("Generating temporal ternary grid...")
+    fig = figure_temporal_ternary_grid(all_df)
+    path = output_dir / 'temporal_ternary_grid.png'
+    fig.savefig(path, dpi=dpi, bbox_inches='tight')
+    plt.close(fig)
+    saved['temporal_ternary_grid'] = path
+
+    # Figure 2: Interface composition
+    logger.info("Generating interface composition heatmap...")
+    fig = figure_interface_composition(all_df)
+    path = output_dir / 'interface_composition.png'
+    fig.savefig(path, dpi=dpi, bbox_inches='tight')
+    plt.close(fig)
+    saved['interface_composition'] = path
+
+    # Figure 3: Discrete type distribution
+    logger.info("Generating discrete type distribution...")
+    fig = figure_discrete_type_distribution(all_df)
+    path = output_dir / 'discrete_type_distribution.png'
+    fig.savefig(path, dpi=dpi, bbox_inches='tight')
+    plt.close(fig)
+    saved['discrete_type_distribution'] = path
+
+    # Figure 4: Activation overlays
+    activation_cols = _detect_activation_cols(all_df)
+    for act_col in activation_cols:
+        act_name = act_col.replace('activation_', '')
+        logger.info(f"Generating {act_name} activation overlay...")
+        fig = figure_activation_overlay(all_df, activation_col=act_col)
+        path = output_dir / f'activation_overlay_{act_name}.png'
+        fig.savefig(path, dpi=dpi, bbox_inches='tight')
+        plt.close(fig)
+        saved[f'activation_overlay_{act_name}'] = path
+
+    # Figure 5: Lineage distributions
+    logger.info("Generating lineage distributions...")
+    fig = figure_lineage_distributions(all_df)
+    path = output_dir / 'lineage_distributions.png'
+    fig.savefig(path, dpi=dpi, bbox_inches='tight')
+    plt.close(fig)
+    saved['lineage_distributions'] = path
+
+    logger.info(f"Saved {len(saved)} figures to {output_dir}")
+    return saved
