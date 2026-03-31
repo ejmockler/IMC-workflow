@@ -1,7 +1,7 @@
 {
   "experiment_metadata": {
     "n_rois_analyzed": 24,
-    "analysis_date": "2026-03-30T16:03:37.795326",
+    "analysis_date": "2026-03-30T23:32:45.960439",
     "config_used": {
       "project_name": "imc_analysis",
       "project_id": "kidney_healing_2024",
@@ -593,44 +593,76 @@
             "family": "stromal"
           }
         },
-        "hierarchical_annotation": {
-          "_comment": "First-pass broad classification, then refined subtyping",
-          "level_1_lineage": {
+        "membership_axes": {
+          "_comment": "Three-axis decomposition for continuous multi-label annotation. Each superpixel gets independent scores on each axis. Lineage memberships are non-exclusive (interfaces score on multiple). Subtypes use within-family negatives only. Activation is an independent overlay.",
+          "normalization": "sigmoid_threshold",
+          "sigmoid_steepness": 10.0,
+          "lineages": {
+            "_comment": "Positive-only markers. No cross-lineage negatives \u2014 a superpixel can be immune AND endothelial (tissue interface). Scores are continuous [0,1] normalized expression.",
             "immune": {
-              "positive": [
+              "markers": [
                 "CD45"
               ],
-              "negative": []
+              "aggregation": "max"
             },
             "endothelial": {
-              "positive": [
-                "CD31"
+              "markers": [
+                "CD31",
+                "CD34"
               ],
-              "negative": [
-                "CD45"
-              ]
+              "aggregation": "mean"
             },
             "stromal": {
-              "positive": [],
-              "negative": [
-                "CD45",
-                "CD31"
-              ]
+              "markers": [
+                "CD140a"
+              ],
+              "aggregation": "max"
             }
           },
-          "level_2_activation": {
-            "_comment": "Classify activation state based on CD44, CD140b expression",
-            "activated": {
-              "any_positive": [
-                "CD44",
-                "CD140b"
-              ]
-            },
-            "resting": {
-              "all_negative": [
-                "CD44",
-                "CD140b"
-              ]
+          "subtypes": {
+            "_comment": "Within-lineage refinement. Negatives are only within the same lineage branch (e.g., CD206 separates M2 from non-M2 myeloid). Evaluated only when parent lineage score exceeds subtype_threshold.",
+            "subtype_threshold": 0.3,
+            "definitions": {
+              "neutrophil": {
+                "parent_lineage": "immune",
+                "positive": [
+                  "Ly6G"
+                ],
+                "negative": []
+              },
+              "m2_macrophage": {
+                "parent_lineage": "immune",
+                "positive": [
+                  "CD11b",
+                  "CD206"
+                ],
+                "negative": []
+              },
+              "myeloid": {
+                "parent_lineage": "immune",
+                "positive": [
+                  "CD11b"
+                ],
+                "negative": [
+                  "CD206",
+                  "Ly6G"
+                ]
+              },
+              "non_myeloid_immune": {
+                "parent_lineage": "immune",
+                "positive": [],
+                "negative": [
+                  "CD11b",
+                  "Ly6G"
+                ]
+              }
+            }
+          },
+          "activation": {
+            "_comment": "Independent overlay \u2014 scored continuously, not exclusive to any lineage. A stromal-endothelial interface superpixel can be CD44-activated.",
+            "markers": {
+              "cd44": "CD44",
+              "cd140b": "CD140b"
             }
           }
         }

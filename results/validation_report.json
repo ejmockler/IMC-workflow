@@ -8,7 +8,7 @@
   "critical_failures": 0,
   "total_issues": 10,
   "usable_rois": 24,
-  "execution_time_ms": 2922.2657680511475,
+  "execution_time_ms": 3066.5221214294434,
   "roi_results": [
     {
       "roi_file": "IMC_241218_Alun_ROI_D1_M1_01_9.txt",
@@ -17,7 +17,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 124.63092803955078
+      "execution_time_ms": 138.27824592590332
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D1_M1_02_10.txt",
@@ -29,7 +29,7 @@
       ],
       "critical_issues": 0,
       "total_issues": 2,
-      "execution_time_ms": 117.70796775817871
+      "execution_time_ms": 117.91396141052246
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D1_M1_03_11.txt",
@@ -41,7 +41,7 @@
       ],
       "critical_issues": 0,
       "total_issues": 2,
-      "execution_time_ms": 121.15001678466797
+      "execution_time_ms": 120.55611610412598
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D1_M2_01_12.txt",
@@ -50,7 +50,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 124.9082088470459
+      "execution_time_ms": 130.46693801879883
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D1_M2_02_13.txt",
@@ -59,7 +59,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 127.33817100524902
+      "execution_time_ms": 118.34192276000977
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D1_M2_03_14.txt",
@@ -71,7 +71,7 @@
       ],
       "critical_issues": 0,
       "total_issues": 2,
-      "execution_time_ms": 118.55506896972656
+      "execution_time_ms": 125.08487701416016
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D3_M1_01_15.txt",
@@ -80,7 +80,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 121.97518348693848
+      "execution_time_ms": 132.87663459777832
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D3_M1_02_16.txt",
@@ -89,7 +89,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 124.76682662963867
+      "execution_time_ms": 129.1220188140869
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D3_M1_03_17.txt",
@@ -98,7 +98,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 122.528076171875
+      "execution_time_ms": 126.99627876281738
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D3_M2_01_18.txt",
@@ -107,7 +107,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 121.54698371887207
+      "execution_time_ms": 125.50711631774902
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D3_M2_02_19.txt",
@@ -116,7 +116,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 123.27909469604492
+      "execution_time_ms": 132.0321559906006
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D3_M2_03_20.txt",
@@ -125,7 +125,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 117.82670021057129
+      "execution_time_ms": 119.9030876159668
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D7_M1_01_21.txt",
@@ -134,7 +134,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 119.07291412353516
+      "execution_time_ms": 123.34704399108887
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D7_M1_02_22.txt",
@@ -143,7 +143,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 120.6207275390625
+      "execution_time_ms": 127.76613235473633
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D7_M1_03_23.txt",
@@ -152,7 +152,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 120.42713165283203
+      "execution_time_ms": 134.23514366149902
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D7_M2_01_24.txt",
@@ -161,7 +161,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 125.76889991760254
+      "execution_time_ms": 134.37795639038086
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D7_M2_02_25.txt",
@@ -170,7 +170,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 127.39086151123047
+      "execution_time_ms": 131.40606880187988
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_D7_M2_03_26.txt",
@@ -179,7 +179,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 121.44994735717773
+      "execution_time_ms": 135.3609561920166
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_Sam1_01_2.txt",
@@ -190,7 +190,7 @@
       ],
       "critical_issues": 0,
       "total_issues": 1,
-      "execution_time_ms": 119.88496780395508
+      "execution_time_ms": 129.77313995361328
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_Sam1_02_3.txt",
@@ -199,7 +199,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 124.76205825805664
+      "execution_time_ms": 127.04014778137207
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_Sam1_03_4.txt",
@@ -208,7 +208,7 @@
       "issues": [],
       "critical_issues": 0,
       "total_issues": 0,
-      "execution_time_ms": 119.13800239562988
+      "execution_time_ms": 126.89995765686035
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_Sam2_01_6.txt",
@@ -219,7 +219,7 @@
       ],
       "critical_issues": 0,
       "total_issues": 1,
-      "execution_time_ms": 118.42203140258789
+      "execution_time_ms": 126.05905532836914
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_Sam2_02_7.txt",
@@ -230,7 +230,7 @@
       ],
       "critical_issues": 0,
       "total_issues": 1,
-      "execution_time_ms": 117.3088550567627
+      "execution_time_ms": 128.74174118041992
     },
     {
       "roi_file": "IMC_241218_Alun_ROI_Sam2_03_8.txt",
@@ -241,7 +241,7 @@
       ],
       "critical_issues": 0,
       "total_issues": 1,
-      "execution_time_ms": 121.0019588470459
+      "execution_time_ms": 123.5661506652832
     }
   ]
 }

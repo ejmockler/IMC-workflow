@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-03-30T15:58:04.615469",
-  "version": "git-6052284",
-  "config_hash": "cfe0b097",
-  "config_file": "config_snapshot_cfe0b097.json",
+  "timestamp": "2026-03-30T23:27:23.321167",
+  "version": "git-d58f62a",
+  "config_hash": "a36994c8",
+  "config_file": "config_snapshot_a36994c8.json",
   "roi_id": "IMC_241218_Alun_ROI_D3_M1_01_15",
   "dependencies": {
     "python": "3.12.10",
