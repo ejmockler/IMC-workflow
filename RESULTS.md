@@ -481,18 +481,18 @@ Four notebooks present the analysis in a pedagogical arc:
 
 A separate pre-registered analysis (`analysis_plans/temporal_interfaces_plan.md`, frozen 2026-04-17) computes three endpoint families on the continuous lineage scores: interface composition (CLR-transformed compositional vector), continuous neighborhood lineage shifts (neighbor-minus-self delta), and cross-compartment activation (Sham-reference threshold). Outputs at `results/biological_analysis/temporal_interfaces/` (consumed by `notebooks/biological_narratives/kidney_injury_spatial_analysis.ipynb` Parts 2 + 2.5 and `notebooks/main_narrative.ipynb` Sections 2 + 6).
 
-**Headline observations** (from `endpoint_summary.csv`, Hedges' g with Type-M shrinkage caveats):
+**Headline observations** (from `endpoint_summary.csv`). Effect sizes reported as observed Hedges' g plus a per-endpoint Bayesian shrinkage range under three priors on the true effect δ (skeptical N(0, 0.5²), neutral N(0, 1.0²), optimistic N(0, 2.0²)). n_required values are 80%-power sample sizes per Bayesian-shrunk g.
 
-| Endpoint | Family | Hedges' g | g x 0.65 (permissive Type-M) | n_required (lower bound) |
+| Endpoint | Family | Observed g | Shrunk (skeptical / neutral / optimistic) | n required (skeptical / neutral / optimistic) |
 |---|---|---|---|---|
-| Triple-overlap fraction Sham→D7 | C (compartment) | +3.29 | +2.14 | 4 mice (multiply by 2-4 realistic) |
-| Background CD44+ rate Sham→D7 | C | +2.82 | +1.83 | 5 mice (lower bound) |
-| Endothelial-only CLR Sham→D7 | A (interface) | +2.28 | +1.48 | 8 mice (lower bound) |
-| Stromal-only CLR Sham→D7 | A | -1.59 | -1.03 | 15 mice (lower bound) |
-| CD140b+ within-compartment CD44+ rate Sham→D7 | C | +1.44 | +0.94 | 18 mice (lower bound) |
+| Triple-overlap fraction Sham→D7 | C | +3.29 | +0.32 / +0.98 / +2.07 | 158 / 17 / 4 |
+| Background CD44+ rate Sham→D7 | C | +2.82 | +0.31 / +0.94 / +1.88 | 160 / 18 / 5 |
+| Endothelial-only CLR Sham→D7 | A | +2.28 | +0.30 / +0.86 / +1.61 | 175 / 22 / 7 |
+| Stromal-only CLR Sham→D7 | A | -1.59 | -0.25 / -0.69 / -1.20 | 244 / 34 / 11 |
+| CD140b+ within-compartment CD44+ rate Sham→D7 | C | +1.44 | +0.24 / +0.64 / +1.10 | 276 / 39 / 14 |
 
-**Threshold sensitivity**: Family A (interface composition) findings are largely robust to the lineage threshold sweep {0.2, 0.3, 0.4} — only 3/48 endpoints sign-reverse. Family C is robust to the Sham-percentile sweep {65, 75, 85}. Family B (continuous neighborhood) is 100% threshold-sensitive across the min-support sweep {10, 20, 40} — this is structural (the filter changes which composite labels survive) and is disclosed; Family B is best read as ranked exploration, not discoveries.
+**Threshold sensitivity**: Family A findings largely robust to lineage threshold sweep {0.2, 0.3, 0.4} (3/48 sign-reverse). Family C robust to Sham-percentile sweep {65, 75, 85}. Family B 100% threshold-sensitive across min-support sweep {10, 20, 40} — structural (filter changes which composite labels survive); Family B is ranked exploration, not discoveries.
 
-**Pathology and missingness**: 8 endpoint rows have |g|>3 with pooled_std<0.01 (variance-collapse artifacts) and are flagged g_pathological=true; excluded from BH-FDR machinery. 27 rows have insufficient_support (n<2 mice in one group) and are preserved as NaN-with-flag rather than silently dropped. These figures are reviewer-checkable in `endpoint_summary.csv`.
+**Pathology and missingness**: 8 endpoint rows flagged g_pathological=true (|g|>3 with pooled_std<0.01, variance-collapse artifacts); excluded from BH-FDR. 27 rows insufficient_support; preserved as NaN-with-flag rather than silently dropped. Reviewer-checkable in `endpoint_summary.csv`.
 
-**Type-M caveat (per pre-registered plan)**: The g_type_m_corrected column applies a permissive 0.65 shrinkage (Gelman & Carlin 2014 midpoint ballpark for moderate g at very small n). Realistic Type-M ratios at n=2 are likely 2-4×, so true effects are plausibly 0.25-0.5× observed g. Reported n_required values are *lower bounds*; multiply by 2-4 for realistic study planning.
+**Bayesian shrinkage rationale**: We replaced an earlier single-scalar Type-M correction (0.65) with per-endpoint Bayesian shrinkage under three explicit priors. The shrinkage factor for an endpoint with observed g and Hedges & Olkin (1985) asymptotic sampling variance v = 2/n + g²/(4n) is `prior_var / (prior_var + v)`. The three priors (skeptical N(0, 0.5²) / neutral N(0, 1.0²) / optimistic N(0, 2.0²)) are a **pre-registered sensitivity analysis**, not a Bayesian inference. We intentionally do **not** designate any prior as "default" — the range IS the finding. A study designer picking a follow-up cohort should select the prior matching their own scepticism about the pilot estimate. The range is wide (n_required spans 10×-100× across priors for large observed effects) because at n=2 we have very little data to distinguish a tiny true effect from a large one.

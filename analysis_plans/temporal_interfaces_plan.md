@@ -59,10 +59,10 @@ The existing DA framework currently runs only 5 (omits D1_vs_D7); fixed in T19. 
 | Aggregation | Per-ROI quantity → per-mouse mean → per-timepoint group of n=2 | Defeats superpixel-level pseudoreplication |
 | Effect size | Hedges' g on mouse-level values | Small-sample-corrected Cohen's d |
 | Uncertainty | Percentile bootstrap with 10,000 iterations, **reported as "bootstrap range (min, max of 9 unique values at n=2 per group)" — NOT as 95% CI** | The resolution limit is 9 distinct values; CI notation implies coverage that does not exist |
-| Type M caveat | Every observed g is annotated with a Type-M shrinkage estimate. Gelman & Carlin (2014) do NOT prescribe a universal correction factor — the true exaggeration ratio depends on true effect size, n, and α. We apply a midpoint shrinkage of 0.65 as a permissive ballpark; **realistic Type-M ratios at n=2 are likely 2-4× (true effect ~0.25-0.5× observed)**. The `g_type_m_corrected` column should be read as "one plausible shrinkage under a permissive assumption", not as a calibrated truth estimate. | n=2 winner's curse; cf. Gelman & Carlin (2014) Figure 2 |
+| Shrinkage | Every observed g is annotated with a **per-endpoint Bayesian shrinkage range** under three prior strengths on the true effect δ: skeptical N(0, 0.5²), neutral N(0, 1.0²), optimistic N(0, 2.0²). Posterior mean E[δ \| g_obs] = g_obs × prior_var / (prior_var + sampling_var), where sampling_var(g, n) = 4/n + g²/(2n). Replaces the prior single-scalar Type-M=0.65 correction with a defensible range. | n=2 winner's curse; Bayesian shrinkage is the standard treatment for noisy effect-size estimators under informative priors. |
 | Multiplicity (primary) | BH-FDR within each endpoint family separately | Distinct biological questions |
 | Multiplicity (sensitivity) | BH-FDR pooled across all three families, reported as `q_value_pooled` | Counters family-arbitrage criticism |
-| Power | For each observed g, report `n_required` for 80% power at α=0.05 (Mann-Whitney). **Framed as a lower bound: realistic planning should assume effect sizes 50-75% smaller than observed g (see Type-M caveat below).** | Converts findings into study-design statements without false precision |
+| Power | For each observed g, report `n_required` under four effect-size assumptions: the raw observed g (*most optimistic lower bound*) and the three Bayesian-shrunk values under skeptical/neutral/optimistic priors (*sensitivity range*). **No single prior is designated as "default"** — the range itself is the finding. Downstream study designers pick the prior that matches their own scepticism about the observed pilot effect. | Converts findings into study-design statements with a transparent uncertainty band; avoids recreating the magic-scalar problem by anointing one prior |
 | Compositional | CLR with Bayesian-multiplicative zero replacement for Family A only | Family B/C endpoints are not exhaustive |
 | Pathology flag | `g_pathological: bool` set when `|g| > 3 AND pooled_std < 0.01` | Quarantines variance-collapse artifacts (e.g., g=−4.87 with mean diff 0.001) |
 
@@ -99,7 +99,7 @@ Sensitivity outputs reported in `sensitivity_thresholds.parquet`.
 - `lineage_morans_i.parquet` (Moran's I on continuous lineage scores)
 - `continuous_neighborhood_temporal.parquet` (Family B with neighbor-minus-self and delta-vs-Sham)
 - `compartment_activation_temporal.parquet` (Family C with Sham-reference threshold)
-- `endpoint_summary.csv` — single PI/reviewer-facing table with columns: endpoint, family, contrast, mouse_mean_1, mouse_mean_2, observed_range, hedges_g, hedges_g_type_m_corrected, bootstrap_range_min, bootstrap_range_max, n_unique_resamples, q_value_within_family, q_value_pooled, n_required_80pct, n_required_80pct_type_m_adjusted, g_pathological, threshold_sensitive
+- `endpoint_summary.csv` — single PI/reviewer-facing table with columns: family, endpoint, contrast, tp1, tp2, n_mice_1, n_mice_2, insufficient_support, mouse_mean_1, mouse_mean_2, mouse_range_1, mouse_range_2, observed_range, hedges_g, g_shrunk_skeptical, g_shrunk_neutral, g_shrunk_optimistic, pooled_std, g_pathological, bootstrap_range_min, bootstrap_range_max, n_unique_resamples, n_required_80pct, n_required_skeptical, n_required_neutral, n_required_optimistic, composite_label, threshold_sensitive, p_proxy_from_g, q_proxy_within_family, q_proxy_pooled. Pathological rows have NaN g_shrunk_* and NaN n_required_shrunk_*. Insufficient-support rows also have NaN for all derived statistics.
 
 ## 9. Pre-Specified Plots (in kidney_injury_spatial_analysis.ipynb)
 
@@ -117,7 +117,7 @@ Banned in all narrative cells unless backed by a pre-declared statistic in this 
 - "95% CI" applied to bootstrap intervals at n=2
 
 Required language for every temporal direction claim:
-- "Mouse-level mean shifted from X (range a-b) to Y (range c-d), Hedges' g = Z (Type M corrected: Z×0.6 to Z×0.7). Bootstrap range over 9 unique resamples: [min, max]. Detecting this effect at 80% power would require n ≥ N mice per group (Type M-adjusted: n ≥ N×1.5 to N×2.0); current pilot at n=2 cannot distinguish from sampling variance."
+- "Mouse-level mean shifted from X (range a-b) to Y (range c-d), Hedges' g = Z. Bayesian-shrunk under three priors (skeptical/neutral/optimistic): Z_sk / Z_ne / Z_op. Bootstrap range over unique resamples: [min, max]. Detecting these shrunk effects at 80% power would require n ≥ N_sk / N_ne / N_op mice per group respectively. Current pilot at n=2 cannot distinguish any of these from sampling variance; the three-prior range transparently exposes the uncertainty."
 
 ## 11. What Cannot Be Concluded
 
@@ -127,14 +127,21 @@ This plan generates effect-size candidates for follow-up. It does **not** establ
 - Whether spatial coherence patterns are biology vs. SLIC superpixel artifact
 - Whether the 22% no-lineage fraction is genuinely inert or a panel-coverage gap shifting with treatment
 - Absolute values of Family B neighbor-minus-self deltas (only temporal changes are interpretable)
-- Effect-size point estimates without Type M correction
+- Effect-size point estimates without the three-prior Bayesian shrinkage range (interpretation of a single observed g at n=2 is misleading; the shrinkage range exposes the honest uncertainty)
 
 These limitations are restated in every notebook section consuming this plan.
 
 ## 12. Amendments
 
-### 2026-04-18 (Gate 4 capstone review response)
-- Hardcoded Type-M correction at 0.65 documented as a permissive midpoint ballpark, not a calibrated estimate. `g_type_m_corrected` and `n_required_80pct_type_m` columns now framed in §5 as "one plausible shrinkage under permissive assumptions" with explicit reminder that realistic Type-M ratios at n=2 are likely 2-4×. Module-level constant has expanded comment block. No data regeneration required.
+### 2026-04-18 (Gate 4 follow-up — replace Type-M scalar with Bayesian shrinkage) + Gate 5 response
+- The earlier `TYPE_M_CORRECTION = 0.65` constant was a single-scalar approximation vulnerable to the "where does 0.65 come from?" reviewer attack. Replaced with per-endpoint, per-prior **Bayesian shrinkage** using the posterior mean of δ under three prior strengths (skeptical N(0, 0.5²) / neutral N(0, 1.0²) / optimistic N(0, 2.0²)).
+- Sampling variance of Hedges' g uses the standard Hedges & Olkin (1985) asymptotic formula: v(g, n) = 2/n + g²/(4n). An earlier implementation used a looser 4/n + g²/(2n) without literature support; the Gate 5 brutalist review flagged the non-standard inflation and it was switched to the textbook form. The asymptotic formula mildly under-corrects at n=2; the three-prior sensitivity range bounds that residual uncertainty.
+- Output schema changes: `g_type_m_corrected` and `n_required_80pct_type_m` REMOVED from endpoint_summary.csv. Added `g_shrunk_skeptical`, `g_shrunk_neutral`, `g_shrunk_optimistic`, `n_required_skeptical`, `n_required_neutral`, `n_required_optimistic`. Pathological rows (|g|>3 AND pooled_std<0.01) now emit NaN for all g_shrunk_* and n_required_* columns — shrinking a variance-collapse artifact is meaningless.
+- Narrative cells cite actual computed values from endpoint_summary.csv (triple-overlap Sham→D7: g=+3.29 shrunk to values reported live from the CSV under each prior).
+- Reviewer framing: the three priors are an explicit sensitivity analysis, not a Bayesian inference. We do NOT recommend any single prior as default; the range IS the finding.
+
+### 2026-04-18 (Gate 4 capstone review response — superseded by shrinkage amendment above)
+- Hardcoded Type-M correction at 0.65 initially documented as a permissive midpoint ballpark. This approach itself was superseded in the next amendment when the full Bayesian shrinkage replacement landed.
 - Other Gate 4 findings (p-proxy column naming, bootstrap-range non-coverage, Family B framing) accepted with existing disclaimers — see Gate 4 capstone log.
 
 ### 2026-04-17 (Gate 0 brutalist review response)
