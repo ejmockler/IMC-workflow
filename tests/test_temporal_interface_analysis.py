@@ -286,10 +286,87 @@ def test_n_required_decreases_with_larger_g():
     assert n_large >= 2
 
 
-def test_n_required_type_m_inflates_sample_size():
-    n_raw = tia.n_required_for_g(1.0)
-    n_typem = tia.n_required_type_m_adjusted(1.0)
-    assert n_typem > n_raw, "Type M correction should require more samples"
+def test_bayesian_shrinkage_zero_observed_returns_zero():
+    """Zero observed g should shrink to exactly zero under any prior."""
+    for prior_sd in (0.5, 1.0, 2.0):
+        assert tia.bayesian_shrinkage(0.0, n_per_group=2, prior_sd=prior_sd) == 0.0
+
+
+def test_bayesian_shrinkage_huge_g_more_under_skeptical():
+    """A huge observed g shrinks more under a skeptical prior than optimistic."""
+    g = 5.0
+    g_skeptical = tia.bayesian_shrinkage(g, n_per_group=2, prior_sd=0.5)
+    g_optimistic = tia.bayesian_shrinkage(g, n_per_group=2, prior_sd=2.0)
+    assert abs(g_skeptical) < abs(g_optimistic) < abs(g), \
+        f"Expected |skeptical| < |optimistic| < |g|; got {g_skeptical}, {g_optimistic}, {g}"
+
+
+def test_bayesian_shrinkage_larger_n_reduces_shrinkage():
+    """Larger n -> smaller sampling variance -> less shrinkage toward zero."""
+    g = 1.0
+    g_n2 = tia.bayesian_shrinkage(g, n_per_group=2, prior_sd=1.0)
+    g_n10 = tia.bayesian_shrinkage(g, n_per_group=10, prior_sd=1.0)
+    g_n50 = tia.bayesian_shrinkage(g, n_per_group=50, prior_sd=1.0)
+    assert abs(g_n2) < abs(g_n10) < abs(g_n50) <= abs(g)
+
+
+def test_bayesian_shrinkage_signs_preserved():
+    """Shrinkage preserves sign (only shrinks magnitude toward zero)."""
+    assert tia.bayesian_shrinkage(2.0, 2, 1.0) > 0
+    assert tia.bayesian_shrinkage(-2.0, 2, 1.0) < 0
+
+
+def test_bayesian_shrinkage_handles_nan():
+    assert np.isnan(tia.bayesian_shrinkage(float('nan'), 2, 1.0))
+
+
+def test_compute_hedges_g_with_diagnostics_emits_three_shrunk_values():
+    """GDiagnostics now exposes a shrinkage range, not a single Type-M scalar."""
+    diag = tia.compute_hedges_g_with_diagnostics(np.array([0.1, 0.2]), np.array([0.7, 0.8]))
+    # All three shrunk values should be present, ordered: |skeptical| <= |neutral| <= |optimistic| <= |g|
+    assert hasattr(diag, 'g_shrunk_skeptical')
+    assert hasattr(diag, 'g_shrunk_neutral')
+    assert hasattr(diag, 'g_shrunk_optimistic')
+    assert abs(diag.g_shrunk_skeptical) <= abs(diag.g_shrunk_neutral) <= abs(diag.g_shrunk_optimistic) <= abs(diag.hedges_g)
+
+
+def test_pathological_rows_emit_nan_shrunk_values():
+    """Variance-collapse artifacts (pathological) should return NaN shrunk values,
+    not plausible-looking shrunk numbers."""
+    # Mimics the pathological stromal Sham_vs_D7 case (means differ by 0.001, std<0.001)
+    g1 = np.array([0.4072, 0.4073])
+    g2 = np.array([0.4083, 0.4084])
+    diag = tia.compute_hedges_g_with_diagnostics(g1, g2)
+    assert diag.g_pathological is True
+    assert np.isnan(diag.g_shrunk_skeptical)
+    assert np.isnan(diag.g_shrunk_neutral)
+    assert np.isnan(diag.g_shrunk_optimistic)
+
+
+def test_bayesian_shrinkage_numerical_regression():
+    """Pin numerical values so silent formula changes fail the test.
+
+    Using textbook Hedges & Olkin variance: v(g, n) = 2/n + g**2/(4n)
+    For g=2.0, n=2 per group: v = 2/2 + 4/(4*2) = 1.0 + 0.5 = 1.5
+    Posterior means with shrinkage factor = prior_var / (prior_var + v):
+      prior_sd=0.5 (prior_var=0.25): 2.0 * 0.25/(0.25+1.5) = 2.0 * 0.1428... = 0.2857142857
+      prior_sd=1.0 (prior_var=1.00): 2.0 * 1.00/(1.00+1.5) = 2.0 * 0.4       = 0.8
+      prior_sd=2.0 (prior_var=4.00): 2.0 * 4.00/(4.00+1.5) = 2.0 * 0.7272... = 1.4545454545
+    """
+    g, n = 2.0, 2
+    assert abs(tia.bayesian_shrinkage(g, n, prior_sd=0.5) - 0.2857142857) < 1e-6
+    assert abs(tia.bayesian_shrinkage(g, n, prior_sd=1.0) - 0.8) < 1e-6
+    assert abs(tia.bayesian_shrinkage(g, n, prior_sd=2.0) - 1.4545454545) < 1e-6
+
+
+def test_hedges_g_sampling_variance_numerical_regression():
+    """Pin the textbook Hedges & Olkin sampling variance formula."""
+    # v(g=0, n=2) = 2/2 + 0 = 1.0
+    assert abs(tia.hedges_g_sampling_variance(0.0, 2) - 1.0) < 1e-9
+    # v(g=2, n=2) = 2/2 + 4/8 = 1.0 + 0.5 = 1.5
+    assert abs(tia.hedges_g_sampling_variance(2.0, 2) - 1.5) < 1e-9
+    # v(g=2, n=10) = 2/10 + 4/40 = 0.2 + 0.1 = 0.3
+    assert abs(tia.hedges_g_sampling_variance(2.0, 10) - 0.3) < 1e-9
 
 
 def test_benjamini_hochberg_monotone():
