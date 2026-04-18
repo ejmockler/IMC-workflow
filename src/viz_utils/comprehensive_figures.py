@@ -268,91 +268,6 @@ def figure_temporal_ternary_grid(
     return fig
 
 
-# ---------------------------------------------------------------------------
-# Figure 3: Interface composition heatmap
-# ---------------------------------------------------------------------------
-
-def figure_interface_composition(
-    all_df: pd.DataFrame,
-    figsize: Tuple[float, float] = (14, 5),
-    threshold: float = 0.3,
-) -> plt.Figure:
-    """
-    Heatmap showing what fraction of tissue is occupied by each lineage pair,
-    across timepoints. Captures the interface biology.
-    """
-    lineage_cols = _detect_lineage_cols(all_df)
-    lineage_names = [c.replace('lineage_', '') for c in lineage_cols]
-    timepoints = _infer_timepoint_order([tp for tp in all_df['timepoint'].unique()])
-
-    # For each superpixel, determine which lineages are above threshold
-    n_tp = len(timepoints)
-    n_combos = len(lineage_names) + len(lineage_names) * (len(lineage_names) - 1) // 2 + 1
-
-    # Build combo labels: single lineages, pairs, and "none"
-    combo_labels = []
-    for ln in lineage_names:
-        combo_labels.append(ln)
-    for i, ln1 in enumerate(lineage_names):
-        for ln2 in lineage_names[i + 1:]:
-            combo_labels.append(f"{ln1}+{ln2}")
-    combo_labels.append("none")
-
-    # Count per timepoint
-    data = np.zeros((len(combo_labels), n_tp))
-
-    for tp_idx, tp in enumerate(timepoints):
-        tp_df = all_df[all_df['timepoint'] == tp]
-        n_total = len(tp_df)
-        if n_total == 0:
-            continue
-
-        above = {}
-        for col, name in zip(lineage_cols, lineage_names):
-            above[name] = (tp_df[col].values > threshold)
-
-        for sp_idx in range(n_total):
-            active = [name for name in lineage_names if above[name][sp_idx]]
-
-            if len(active) == 0:
-                label = "none"
-            elif len(active) == 1:
-                label = active[0]
-            else:
-                # Take the top 2 lineages for pair label
-                scores = [(name, tp_df.iloc[sp_idx][f'lineage_{name}']) for name in active]
-                scores.sort(key=lambda x: -x[1])
-                pair = sorted([scores[0][0], scores[1][0]])
-                label = f"{pair[0]}+{pair[1]}"
-
-            if label in combo_labels:
-                data[combo_labels.index(label), tp_idx] += 1
-
-        data[:, tp_idx] = data[:, tp_idx] / n_total * 100
-
-    fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(data, aspect='auto', cmap='YlOrRd')
-
-    ax.set_xticks(range(n_tp))
-    ax.set_xticklabels(timepoints, fontsize=10)
-    ax.set_yticks(range(len(combo_labels)))
-    ax.set_yticklabels([n.replace('_', ' ').title() for n in combo_labels], fontsize=9)
-
-    # Annotate cells
-    for i in range(len(combo_labels)):
-        for j in range(n_tp):
-            val = data[i, j]
-            color = 'white' if val > data.max() * 0.5 else 'black'
-            ax.text(j, i, f'{val:.1f}%', ha='center', va='center',
-                    fontsize=8, color=color)
-
-    plt.colorbar(im, ax=ax, label='% of Superpixels', shrink=0.8)
-    ax.set_title('Tissue Composition by Lineage Combinations',
-                 fontsize=12, fontweight='bold')
-    ax.set_xlabel('Timepoint')
-    fig.tight_layout()
-    return fig
-
 
 # ---------------------------------------------------------------------------
 # Figure 4: Discrete cell type distribution
@@ -605,14 +520,6 @@ def generate_all_figures(
     fig.savefig(path, dpi=dpi, bbox_inches='tight')
     plt.close(fig)
     saved['temporal_ternary_grid'] = path
-
-    # Figure 2: Interface composition
-    logger.info("Generating interface composition heatmap...")
-    fig = figure_interface_composition(all_df)
-    path = output_dir / 'interface_composition.png'
-    fig.savefig(path, dpi=dpi, bbox_inches='tight')
-    plt.close(fig)
-    saved['interface_composition'] = path
 
     # Figure 3: Discrete type distribution
     logger.info("Generating discrete type distribution...")

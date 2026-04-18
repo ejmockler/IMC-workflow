@@ -21,7 +21,7 @@ from scipy import stats
 from statsmodels.stats.multitest import multipletests
 from collections import Counter
 
-from src.utils.metadata import parse_roi_metadata as _parse_roi_metadata_canonical
+from src.utils.metadata import parse_roi_metadata
 from src.utils.paths import get_paths
 
 _PATHS = get_paths()
@@ -262,89 +262,6 @@ def analyze_roi_neighborhoods(
 
     return results_df
 
-def analyze_roi_neighborhoods_continuous(
-    roi_id: str,
-    k_neighbors: int = 10,
-) -> Dict[str, Any]:
-    """
-    Compute continuous neighborhood composition using lineage membership scores.
-
-    Instead of discrete neighbor counts, computes the mean lineage score of
-    each superpixel's k-nearest neighbors. This captures interface biology:
-    a superpixel surrounded by immune-endothelial mixed neighbors gets high
-    mean scores for both lineages.
-
-    Returns dict with:
-    - neighborhood_lineage_means: DataFrame with per-superpixel mean neighbor lineage scores
-    - roi_summary: aggregate statistics
-    """
-    annotations = load_roi_annotations(roi_id)
-    if annotations is None or len(annotations) == 0:
-        return None
-
-    coords = annotations[['x', 'y']].values
-    lineage_cols = [c for c in annotations.columns if c.startswith('lineage_')]
-    activation_cols = [c for c in annotations.columns if c.startswith('activation_')]
-
-    if not lineage_cols:
-        return None
-
-    if len(coords) < k_neighbors + 1:
-        return None
-
-    knn_indices = compute_knn_neighborhoods(coords, k=k_neighbors)
-
-    # For each superpixel, compute mean lineage scores of its neighbors
-    result_cols = {}
-    for col in lineage_cols + activation_cols:
-        scores = annotations[col].values
-        # Mean neighbor score for each superpixel
-        neighbor_scores = scores[knn_indices]  # (n_superpixels, k)
-        result_cols[f'neighbor_{col}'] = neighbor_scores.mean(axis=1)
-
-    neighborhood_df = pd.DataFrame(result_cols)
-    neighborhood_df['superpixel_id'] = annotations['superpixel_id'].values
-    neighborhood_df['x'] = coords[:, 0]
-    neighborhood_df['y'] = coords[:, 1]
-
-    # Add the superpixel's own scores for comparison
-    for col in lineage_cols + activation_cols:
-        neighborhood_df[f'self_{col}'] = annotations[col].values
-
-    if 'composite_label' in annotations.columns:
-        neighborhood_df['composite_label'] = annotations['composite_label'].values
-
-    # ROI-level summary: mean neighbor lineage scores stratified by composite label
-    summary = {}
-    if 'composite_label' in annotations.columns:
-        for label in annotations['composite_label'].unique():
-            mask = annotations['composite_label'].values == label
-            if mask.sum() == 0:
-                continue
-            label_summary = {}
-            for col in lineage_cols:
-                neighbor_col = f'neighbor_{col}'
-                label_summary[f'mean_{neighbor_col}'] = float(neighborhood_df.loc[mask, neighbor_col].mean())
-                label_summary[f'mean_self_{col}'] = float(neighborhood_df.loc[mask, f'self_{col}'].mean())
-            label_summary['n_superpixels'] = int(mask.sum())
-            summary[label] = label_summary
-
-    return {
-        'neighborhood_df': neighborhood_df,
-        'roi_summary': summary,
-        'roi_id': roi_id,
-    }
-
-
-def parse_roi_metadata(roi_id: str) -> dict:
-    """
-    Extract metadata from ROI ID using the canonical metadata parser.
-
-    Delegates to src.utils.metadata.parse_roi_metadata.
-    Returns dict with keys: timepoint, region (and others).
-    """
-    return _parse_roi_metadata_canonical(roi_id)
-
 def aggregate_across_rois(
     roi_results: List[pd.DataFrame],
     groupby: str = 'timepoint'
@@ -503,55 +420,18 @@ def main():
         if len(enriched) == 0:
             print("  (No strong enrichments detected)")
 
-    # --- Continuous neighborhood analysis ---
-    print("\n" + "─"*80)
-    print("Continuous Neighborhood Analysis (Lineage Scores)")
-    print("─"*80)
-
-    continuous_summaries = []
-    for i, annotation_file in enumerate(annotation_files, 1):
-        roi_id = annotation_file.stem.replace('_cell_types', '')
-        try:
-            cont_result = analyze_roi_neighborhoods_continuous(roi_id, k_neighbors)
-            if cont_result is not None:
-                # Add metadata to summary
-                metadata = parse_roi_metadata(roi_id)
-                for label, stats in cont_result['roi_summary'].items():
-                    stats['roi_id'] = roi_id
-                    stats['composite_label'] = label
-                    stats['timepoint'] = metadata['timepoint']
-                    stats['region'] = metadata['region']
-                    continuous_summaries.append(stats)
-        except Exception as e:
-            pass  # Already reported in discrete analysis
-
-    continuous_df = pd.DataFrame(continuous_summaries) if continuous_summaries else pd.DataFrame()
-    if len(continuous_df) > 0:
-        continuous_df = continuous_df[continuous_df['timepoint'] != 'Test']
-        n_labels = continuous_df['composite_label'].nunique()
-        print(f"\n✓ {len(continuous_df)} composite_label × ROI combinations analyzed")
-        print(f"  {n_labels} unique composite labels")
-
-    # Save results
+    # Save aggregated results consumed by main_narrative.ipynb and downstream notebooks.
+    # Continuous-neighborhood writers and the per-ROI dump have been removed; the new
+    # temporal interface module (src/analysis/temporal_interface_analysis.py) produces
+    # neighbor-minus-self deltas via its own pipeline (run_temporal_interface_analysis.py).
     output_dir = _PATHS.spatial_neighborhoods_dir
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save per-ROI results
-    if roi_results:
-        all_roi_results = pd.concat(roi_results, ignore_index=True)
-        all_roi_results.to_csv(output_dir / 'roi_neighborhood_enrichments.csv', index=False)
-
-    # Save aggregated results
     temporal_agg.to_csv(output_dir / 'temporal_neighborhood_enrichments.csv', index=False)
     regional_agg.to_csv(output_dir / 'regional_neighborhood_enrichments.csv', index=False)
-
-    if len(continuous_df) > 0:
-        continuous_df.to_csv(output_dir / 'continuous_neighborhood_summary.csv', index=False)
 
     print(f"\n{'='*80}")
     print("Analysis Complete")
     print(f"{'='*80}")
-    print(f"\n✓ Per-ROI results: {output_dir / 'roi_neighborhood_enrichments.csv'}")
     print(f"✓ Temporal aggregates: {output_dir / 'temporal_neighborhood_enrichments.csv'}")
     print(f"✓ Regional aggregates: {output_dir / 'regional_neighborhood_enrichments.csv'}")
     print(f"\n{'='*80}\n")
