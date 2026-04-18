@@ -1,20 +1,13 @@
 {
-  "run_datetime_utc": "2026-04-18T07:32:09.991665Z",
-  "git_commit": "7f1f7555b673abb88c784e0c4ec593dab03567f4",
+  "run_datetime_utc": "2026-04-18T11:29:12.094321Z",
+  "git_commit": "015c9897a2ebd5e752541695e306018721380aa5",
   "git_dirty": true,
-  "git_untracked_critical_files": [
-    "analysis_plans/",
-    "run_temporal_interface_analysis.py",
-    "src/analysis/temporal_interface_analysis.py",
-    "tests/test_temporal_interface_analysis.py"
-  ],
-  "git_modified_critical_files": [
-    "differential_abundance_analysis.py"
-  ],
+  "git_untracked_critical_files": [],
+  "git_modified_critical_files": [],
   "analysis_file_sha256": {
-    "src/analysis/temporal_interface_analysis.py": "d2138bad29b0546be4a60376a0b96f393f42cabc779813f5b74b679ae9ab54d1",
-    "run_temporal_interface_analysis.py": "11a98d94b73485c25f5c71050752b7e56f8873cfe6d488f3b77b52c6dc592b35",
-    "analysis_plans/temporal_interfaces_plan.md": "9d6b734fde0fad25b2c003e90c78730e5edc3d49b79241a27b59ac529fa715d2",
+    "src/analysis/temporal_interface_analysis.py": "ef9ea64f2209ed2109bd29569b5ff004803706426a71cf0e5da326beca9aa42c",
+    "run_temporal_interface_analysis.py": "d5b712a3e9b7b77bb2aca2984b24a771d5928192849210f4dff1fe3aa631baaa",
+    "analysis_plans/temporal_interfaces_plan.md": "39f323c41cb8e36ef67b3977d93b5a9f52f9e602644692dee9dc41ed2c60ce60",
     "analysis_plans/deprecation_manifest.md": "f2dc767373bc3c265df9c37967bdc6eae88456c89667bf3e20821e53bd1bc237"
   },
   "config_hash_sha256": "43a1f72ac78683be2eedf4e14d76d181e0249510d06bf947470a6140705c3276",
@@ -54,7 +47,9 @@
     "min_prevalence_for_collapse": 0.01,
     "pathology_g_threshold": 3.0,
     "pathology_std_threshold": 0.01,
-    "type_m_correction": 0.65,
+    "shrinkage_prior_sd_skeptical": 0.5,
+    "shrinkage_prior_sd_neutral": 1.0,
+    "shrinkage_prior_sd_optimistic": 2.0,
     "pairwise_contrasts": [
       [
         "Sham",
