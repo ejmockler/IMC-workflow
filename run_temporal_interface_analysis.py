@@ -128,7 +128,15 @@ def write_provenance(annotations: pd.DataFrame, scale_um: float) -> Dict[str, ob
         ],
         'git_modified_critical_files': [
             f for f in modified_files
-            if 'differential_abundance' in f or 'batch_annotate' in f
+            if (
+                'differential_abundance' in f
+                or 'batch_annotate' in f
+                or 'temporal_interface' in f
+                or 'spatial_neighborhood' in f
+                or f.startswith('analysis_plans/')
+                or f.startswith('src/utils/metadata.py')
+                or f.startswith('run_temporal_interface_analysis.py')
+            )
         ],
         'analysis_file_sha256': file_hashes,
         'config_hash_sha256': config_hash,
@@ -179,18 +187,22 @@ def write_provenance(annotations: pd.DataFrame, scale_um: float) -> Dict[str, ob
 
 def run_family_a(annotations: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """Returns dict: interface_fractions (mouse-level), interface_clr,
-    interface_clr_no_none, sensitivity_thresholds, family_a_endpoints.
+    interface_clr_no_none, sensitivity_thresholds, family_a_endpoints,
+    normalization_sensitivity.
     """
     out: Dict[str, pd.DataFrame] = {}
 
-    # Primary threshold (0.3)
+    # Primary threshold (0.3) — uses per-ROI sigmoid-normalized lineage scores
     per_roi = tia.compute_interface_fractions_per_roi(
         annotations, threshold=tia.DEFAULT_LINEAGE_THRESHOLD,
     )
     annotated = tia.attach_roi_metadata(per_roi)
     mouse = tia.aggregate_fractions_to_mouse_level(annotated)
     filtered, collapsed = tia.apply_min_prevalence_filter(mouse)
-    out['interface_fractions'] = filtered.assign(threshold=tia.DEFAULT_LINEAGE_THRESHOLD)
+    out['interface_fractions'] = filtered.assign(
+        threshold=tia.DEFAULT_LINEAGE_THRESHOLD,
+        normalization_mode='per_roi_sigmoid',
+    )
 
     # CLR with and without "none"
     clr_with = tia.compute_interface_clr_table(filtered, exclude_none=False)
@@ -198,7 +210,7 @@ def run_family_a(annotations: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     out['interface_clr'] = clr_with
     out['interface_clr_no_none'] = clr_without
 
-    # Threshold sensitivity sweep
+    # Threshold sensitivity sweep (per-ROI normalization with varying lineage threshold)
     sensitivity_rows = []
     for thr in (0.2, 0.3, 0.4):
         s_per_roi = tia.compute_interface_fractions_per_roi(annotations, threshold=thr)
@@ -209,14 +221,80 @@ def run_family_a(annotations: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         sensitivity_rows.append(s_filtered)
     out['sensitivity_thresholds'] = pd.concat(sensitivity_rows, ignore_index=True)
 
-    # Endpoint table on CLR coordinates (primary)
+    # Normalization sensitivity: raw-marker Sham-reference threshold classification.
+    # The per-ROI sigmoid normalization is the longest-standing unresolved
+    # confound. Use Sham-only superpixels to define the threshold (matches
+    # Family C philosophy; avoids outcome contamination by D1/D3/D7 elevated
+    # markers driving the threshold, which would partially obscure the
+    # injury-driven effects we want to detect).
+    sweep_percentiles = (65.0, 75.0, 85.0)
+    sensitivity_per_pct: Dict[float, pd.DataFrame] = {}
+    sensitivity_endpoint_frames = []
+    for pct in sweep_percentiles:
+        thresholds_pct = tia.compute_global_marker_thresholds(
+            annotations, percentile=pct, sham_only=True,
+        )
+        sham_per_roi = tia.compute_interface_fractions_global_per_roi(
+            annotations, global_thresholds=thresholds_pct,
+        )
+        sham_annotated = tia.attach_roi_metadata(sham_per_roi)
+        sham_mouse = tia.aggregate_fractions_to_mouse_level(sham_annotated)
+        sham_filtered, _ = tia.apply_min_prevalence_filter(sham_mouse)
+        sham_filtered = sham_filtered.assign(
+            sham_percentile=pct,
+            normalization_mode='sham_reference_raw_marker',
+        )
+        sensitivity_per_pct[pct] = sham_filtered
+        sham_clr_pct = tia.compute_interface_clr_table(sham_filtered, exclude_none=False)
+        endpoints_pct = tia.pairwise_endpoint_table(
+            sham_clr_pct, value_cols=[c for c in sham_clr_pct.columns if c.endswith('_clr')],
+            family='A_interface_clr',
+        )
+        endpoints_pct['normalization_mode'] = 'sham_reference_raw_marker'
+        endpoints_pct['sham_percentile'] = pct
+        sensitivity_endpoint_frames.append(endpoints_pct)
+
+    # Primary normalization comparison: per-ROI vs Sham-ref @ 75th percentile
+    sham_ref_primary = sensitivity_per_pct[75.0]
+    out['normalization_sensitivity'] = pd.concat(
+        [out['interface_fractions'], sham_ref_primary], ignore_index=True,
+    )
+
     clr_value_cols = [c for c in clr_with.columns if c.endswith('_clr')]
     endpoints = tia.pairwise_endpoint_table(
         clr_with, value_cols=clr_value_cols, family='A_interface_clr',
     )
-    out['family_a_endpoints'] = endpoints
-    out['family_a_collapsed_categories'] = pd.DataFrame({'collapsed': collapsed})
+    endpoints['normalization_mode'] = 'per_roi_sigmoid'
+    endpoints['sham_percentile'] = np.nan
 
+    primary_global = sensitivity_endpoint_frames[1]  # 75th percentile
+    out['family_a_endpoints'] = endpoints
+    out['family_a_endpoints_global_norm'] = primary_global
+    out['family_a_endpoints_norm_sweep'] = pd.concat(sensitivity_endpoint_frames, ignore_index=True)
+    out['family_a_collapsed_categories'] = pd.DataFrame({'collapsed': collapsed})
+    out['family_a_global_thresholds'] = pd.DataFrame([
+        {**tia.compute_global_marker_thresholds(annotations, percentile=p, sham_only=True), 'sham_percentile': p}
+        for p in sweep_percentiles
+    ])
+
+    # Sign-reversal annotation merged into the per-ROI endpoint table so it
+    # propagates to endpoint_summary.csv (Gate 6 critique: sign-reversal must
+    # not live only in console output).
+    rev = endpoints[['endpoint', 'contrast', 'hedges_g']].merge(
+        primary_global[['endpoint', 'contrast', 'hedges_g']],
+        on=['endpoint', 'contrast'], suffixes=('_per_roi', '_sham_ref'),
+    )
+    rev['normalization_sign_reverse'] = (
+        np.sign(rev['hedges_g_per_roi']) != np.sign(rev['hedges_g_sham_ref'])
+    ) & rev['hedges_g_per_roi'].notna() & rev['hedges_g_sham_ref'].notna()
+    rev['normalization_g_collapse'] = (
+        rev['hedges_g_per_roi'].abs() > 0.5
+    ) & (rev['hedges_g_sham_ref'].abs() < 0.2 * rev['hedges_g_per_roi'].abs())
+    out['family_a_endpoints'] = endpoints.merge(
+        rev[['endpoint', 'contrast', 'normalization_sign_reverse',
+             'normalization_g_collapse', 'hedges_g_sham_ref']],
+        on=['endpoint', 'contrast'], how='left',
+    )
     return out
 
 
@@ -388,20 +466,11 @@ def assemble_endpoint_summary(
                 )
                 summary.loc[mask, 'threshold_sensitive'] = True
 
-    # p_proxy + BH-FDR — exclude pathological and insufficient_support from the calculation
-    z = summary['hedges_g'].abs().fillna(0).values
-    from scipy import stats as scipy_stats
-    summary['p_proxy_from_g'] = 2 * (1 - scipy_stats.norm.cdf(z))
-    eligible = ~(summary['g_pathological'] | summary['insufficient_support'])
-    summary['q_proxy_within_family'] = np.nan
-    for fam, idx in summary[eligible].groupby('family').groups.items():
-        sub_p = summary.loc[idx, 'p_proxy_from_g'].values
-        summary.loc[idx, 'q_proxy_within_family'] = tia.benjamini_hochberg(sub_p)
-    summary['q_proxy_pooled'] = np.nan
-    eligible_idx = summary.index[eligible]
-    summary.loc[eligible_idx, 'q_proxy_pooled'] = tia.benjamini_hochberg(
-        summary.loc[eligible_idx, 'p_proxy_from_g'].values
-    )
+    # Gate 6 seam-closure: removed p_proxy_from_g and q_proxy_* columns. At n=2
+    # per group no real p-value exists, so FDR-adjusted proxies were cognitive
+    # anchoring risk regardless of disclaimers. The audit they supported
+    # (within-family vs pooled rank comparison) can be recovered by sorting
+    # endpoint_summary by |hedges_g| directly.
     return summary
 
 
@@ -419,14 +488,31 @@ def main(scale_um: float = 10.0) -> None:
     (OUTPUT_DIR / 'run_provenance.json').write_text(json.dumps(provenance, indent=2))
     print(f"  Wrote provenance: {OUTPUT_DIR / 'run_provenance.json'}")
 
-    print("\n[Family A] Interface fractions + CLR + threshold sensitivity")
+    print("\n[Family A] Interface fractions + CLR + threshold sensitivity + normalization sensitivity")
     fa = run_family_a(annotations)
     fa['interface_fractions'].to_parquet(OUTPUT_DIR / 'interface_fractions.parquet')
     fa['interface_clr'].to_parquet(OUTPUT_DIR / 'interface_clr.parquet')
     fa['interface_clr_no_none'].to_parquet(OUTPUT_DIR / 'interface_clr_no_none.parquet')
     fa['sensitivity_thresholds'].to_parquet(OUTPUT_DIR / 'sensitivity_thresholds.parquet')
+    fa['normalization_sensitivity'].to_parquet(OUTPUT_DIR / 'interface_fractions_normalization_sensitivity.parquet')
+    fa['family_a_endpoints_global_norm'].to_parquet(OUTPUT_DIR / 'family_a_endpoints_global_norm.parquet')
+    fa['family_a_endpoints_norm_sweep'].to_parquet(OUTPUT_DIR / 'family_a_endpoints_norm_sweep.parquet')
+    fa['family_a_global_thresholds'].to_parquet(OUTPUT_DIR / 'family_a_global_thresholds.parquet')
+    # Magnitude-stratified normalization sign-reversal counts (Gate 6 critic feedback:
+    # raw 18/48 overcounts compositionally-coupled near-zero flips)
+    fa_eps = fa['family_a_endpoints']
+    has_norm_data = fa_eps['hedges_g'].notna() & fa_eps['hedges_g_sham_ref'].notna()
+    n_total_cmp = int(has_norm_data.sum())
+    n_rev_all = int(fa_eps.loc[has_norm_data, 'normalization_sign_reverse'].sum())
+    nontrivial = has_norm_data & (fa_eps['hedges_g'].abs() > 0.5)
+    n_rev_nontrivial = int(fa_eps.loc[nontrivial, 'normalization_sign_reverse'].sum())
+    n_total_nontrivial = int(nontrivial.sum())
+    n_collapse = int(fa_eps.loc[has_norm_data, 'normalization_g_collapse'].sum())
     print(f"  Mouse-level fractions: {len(fa['interface_fractions'])} rows")
-    print(f"  CLR endpoints: {len(fa['family_a_endpoints'])} rows")
+    print(f"  CLR endpoints (per-ROI norm): {len(fa['family_a_endpoints'])} rows")
+    print(f"  Normalization sign-reverse (all): {n_rev_all}/{n_total_cmp}")
+    print(f"  Normalization sign-reverse (|g|>0.5 only): {n_rev_nontrivial}/{n_total_nontrivial}")
+    print(f"  Magnitude collapse (|g|>0.5 per-ROI -> |g|<20% under Sham-ref): {n_collapse}/{n_total_cmp}")
     if not fa['family_a_collapsed_categories'].empty:
         print(f"  Collapsed rare categories: {fa['family_a_collapsed_categories']['collapsed'].tolist()}")
 
@@ -490,11 +576,9 @@ def main(scale_um: float = 10.0) -> None:
         flagged = int(summary['g_pathological'].sum())
         insufficient = int(summary.get('insufficient_support', pd.Series([])).sum() or 0)
         thr_sens = int(summary['threshold_sensitive'].sum())
-        n_with_q = int(summary['q_proxy_pooled'].notna().sum())
-        print(f"  Pathological-flag rows: {flagged} (excluded from BH)")
-        print(f"  Insufficient-support rows: {insufficient} (excluded from BH)")
+        print(f"  Pathological-flag rows: {flagged} (NaN shrunk values)")
+        print(f"  Insufficient-support rows: {insufficient} (NaN derived stats)")
         print(f"  Threshold-sensitive rows (sign reversal in sweep): {thr_sens}")
-        print(f"  Eligible-for-BH rows: {n_with_q}")
 
     print(f"\n✓ Outputs at {OUTPUT_DIR}")
 
