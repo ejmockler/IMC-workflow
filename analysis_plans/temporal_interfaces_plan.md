@@ -21,7 +21,7 @@ This plan converts descriptive temporal observations into effect-size estimates 
 
 ## 3. Endpoint Families
 
-Three pre-declared endpoint families. **Primary multiplicity correction:** BH-FDR within each family (rationale: distinct biological questions despite shared upstream marker derivation). **Sensitivity:** BH-FDR pooled across all families, reported in `endpoint_summary.csv` as a separate `q_value_pooled` column. If conclusions diverge between within-family and pooled correction, the finding is annotated as multiplicity-sensitive.
+Three pre-declared endpoint families. **Multiplicity:** at n=2 per group no real p-value exists, so formal BH-FDR (which requires p-values) is not computed. Earlier drafts of this plan called for a normal-CDF-from-|g| proxy with within-family + pooled BH adjustment; Gate 6 removed those proxy columns because reviewers consistently misread them as real q-values regardless of disclaimers. Family-arbitrage concerns (whether splitting endpoints into 3 families vs pooling them changes conclusions) are addressed by sorting endpoint_summary.csv by `|hedges_g|` directly — the rank-ordering is the relevant audit at this sample size, not coverage-bearing FDR.
 
 ### Family A — Interface composition (compositional)
 - **Endpoints:** mouse-level fraction of superpixels in each interface category {immune, endothelial, stromal, immune+endothelial, immune+stromal, endothelial+stromal, triple, none}.
@@ -61,7 +61,7 @@ The existing DA framework currently runs only 5 (omits D1_vs_D7); fixed in T19. 
 | Uncertainty | Percentile bootstrap with 10,000 iterations, **reported as "bootstrap range (min, max of 9 unique values at n=2 per group)" — NOT as 95% CI** | The resolution limit is 9 distinct values; CI notation implies coverage that does not exist |
 | Shrinkage | Every observed g is annotated with a **per-endpoint Bayesian shrinkage range** under three prior strengths on the true effect δ: skeptical N(0, 0.5²), neutral N(0, 1.0²), optimistic N(0, 2.0²). Posterior mean E[δ \| g_obs] = g_obs × prior_var / (prior_var + sampling_var), where sampling_var(g, n) = 4/n + g²/(2n). Replaces the prior single-scalar Type-M=0.65 correction with a defensible range. | n=2 winner's curse; Bayesian shrinkage is the standard treatment for noisy effect-size estimators under informative priors. |
 | Multiplicity (primary) | BH-FDR within each endpoint family separately | Distinct biological questions |
-| Multiplicity (sensitivity) | BH-FDR pooled across all three families, reported as `q_value_pooled` | Counters family-arbitrage criticism |
+| Multiplicity | At n=2, no real p-values exist; no FDR is computed. Family-arbitrage rank audit done by sorting `endpoint_summary.csv` on `|hedges_g|`. | Earlier proxy-FDR columns removed in Gate 6 (cognitive-anchoring risk) |
 | Power | For each observed g, report `n_required` under four effect-size assumptions: the raw observed g (*most optimistic lower bound*) and the three Bayesian-shrunk values under skeptical/neutral/optimistic priors (*sensitivity range*). **No single prior is designated as "default"** — the range itself is the finding. Downstream study designers pick the prior that matches their own scepticism about the observed pilot effect. | Converts findings into study-design statements with a transparent uncertainty band; avoids recreating the magic-scalar problem by anointing one prior |
 | Compositional | CLR with Bayesian-multiplicative zero replacement for Family A only | Family B/C endpoints are not exhaustive |
 | Pathology flag | `g_pathological: bool` set when `|g| > 3 AND pooled_std < 0.01` | Quarantines variance-collapse artifacts (e.g., g=−4.87 with mean diff 0.001) |
@@ -84,10 +84,11 @@ The original proposal called for Moran's I on interface labels. **Not used.** Mo
 Researcher-degree-of-freedom audits, all pre-specified:
 
 - **Family A lineage threshold:** sweep at {0.2, 0.3, 0.4}. **Demotion criterion:** if the sign of Hedges' g reverses at any threshold for a given (category × contrast), the finding is annotated as threshold-sensitive in `endpoint_summary.csv`.
+- **Family A normalization-mode sensitivity** *(Gate 6 addition, 2026-04-18; revised post-brutalist)*: parallel classification using **Sham-reference raw-marker thresholds** swept at {65, 75, 85}ᵗʰ percentiles of the Sham distribution (matches Family C philosophy and avoids outcome contamination from pooling D1/D3/D7 elevated markers into the threshold). The primary comparison is per-ROI-sigmoid vs Sham-ref-75th. Output: `interface_fractions_normalization_sensitivity.parquet`, `family_a_endpoints_global_norm.parquet`, `family_a_endpoints_norm_sweep.parquet`. **Sign-reversal and magnitude-collapse flags now propagate into the per-ROI Family A endpoint table** (`normalization_sign_reverse`, `normalization_g_collapse`, `hedges_g_sham_ref` columns) so they're visible in `endpoint_summary.csv`, not just in console output. Magnitude-stratified counts: total sign-reverse + sign-reverse-among-|g|>0.5 + magnitude-collapse-count are reported, since raw counts overcount compositionally-coupled near-zero flips.
 - **Family B minimum support:** sweep at {10, 20, 40} superpixels. **Demotion criterion:** if a (cell_type × neighbor_lineage × contrast) finding appears at one support threshold but not another (due to filter exclusion), flagged as support-sensitive.
 - **Family C Sham-reference percentile:** sweep at {65th, 75th, 85th} percentile of Sham distribution. **Demotion criterion:** sign reversal of g.
 
-Sensitivity outputs reported in `sensitivity_thresholds.parquet`.
+Sensitivity outputs reported in `sensitivity_thresholds.parquet` and `interface_fractions_normalization_sensitivity.parquet`.
 
 ## 8. Pre-Specified Outputs
 
@@ -99,7 +100,7 @@ Sensitivity outputs reported in `sensitivity_thresholds.parquet`.
 - `lineage_morans_i.parquet` (Moran's I on continuous lineage scores)
 - `continuous_neighborhood_temporal.parquet` (Family B with neighbor-minus-self and delta-vs-Sham)
 - `compartment_activation_temporal.parquet` (Family C with Sham-reference threshold)
-- `endpoint_summary.csv` — single PI/reviewer-facing table with columns: family, endpoint, contrast, tp1, tp2, n_mice_1, n_mice_2, insufficient_support, mouse_mean_1, mouse_mean_2, mouse_range_1, mouse_range_2, observed_range, hedges_g, g_shrunk_skeptical, g_shrunk_neutral, g_shrunk_optimistic, pooled_std, g_pathological, bootstrap_range_min, bootstrap_range_max, n_unique_resamples, n_required_80pct, n_required_skeptical, n_required_neutral, n_required_optimistic, composite_label, threshold_sensitive, p_proxy_from_g, q_proxy_within_family, q_proxy_pooled. Pathological rows have NaN g_shrunk_* and NaN n_required_shrunk_*. Insufficient-support rows also have NaN for all derived statistics.
+- `endpoint_summary.csv` — single PI/reviewer-facing table with columns: family, endpoint, contrast, tp1, tp2, n_mice_1, n_mice_2, insufficient_support, mouse_mean_1, mouse_mean_2, mouse_range_1, mouse_range_2, observed_range, hedges_g, g_shrunk_skeptical, g_shrunk_neutral, g_shrunk_optimistic, pooled_std, g_pathological, bootstrap_range_min, bootstrap_range_max, n_unique_resamples, n_required_80pct, n_required_skeptical, n_required_neutral, n_required_optimistic, composite_label, threshold_sensitive. Pathological rows have NaN g_shrunk_* and NaN n_required_shrunk_*. Insufficient-support rows also have NaN for all derived statistics. (The earlier `p_proxy_from_g` / `q_proxy_*` columns were removed in Gate 6 — see §12 amendment.)
 
 ## 9. Pre-Specified Plots (in kidney_injury_spatial_analysis.ipynb)
 
@@ -132,6 +133,11 @@ This plan generates effect-size candidates for follow-up. It does **not** establ
 These limitations are restated in every notebook section consuming this plan.
 
 ## 12. Amendments
+
+### 2026-04-18 (Gate 6 — close remaining methodological seams)
+- Removed `p_proxy_from_g`, `q_proxy_within_family`, `q_proxy_pooled` columns from endpoint_summary.csv. At n=2 these were normal-CDF approximations from |g|, not real p-values; Gate 4/5 critics flagged them as cognitive-anchoring risk regardless of column-comment disclaimers. The researcher-degrees-of-freedom audit they supported (within-family vs pooled FDR rank comparison) can be recovered by sorting endpoint_summary by |hedges_g|. The `add_pooled_fdr_proxy()` helper was deleted from the module.
+- Added Family A **normalization-mode sensitivity**: a parallel classification using **Sham-reference raw-marker thresholds** at {65, 75, 85}ᵗʰ percentile of the Sham distribution. Tests whether headline findings depend on the per-ROI normalization confound. Earlier draft used pooled-60th-percentile but a Gate 6 critique correctly noted that pooling across timepoints lets D7's elevated markers drive the threshold (outcome contamination). Sham-reference avoids this and matches Family C's existing convention. Output: `interface_fractions_normalization_sensitivity.parquet`, `family_a_endpoints_global_norm.parquet` (75th-percentile primary), `family_a_endpoints_norm_sweep.parquet` (all three percentiles). Sign-reversal and magnitude-collapse flags now appear directly in `endpoint_summary.csv` as `normalization_sign_reverse`, `normalization_g_collapse`, `hedges_g_sham_ref` columns on Family A rows — not just in console output.
+- Fixed `src/utils/metadata.py` global cache isolation hazard: replaced module-level `_METADATA_CACHE` with `functools.lru_cache` keyed on the path string + a `clear_metadata_cache()` test helper. Different metadata paths get independent cache entries; tests no longer cross-contaminate each other.
 
 ### 2026-04-18 (Gate 4 follow-up — replace Type-M scalar with Bayesian shrinkage) + Gate 5 response
 - The earlier `TYPE_M_CORRECTION = 0.65` constant was a single-scalar approximation vulnerable to the "where does 0.65 come from?" reviewer attack. Replaced with per-endpoint, per-prior **Bayesian shrinkage** using the posterior mean of δ under three prior strengths (skeptical N(0, 0.5²) / neutral N(0, 1.0²) / optimistic N(0, 2.0²)).
