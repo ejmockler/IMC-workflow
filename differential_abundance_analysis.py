@@ -286,6 +286,7 @@ def perform_differential_abundance(df: pd.DataFrame, cell_types: List[str]) -> p
         ('Sham', 'D3'),
         ('Sham', 'D7'),
         ('D1', 'D3'),
+        ('D1', 'D7'),
         ('D3', 'D7'),
     ]
 
@@ -382,7 +383,7 @@ def perform_differential_abundance_continuous(
     results = []
     timepoint_pairs = [
         ('Sham', 'D1'), ('Sham', 'D3'), ('Sham', 'D7'),
-        ('D1', 'D3'), ('D3', 'D7'),
+        ('D1', 'D3'), ('D1', 'D7'), ('D3', 'D7'),
     ]
 
     for score_col, feature_name in zip(score_cols, feature_names):

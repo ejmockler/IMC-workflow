@@ -181,8 +181,13 @@ def main():
             # Add continuous membership summary
             if memberships is not None:
                 ls = memberships['lineage_scores']
-                above_thresh = {ln: (scores > 0.3).sum() for ln, scores in ls.items()}
-                n_lineages = sum((scores > 0.3).astype(int) for scores in ls.values())
+                lineage_threshold = float(
+                    config.raw['cell_type_annotation']['membership_axes']
+                    .get('subtypes', {})
+                    .get('subtype_threshold', 0.3)
+                )
+                above_thresh = {ln: (scores > lineage_threshold).sum() for ln, scores in ls.items()}
+                n_lineages = sum((scores > lineage_threshold).astype(int) for scores in ls.values())
                 summary['membership'] = {
                     'lineage_means': {ln: float(scores.mean()) for ln, scores in ls.items()},
                     'lineage_above_threshold': {ln: int(c) for ln, c in above_thresh.items()},
