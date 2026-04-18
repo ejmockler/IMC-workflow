@@ -1,19 +1,28 @@
 """Canonical ROI metadata parser. Extracts timepoint, mouse, region from IMC filenames."""
 
 import pandas as pd
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
-
-_METADATA_CACHE: Optional[pd.DataFrame] = None
 
 _DEFAULT_METADATA_CSV = Path(__file__).parent.parent.parent / "data" / "241218_IMC_Alun" / "Metadata-Table 1.csv"
 
 
-def _load_metadata_df(metadata_csv: Optional[Path] = None) -> pd.DataFrame:
-    path = Path(metadata_csv) if metadata_csv else _DEFAULT_METADATA_CSV
+@lru_cache(maxsize=8)
+def _load_metadata_df_cached(metadata_csv_str: str) -> pd.DataFrame:
+    """Per-path cached CSV loader. Keyed on the string form of the path so
+    different metadata_csv arguments get independent cache entries — tests
+    with a custom CSV no longer poison subsequent default-path callers.
+    """
+    path = Path(metadata_csv_str)
     df = pd.read_csv(path)
     df.columns = df.columns.str.strip()
     return df
+
+
+def clear_metadata_cache() -> None:
+    """Test helper: drop all cached metadata DataFrames."""
+    _load_metadata_df_cached.cache_clear()
 
 
 def parse_roi_metadata(roi_id: str, metadata_csv: Optional[Path] = None) -> dict:
@@ -30,12 +39,8 @@ def parse_roi_metadata(roi_id: str, metadata_csv: Optional[Path] = None) -> dict
 
     Returns dict with keys: roi_id, timepoint, region, replicate, mouse.
     """
-    global _METADATA_CACHE
-
-    if _METADATA_CACHE is None or metadata_csv is not None:
-        _METADATA_CACHE = _load_metadata_df(metadata_csv)
-
-    metadata_df = _METADATA_CACHE
+    csv_path = Path(metadata_csv) if metadata_csv else _DEFAULT_METADATA_CSV
+    metadata_df = _load_metadata_df_cached(str(csv_path))
 
     # Remove 'roi_' prefix if present
     file_name = roi_id.replace('roi_', '')

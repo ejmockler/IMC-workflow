@@ -130,6 +130,109 @@ def compute_interface_fractions_per_roi(
     return fractions
 
 
+# ---------------------------------------------------------------------------
+# Normalization sensitivity — raw-marker global-threshold classification
+# ---------------------------------------------------------------------------
+
+def compute_global_marker_thresholds(
+    annotations: pd.DataFrame,
+    percentile: float = 75.0,
+    sham_only: bool = True,
+) -> Dict[str, float]:
+    """Per-marker global thresholds.
+
+    Used as the normalization-sensitivity counterpart to the default per-ROI
+    sigmoid-normalized lineage thresholds. Lineage definitions match
+    cell_type_annotation.py: immune=CD45, endothelial=mean(CD31, CD34),
+    stromal=CD140a.
+
+    Args:
+        sham_only: if True (default), thresholds are computed from Sham
+            superpixels only — matches the Family C philosophy of using
+            unperturbed baseline as reference. This avoids outcome
+            contamination (Codex Gate 6 critique): pooling across all
+            timepoints lets the elevated D7 distribution drive the
+            threshold, partially obscuring the D7 effect when measured
+            against it. If False, pools across all superpixels.
+        percentile: which percentile of the (Sham or pooled) distribution
+            to use as the cutoff. Default 75th matches Family C Sham-
+            reference convention.
+
+    Returns dict with immune/endothelial/stromal threshold values.
+    """
+    if not {'CD45', 'CD31', 'CD34', 'CD140a'}.issubset(annotations.columns):
+        raise ValueError("Missing required raw-marker columns for global thresholds.")
+    if sham_only:
+        if 'timepoint' not in annotations.columns:
+            raise ValueError("sham_only=True requires a 'timepoint' column.")
+        ref = annotations[annotations['timepoint'] == 'Sham']
+        if ref.empty:
+            raise ValueError("No Sham superpixels found for sham_only threshold reference.")
+    else:
+        ref = annotations
+    return {
+        'immune': float(np.percentile(ref['CD45'].values, percentile)),
+        'endothelial': float(np.percentile(
+            (ref['CD31'].values + ref['CD34'].values) / 2.0,
+            percentile,
+        )),
+        'stromal': float(np.percentile(ref['CD140a'].values, percentile)),
+    }
+
+
+def classify_interface_per_superpixel_global_markers(
+    annotations: pd.DataFrame,
+    global_thresholds: Dict[str, float],
+) -> pd.Series:
+    """Classify interface categories using raw-marker global thresholds.
+
+    Alternative to classify_interface_per_superpixel which operates on
+    per-ROI sigmoid-normalized lineage scores. This version uses the
+    raw-marker expressions directly with pooled-percentile cutoffs,
+    preserving inter-ROI variation that the per-ROI normalization flattens.
+    """
+    above = {
+        'immune': annotations['CD45'] > global_thresholds['immune'],
+        'endothelial': (
+            (annotations['CD31'] + annotations['CD34']) / 2.0
+            > global_thresholds['endothelial']
+        ),
+        'stromal': annotations['CD140a'] > global_thresholds['stromal'],
+    }
+    n_above = sum(above.values())
+    labels = pd.Series('none', index=annotations.index, dtype=object)
+    for ln in LINEAGE_NAMES:
+        labels[above[ln] & (n_above == 1)] = ln
+    for i, ln1 in enumerate(LINEAGE_NAMES):
+        for ln2 in LINEAGE_NAMES[i + 1:]:
+            labels[above[ln1] & above[ln2] & (n_above == 2)] = '+'.join(sorted([ln1, ln2]))
+    triple = above['immune'] & above['endothelial'] & above['stromal']
+    labels[triple] = '+'.join(sorted(LINEAGE_NAMES))
+    return labels
+
+
+def compute_interface_fractions_global_per_roi(
+    annotations: pd.DataFrame,
+    global_thresholds: Dict[str, float],
+    roi_id_col: str = 'roi_id',
+) -> pd.DataFrame:
+    """ROI x category fraction table using global raw-marker thresholds."""
+    labels = classify_interface_per_superpixel_global_markers(annotations, global_thresholds)
+    df = annotations[[roi_id_col]].copy()
+    df['interface'] = labels.values
+    counts = (
+        df.groupby([roi_id_col, 'interface'])
+        .size()
+        .unstack(fill_value=0)
+        .reindex(columns=list(INTERFACE_CATEGORIES), fill_value=0)
+    )
+    totals = counts.sum(axis=1)
+    fractions = counts.div(totals, axis=0)
+    fractions['n_total'] = totals
+    fractions['n_lineage_positive'] = totals - counts['none']
+    return fractions.reset_index()
+
+
 def attach_roi_metadata(roi_fractions: pd.DataFrame, roi_id_col: str = 'roi_id') -> pd.DataFrame:
     """Add timepoint and mouse columns by parsing each roi_id."""
     metadata = roi_fractions[roi_id_col].apply(parse_roi_metadata).apply(pd.Series)
@@ -944,24 +1047,10 @@ def pairwise_endpoint_table(
     return df
 
 
-def add_pooled_fdr_proxy(endpoint_df: pd.DataFrame) -> pd.DataFrame:
-    """Add q_proxy_pooled column applying BH-FDR mechanics across all rows.
-
-    AT n=2 PER GROUP, NO REAL p-VALUE EXISTS. This function derives a sortable
-    p-value proxy from |hedges_g| via the standard normal CDF and applies BH
-    mechanics. The output column is named `q_proxy_pooled` (not q_value_pooled)
-    to make explicit that this is a researcher-degree-of-freedom audit
-    quantity, not a coverage-bearing q-value. It exists solely to compare
-    rank-orderings under within-family vs pooled FDR — to detect whether the
-    family partition acts as multiplicity arbitrage.
-
-    Reviewers should not interpret q_proxy values as FDR-controlled discoveries.
-    """
-    if endpoint_df.empty:
-        return endpoint_df
-    z = endpoint_df['hedges_g'].abs().fillna(0).values
-    approx_p = 2 * (1 - stats.norm.cdf(z))
-    endpoint_df = endpoint_df.copy()
-    endpoint_df['p_proxy_from_g'] = approx_p
-    endpoint_df['q_proxy_pooled'] = benjamini_hochberg(approx_p)
-    return endpoint_df
+# REMOVED (Gate 6 seam-closure, 2026-04-18):
+#   add_pooled_fdr_proxy(endpoint_df) -> derived p_proxy_from_g + q_proxy_pooled
+# from |hedges_g| via the standard normal CDF. Gate 4/5 critics repeatedly
+# flagged that the column names look like q-values regardless of disclaimers,
+# creating cognitive anchoring risk. The researcher-degrees-of-freedom audit
+# they supported (within-family vs pooled FDR rank comparison) can be
+# recovered by sorting endpoint_summary by |hedges_g| directly.

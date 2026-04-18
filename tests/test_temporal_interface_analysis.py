@@ -550,15 +550,86 @@ def test_compute_sham_reference_thresholds_raises_on_all_nan_marker():
         tia.compute_sham_reference_thresholds(df, ['CD45'])
 
 
-def test_add_pooled_fdr_proxy_renamed_columns():
-    """Column name explicitly identifies as proxy, not real q-value."""
-    df = pd.DataFrame({'hedges_g': [3.0, 1.0, 0.5, 0.1]})
-    out = tia.add_pooled_fdr_proxy(df)
-    assert 'q_proxy_pooled' in out.columns
-    assert 'p_proxy_from_g' in out.columns
-    assert 'q_value_pooled' not in out.columns  # ensure old misleading name is gone
-    # Larger |g| → smaller q_proxy
-    assert out['q_proxy_pooled'].iloc[0] <= out['q_proxy_pooled'].iloc[-1]
+def test_add_pooled_fdr_proxy_removed():
+    """Gate 6 seam closure: the add_pooled_fdr_proxy helper has been removed.
+    At n=2 per group, no real p-value exists; FDR-adjusted proxies invite
+    misinterpretation regardless of disclaimers.
+    """
+    assert not hasattr(tia, 'add_pooled_fdr_proxy'), \
+        "add_pooled_fdr_proxy should be removed (Gate 6 seam closure)"
+
+
+# ---------------------------------------------------------------------------
+# Normalization sensitivity (Gate 6 seam closure)
+# ---------------------------------------------------------------------------
+
+def test_compute_global_marker_thresholds_sham_only_default():
+    """Default sham_only=True restricts threshold computation to Sham timepoint.
+
+    Critical: pooling across all timepoints lets injury-elevated markers drive
+    the threshold (outcome contamination). Sham-only matches Family C
+    philosophy and avoids this.
+    """
+    df = pd.DataFrame({
+        'CD45': np.concatenate([np.full(50, 1.0), np.full(50, 10.0)]),  # sham low, D7 high
+        'CD31': np.full(100, 2.0),
+        'CD34': np.full(100, 4.0),
+        'CD140a': np.arange(100, dtype=float),
+        'timepoint': ['Sham'] * 50 + ['D7'] * 50,
+    })
+    sham_thr = tia.compute_global_marker_thresholds(df, percentile=75.0, sham_only=True)
+    # Sham CD45 is constant 1.0; 75th percentile = 1.0 (unaffected by D7=10)
+    assert abs(sham_thr['immune'] - 1.0) < 1e-9
+
+
+def test_compute_global_marker_thresholds_pooled_includes_d7():
+    """Explicit sham_only=False pools across timepoints; D7 elevated markers
+    raise the threshold (the outcome-contamination Gate 6 critic flagged)."""
+    df = pd.DataFrame({
+        'CD45': np.concatenate([np.full(50, 1.0), np.full(50, 10.0)]),
+        'CD31': np.full(100, 2.0),
+        'CD34': np.full(100, 4.0),
+        'CD140a': np.arange(100, dtype=float),
+        'timepoint': ['Sham'] * 50 + ['D7'] * 50,
+    })
+    pooled_thr = tia.compute_global_marker_thresholds(df, percentile=75.0, sham_only=False)
+    # Pooled 75th percentile of [1]*50 + [10]*50 = 10.0 (driven by D7)
+    assert pooled_thr['immune'] > 5.0
+
+
+def test_compute_global_marker_thresholds_sham_only_requires_timepoint():
+    df = pd.DataFrame({'CD45': [1.0], 'CD31': [1.0], 'CD34': [1.0], 'CD140a': [1.0]})
+    with pytest.raises(ValueError, match="sham_only=True requires"):
+        tia.compute_global_marker_thresholds(df, sham_only=True)
+
+
+def test_compute_global_marker_thresholds_missing_markers_errors():
+    with pytest.raises(ValueError, match="Missing required raw-marker"):
+        tia.compute_global_marker_thresholds(pd.DataFrame({'CD45': [1.0]}))
+
+
+def test_classify_interface_global_markers_assigns_expected_categories():
+    """Given raw-marker expressions and global thresholds, classification
+    should match the standard interface category set."""
+    df = pd.DataFrame({
+        'CD45': [10, 0, 0, 10, 10, 0, 10, 0],   # rows 0,3,4,6 are immune+
+        'CD31': [0, 10, 0, 10, 0, 10, 10, 0],   # rows 1,3,5,6 are endo+
+        'CD34': [0, 10, 0, 10, 0, 10, 10, 0],
+        'CD140a': [0, 0, 10, 0, 10, 10, 10, 0], # rows 2,4,5,6 are stromal+
+    })
+    thresholds = {'immune': 5.0, 'endothelial': 5.0, 'stromal': 5.0}
+    labels = tia.classify_interface_per_superpixel_global_markers(df, thresholds)
+    expected = [
+        'immune',
+        'endothelial',
+        'stromal',
+        'endothelial+immune',
+        'immune+stromal',
+        'endothelial+stromal',
+        'endothelial+immune+stromal',
+        'none',
+    ]
+    assert labels.tolist() == expected
 
 
 def test_pairwise_endpoint_table_seed_determinism():
