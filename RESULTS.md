@@ -483,16 +483,28 @@ A separate pre-registered analysis (`analysis_plans/temporal_interfaces_plan.md`
 
 **Headline observations** (from `endpoint_summary.csv`). Effect sizes reported as observed Hedges' g plus a per-endpoint Bayesian shrinkage range under three priors on the true effect δ (skeptical N(0, 0.5²), neutral N(0, 1.0²), optimistic N(0, 2.0²)). n_required values are 80%-power sample sizes per Bayesian-shrunk g.
 
-| Endpoint | Family | Observed g | Shrunk (skeptical / neutral / optimistic) | n required (skeptical / neutral / optimistic) |
-|---|---|---|---|---|
-| Triple-overlap fraction Sham→D7 | C | +3.29 | +0.32 / +0.98 / +2.07 | 158 / 17 / 4 |
-| Background CD44+ rate Sham→D7 | C | +2.82 | +0.31 / +0.94 / +1.88 | 160 / 18 / 5 |
-| Endothelial-only CLR Sham→D7 | A | +2.28 | +0.30 / +0.86 / +1.61 | 175 / 22 / 7 |
-| Stromal-only CLR Sham→D7 | A | -1.59 | -0.25 / -0.69 / -1.20 | 244 / 34 / 11 |
-| CD140b+ within-compartment CD44+ rate Sham→D7 | C | +1.44 | +0.24 / +0.64 / +1.10 | 276 / 39 / 14 |
+**Normalization-consistent Sham→D7 co-headline findings** (post-hoc selection after Gate 6 normalization sensitivity; the co-headline status itself is not pre-registered).
+
+The selection rule: per-endpoint, require `(1)` direction-consistent between the per-ROI and Sham-reference normalization regimes for the Sham→D7 contrast (no sign reverse), `(2)` per-ROI |g| > 0.5, `(3)` not magnitude-collapsing (Sham-ref magnitude at least 20% of per-ROI). Of 8 Family A CLR Sham→D7 endpoints, 2 meet all three criteria (stromal-only, triple-positive); 3 sign-reverse (endothelial+immune, immune+stromal, none); 1 magnitude-collapses (endothelial-only, demoted below); 2 are near-zero in both regimes (immune-only, endothelial+stromal). Family C findings use Sham-reference thresholds by design. The "normalization-consistent" label refers to the Sham→D7 contrast *endpoint*; early-timepoint contrasts in the same endpoints do sign-reverse between regimes, so the *temporal trajectory* is normalization-dependent. Effect sizes from `endpoint_summary.csv` reported as observed Hedges' g + per-endpoint Bayesian shrinkage range under three priors on the true effect δ (skeptical N(0, 0.5²), neutral N(0, 1.0²), optimistic N(0, 2.0²)) with Hedges & Olkin (1985) sampling variance v = 2/n + g²/(4n).
+
+| Endpoint | Family | Per-ROI g | Sham-ref g | Shrunk (skep / neut / opt) | n required (skep / neut / opt) |
+|---|---|---|---|---|---|
+| Triple-overlap fraction Sham→D7 | C (Sham-ref by design) | +3.29 | n/a | +0.32 / +0.98 / +2.07 | 158 / 17 / 4 |
+| Background CD44+ rate Sham→D7 | C | +2.82 | n/a | +0.31 / +0.94 / +1.88 | 160 / 18 / 5 |
+| Stromal-only CLR Sham→D7 | A | -1.59 | **-3.20** (strengthens) | -0.25 / -0.69 / -1.20 | 244 / 34 / 11 |
+| Triple-positive interface CLR Sham→D7 | A | +0.63 | **+2.08** (strengthens) | +0.07 / +0.20 / +0.41 | many hundreds / ~150 / ~50 |
+| CD140b+ within-compartment CD44+ rate Sham→D7 | C | +1.44 | n/a | +0.24 / +0.64 / +1.10 | 276 / 39 / 14 |
+
+The **stromal-only decrease + triple-positive increase at Sham→D7** are consistent with a hypothesis that stromal-marker-positive tissue area shifts from stromal-only to multi-lineage interface classification. This is *convergent evidence*, not a demonstrated mechanism: (a) no lineage tracing or object-level transition analysis; (b) CLR compositional transforms mechanically couple these two components; (c) Family C's `triple_overlap_fraction` uses related-but-non-identical markers (CD31+CD140b compartment positivity) vs Family A's CLR axes (CD45 for immune, mean(CD31, CD34) for endothelial, CD140a for stromal). The per-ROI effect sizes are smaller than Sham-ref for these two specific endpoints; we do not claim per-ROI is generally "conservative" — `endothelial_clr` shows per-ROI can also inflate.
+
+**Methods finding (do NOT carry forward as a robust headline):**
+
+| Endpoint | Per-ROI g | Sham-ref g | Status |
+|---|---|---|---|
+| Endothelial-only CLR Sham→D7 | +2.28 | +0.19 | `normalization_g_collapse=True`. The per-ROI regime either inflates or reverses this endpoint depending on the contrast (D1→D7 and D3→D7 sign-reverse). We note this as evidence that normalization choice materially affects CLR conclusions — NOT as evidence Sham-reference is "correct" (we have not demonstrated that either regime is artifact-free). Future studies should compare normalization regimes before reporting compositional CLR effects. |
 
 **Threshold sensitivity**: Family A findings largely robust to lineage threshold sweep {0.2, 0.3, 0.4} (3/48 sign-reverse). Family C robust to Sham-percentile sweep {65, 75, 85}. Family B 100% threshold-sensitive across min-support sweep {10, 20, 40} — structural (filter changes which composite labels survive); Family B is ranked exploration, not discoveries.
 
-**Pathology and missingness**: 8 endpoint rows flagged g_pathological=true (|g|>3 with pooled_std<0.01, variance-collapse artifacts); excluded from BH-FDR. 27 rows insufficient_support; preserved as NaN-with-flag rather than silently dropped. Reviewer-checkable in `endpoint_summary.csv`.
+**Pathology and missingness**: At n=2 per group no real p-value exists, so no BH-FDR is computed (earlier drafts used a normal-CDF-from-|g| proxy that Gate 6 removed as cognitive-anchoring risk). 8 endpoint rows have |g|>3 with pooled_std<0.01 (variance-collapse artifacts) and are flagged `g_pathological=True` with NaN shrunk values. 27 rows have `insufficient_support=True` (n<2 mice in one group) and are preserved as NaN-with-flag rather than silently dropped. Rank-ordering audit is available by sorting endpoint_summary.csv on `|hedges_g|`. Reviewer-checkable in `endpoint_summary.csv`.
 
 **Bayesian shrinkage rationale**: We replaced an earlier single-scalar Type-M correction (0.65) with per-endpoint Bayesian shrinkage under three explicit priors. The shrinkage factor for an endpoint with observed g and Hedges & Olkin (1985) asymptotic sampling variance v = 2/n + g²/(4n) is `prior_var / (prior_var + v)`. The three priors (skeptical N(0, 0.5²) / neutral N(0, 1.0²) / optimistic N(0, 2.0²)) are a **pre-registered sensitivity analysis**, not a Bayesian inference. We intentionally do **not** designate any prior as "default" — the range IS the finding. A study designer picking a follow-up cohort should select the prior matching their own scepticism about the pilot estimate. The range is wide (n_required spans 10×-100× across priors for large observed effects) because at n=2 we have very little data to distinguish a tiny true effect from a large one.
