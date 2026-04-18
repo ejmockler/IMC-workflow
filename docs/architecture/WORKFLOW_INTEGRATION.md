@@ -119,9 +119,10 @@
 - `src/analysis/cell_type_annotation.py` - annotate_roi_from_results()
 
 **Biological Analysis Scripts** (root directory):
-- `batch_annotate_all_rois.py` - Module 1
-- `differential_abundance_analysis.py` - Module 2
-- `spatial_neighborhood_analysis.py` - Module 3
+- `batch_annotate_all_rois.py` - Module 1: discrete + continuous annotation
+- `differential_abundance_analysis.py` - Module 2: discrete cell-type DA (mouse-level Hedges' g + BH-FDR)
+- `spatial_neighborhood_analysis.py` - Module 3: discrete neighborhood enrichment (cell-type-pair only; the prior continuous self-stratification path was removed in 2026-04-18 and replaced by Module 4)
+- `run_temporal_interface_analysis.py` - Module 4: pre-registered temporal interface analysis with three endpoint families (interface composition CLR, continuous neighborhood neighbor-minus-self, Sham-reference compartment activation). See `analysis_plans/temporal_interfaces_plan.md` for the frozen pre-registration and `src/analysis/temporal_interface_analysis.py` for the pure-function module.
 
 **Config Integration**:
 ```json
@@ -147,10 +148,13 @@ python batch_annotate_all_rois.py
 # Step 3: Differential abundance
 python differential_abundance_analysis.py
 
-# Step 4: Spatial neighborhoods
+# Step 4: Spatial neighborhoods (discrete cell-type-pair enrichment)
 python spatial_neighborhood_analysis.py
 
-# Step 5: Visualize
+# Step 5: Pre-registered temporal interface analysis (Family A/B/C + endpoint summary)
+python run_temporal_interface_analysis.py
+
+# Step 6: Visualize
 jupyter notebook notebooks/biological_narratives/kidney_injury_spatial_analysis.ipynb
 ```
 
@@ -170,12 +174,14 @@ from src.config import Config
 from batch_annotate_all_rois import main as annotate_main
 from differential_abundance_analysis import main as abundance_main
 from spatial_neighborhood_analysis import main as spatial_main
+from run_temporal_interface_analysis import main as temporal_main
 
 def run_biological_workflow():
     # Automatically chains all modules
     annotate_main()
     abundance_main()
     spatial_main()
+    temporal_main()
 ```
 
 ### Option C: Per-ROI Integration (Advanced)

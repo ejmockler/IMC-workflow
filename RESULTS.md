@@ -88,7 +88,7 @@ CD44 (tissue injury/activation) is the most heterogeneous marker across ROIs (CV
 
 ## 2. Marker Correlation Structure
 
-At D7 (the resolution/fibrosis decision point), pairwise correlations at 10 um reveal three tight biological axes:
+At D7, pairwise correlations at 10 um reveal three tight biological axes:
 
 | Axis | Markers | Pearson r | Interpretation |
 |------|---------|-----------|----------------|
@@ -109,7 +109,7 @@ Cross-axis correlations reveal interaction zones:
 | CD45 — CD140b | 0.657 | Immune-pericyte |
 | CD45 — CD44 | 0.653 | Immune activation |
 
-The CD11b-CD140b correlation (r=0.755) is notable — it suggests superpixels where myeloid and stromal markers co-exist, consistent with the myeloid-stromal crosstalk zone implicated in the repair-versus-fibrosis decision. INDRA confirms this with a PDGFRB-CD44 physical complex (10 evidence, belief=0.74).
+The CD11b-CD140b correlation (r=0.755) is notable — it suggests superpixels where myeloid and stromal markers co-exist. INDRA-grounded literature includes a PDGFRB-CD44 physical complex (10 evidence, belief=0.74).
 
 ---
 
@@ -146,7 +146,7 @@ Unit of analysis: mouse (ROI proportions averaged within each mouse to prevent p
 | Neutrophil | Sham vs D1 | **1.32** | [1.2, 6.4] | 0.87x decrease |
 | Activ. Immune CD140b+ | Sham vs D3 | **-1.22** | [-62.6, -1.2] | 1.85x increase |
 
-**Activated fibroblasts surge immediately post-injury** (g=-8.74, the largest effect in the dataset). This is a CD140b+/CD44+ population — pericytes or mesenchymal cells co-expressing the injury marker. The effect size is enormous but the CI is wide [-15.8, -8.7], reflecting n=2 uncertainty. **M2 macrophages rise sharply at D1** (g=-2.83, 2.63x) then decline by D3 (g=2.10), suggesting rapid myeloid remodeling. **Neutrophils accumulate progressively** through D7 (g=-3.70 Sham vs D7) — an unexpected pattern if confirmed, as classical AKI models show neutrophil resolution by D3-D7. **Endothelial CD140b+ cells decline acutely** (g=3.81, 0.70x), suggesting pericyte-endothelial coupling disruption at D1.
+**Activated fibroblasts show a large observed effect immediately post-injury** (g=-8.74, the largest |g| in the discrete cell-type DA, but flagged as variance-collapse: pooled_std<0.01, see g_pathological column). This is a CD140b+/CD44+ population — pericytes or mesenchymal cells co-expressing the injury marker. The effect size is enormous but the CI is wide [-15.8, -8.7], reflecting n=2 uncertainty. **M2 macrophages rise sharply at D1** (g=-2.83, 2.63x) then decline by D3 (g=2.10), suggesting rapid myeloid remodeling. **Neutrophils accumulate progressively** through D7 (g=-3.70 Sham vs D7) — an unexpected pattern if confirmed, as classical AKI models show neutrophil resolution by D3-D7. **Endothelial CD140b+ cells decline acutely** (g=3.81, 0.70x), suggesting pericyte-endothelial coupling disruption at D1.
 
 No finding has both a large effect size AND high INDRA support. The largest effects (activated fibroblast, g=-8.74) lack specific INDRA annotations because the fibroblast phenotype is defined by CD140b+CD44+ without a single gene anchor. The best-grounded gene (CD44, direct AKI annotation, 17 evidence statements) shows only moderate effect sizes.
 
@@ -261,7 +261,7 @@ These avoidance patterns persist across timepoints. INDRA predicts proximity for
 
 ## 5. Multi-Lineage Coordination at D7
 
-D7 is the decision point between repair and fibrosis. CD44 activation rates across biological compartments (all D7 ROIs):
+D7 candidate trajectories diverge along the repair-vs-fibrosis axis. CD44 activation rates across biological compartments (all D7 ROIs):
 
 | Compartment | CD44+ Rate | SD |
 |-------------|-----------|-----|
@@ -272,7 +272,7 @@ D7 is the decision point between repair and fibrosis. CD44 activation rates acro
 
 Nearly half of immune and stromal superpixels co-express CD44 at D7, versus only 13% of background tissue. This is not a compartment-specific response — immune, vascular, and stromal cells all show elevated CD44 activation, suggesting coordinated tissue-wide remodeling.
 
-Multi-compartment overlap quantifies the extent of this coordination:
+Multi-compartment overlap quantifies the extent of co-expression:
 
 | Category | Tissue Fraction | SD |
 |----------|----------------|-----|
@@ -329,11 +329,11 @@ The panel is positioned to detect downstream consequences of these cytokine axes
 
 The publication notebook generates 8 mechanistic narratives from INDRA, each cross-referenced with observed spatial enrichment:
 
-- **Endothelial self-clustering** (2.59x at D1): PECAM1 mediates homophilic adhesion (GO:0007156). Both CD31 and CD34 share glomerular endothelium development (GO:0072011). Spatial data confirms expected vascular network topology.
+- **Endothelial self-clustering** (2.59x at D1): PECAM1 mediates homophilic adhesion (GO:0007156). Both CD31 and CD34 share glomerular endothelium development (GO:0072011). Spatial data is consistent with expected vascular network topology.
 
-- **Fibroblast self-clustering** (1.99x at D1): PDGFRA is expressed in kidney cortex and nephron tubule interstitium. In nephrogenesis (WP4823), fibroblasts form the structural scaffold. Spatial data confirms interstitial compartment organization.
+- **Fibroblast self-clustering** (1.99x at D1): PDGFRA is expressed in kidney cortex and nephron tubule interstitium. In nephrogenesis (WP4823), fibroblasts form the structural scaffold. Spatial data is consistent with interstitial compartment organization.
 
-- **Macrophage self-clustering** (2.90x at D1): ITGAM+ cells accumulate at injury sites via complement-mediated adhesion. MRC1+ M2 macrophages cluster in resolution zones. Spatial data confirms immune niche formation.
+- **Macrophage self-clustering** (2.90x at D1): ITGAM+ cells accumulate at injury sites via complement-mediated adhesion. MRC1+ M2 macrophages cluster in resolution zones. Spatial data is consistent with immune niche formation.
 
 - **Endothelial-fibroblast avoidance** (0.53x at D1): INDRA predicts proximity via PDGFRB pericyte-endothelial contact. Observed avoidance contradicts this. The vascular-interstitial interface, reported in literature as the origin of capillary rarefaction and fibrosis in AKI, is not spatially evident at superpixel resolution.
 
@@ -386,7 +386,7 @@ Based on observed effect sizes, required sample sizes for 80% power (alpha=0.05,
 
 | Target Effect (|g|) | Required n per group | Detectable Signal |
 |---------------------|---------------------|-------------------|
-| 8.0+ | 2-3 | Fibroblast surge |
+| 8.0+ | 2-3 | Variance-collapse-flagged g (g_pathological=true; treat as artifact, not biology) |
 | 3.5-4.0 | 3-4 | Endothelial CD140b, neutrophil |
 | 2.0-3.0 | 5 | M2 macrophage dynamics |
 | 1.0-1.5 | 10 | Moderate temporal changes |
@@ -406,7 +406,7 @@ Four notebooks present the analysis in a pedagogical arc:
 
 **Kidney Injury Spatial Analysis** (`biological_narratives/`) asks: *what does the tissue look like?* It reveals marker correlation axes matching known biology, spatial clusters with imperfect but interpretable phenotype enrichments, the neutrophil paradox (stable mean but focal spatial organization), multi-lineage CD44 activation at D7, and hierarchical tissue organization across scales. All spatial ROI plots show DNA tissue morphology as a gray underlay beneath the data, providing anatomical context.
 
-**Publication Narrative** (`biological_narratives/`) asks: *what can we claim?* Answer: nothing with statistical confidence. But effect sizes — fibroblast surge (g=-8.74), M2 macrophage dynamics (g=2.10), sustained neutrophil accumulation (g=-3.70) — are large enough to be real, large enough to detect with modest sample increases, and grounded in 117 INDRA-curated gene relationships. The spatial data adds a second dimension: cell types self-cluster, the vascular network tightens during injury, and the predicted fibroblast-macrophage repair niche is spatially absent at the scales measured. The honest conclusion is a set of testable hypotheses, power calculations to test them, and a validated analytical framework ready for the adequately powered follow-up.
+**Publication Narrative** (`biological_narratives/`) asks: *what can we claim?* Answer: nothing with statistical confidence. But effect sizes — large observed activated-fibroblast g (g=-8.74, variance-collapse-flagged), M2 macrophage dynamics (g=2.10), sustained neutrophil accumulation (g=-3.70) — are large enough to be real, large enough to detect with modest sample increases, and grounded in 117 INDRA-curated gene relationships. The spatial data adds a second dimension: cell types self-cluster, the vascular network tightens during injury, and the predicted fibroblast-macrophage repair niche is spatially absent at the scales measured. The honest conclusion is a set of testable hypotheses, power calculations to test them, and a validated analytical framework ready for the adequately powered follow-up.
 
 ---
 
@@ -473,3 +473,26 @@ Four notebooks present the analysis in a pedagogical arc:
 ---
 
 *Experiment: kidney_healing_2024. Config: `config.json`. Methods: `METHODS.md`. Last pipeline run: 2026-03-08.*
+
+
+---
+
+## Temporal Interface Analysis (Pre-Registered, Phase 2)
+
+A separate pre-registered analysis (`analysis_plans/temporal_interfaces_plan.md`, frozen 2026-04-17) computes three endpoint families on the continuous lineage scores: interface composition (CLR-transformed compositional vector), continuous neighborhood lineage shifts (neighbor-minus-self delta), and cross-compartment activation (Sham-reference threshold). Outputs at `results/biological_analysis/temporal_interfaces/` (consumed by `notebooks/biological_narratives/kidney_injury_spatial_analysis.ipynb` Parts 2 + 2.5 and `notebooks/main_narrative.ipynb` Sections 2 + 6).
+
+**Headline observations** (from `endpoint_summary.csv`, Hedges' g with Type-M shrinkage caveats):
+
+| Endpoint | Family | Hedges' g | g x 0.65 (permissive Type-M) | n_required (lower bound) |
+|---|---|---|---|---|
+| Triple-overlap fraction Sham→D7 | C (compartment) | +3.29 | +2.14 | 4 mice (multiply by 2-4 realistic) |
+| Background CD44+ rate Sham→D7 | C | +2.82 | +1.83 | 5 mice (lower bound) |
+| Endothelial-only CLR Sham→D7 | A (interface) | +2.28 | +1.48 | 8 mice (lower bound) |
+| Stromal-only CLR Sham→D7 | A | -1.59 | -1.03 | 15 mice (lower bound) |
+| CD140b+ within-compartment CD44+ rate Sham→D7 | C | +1.44 | +0.94 | 18 mice (lower bound) |
+
+**Threshold sensitivity**: Family A (interface composition) findings are largely robust to the lineage threshold sweep {0.2, 0.3, 0.4} — only 3/48 endpoints sign-reverse. Family C is robust to the Sham-percentile sweep {65, 75, 85}. Family B (continuous neighborhood) is 100% threshold-sensitive across the min-support sweep {10, 20, 40} — this is structural (the filter changes which composite labels survive) and is disclosed; Family B is best read as ranked exploration, not discoveries.
+
+**Pathology and missingness**: 8 endpoint rows have |g|>3 with pooled_std<0.01 (variance-collapse artifacts) and are flagged g_pathological=true; excluded from BH-FDR machinery. 27 rows have insufficient_support (n<2 mice in one group) and are preserved as NaN-with-flag rather than silently dropped. These figures are reviewer-checkable in `endpoint_summary.csv`.
+
+**Type-M caveat (per pre-registered plan)**: The g_type_m_corrected column applies a permissive 0.65 shrinkage (Gelman & Carlin 2014 midpoint ballpark for moderate g at very small n). Realistic Type-M ratios at n=2 are likely 2-4×, so true effects are plausibly 0.25-0.5× observed g. Reported n_required values are *lower bounds*; multiply by 2-4 for realistic study planning.

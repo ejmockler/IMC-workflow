@@ -14,8 +14,9 @@ Multi-scale spatial proteomics framework for Imaging Mass Cytometry data, applie
 .venv/bin/python batch_annotate_all_rois.py            # Boolean gating annotation
 
 # 3. Biological analysis scripts
-.venv/bin/python differential_abundance_analysis.py    # Mouse-level, FDR-corrected
-.venv/bin/python spatial_neighborhood_analysis.py      # Permutation-based enrichment
+.venv/bin/python differential_abundance_analysis.py    # Mouse-level discrete cell-type DA, FDR-corrected
+.venv/bin/python spatial_neighborhood_analysis.py      # Permutation-based discrete neighborhood enrichment
+.venv/bin/python run_temporal_interface_analysis.py    # Pre-registered temporal interface analysis (Family A/B/C; see analysis_plans/temporal_interfaces_plan.md)
 
 # 4. INDRA knowledge context
 .venv/bin/python build_indra_evidence_table.py         # Panel context + finding annotations
