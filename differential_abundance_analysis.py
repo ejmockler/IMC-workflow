@@ -7,7 +7,7 @@ Compares cell type abundances across kidney injury time course:
 - Unit of analysis: MOUSE (biological replicate), not ROI
   ROI-level proportions are averaged within each mouse before testing.
 - Statistical tests: Mann-Whitney U on mouse-level means (n=2 per group)
-- Effect sizes: Hedges' g (small-sample corrected Cohen's d) with bootstrap CIs
+- Effect sizes: Hedges' g (small-sample corrected Cohen's d) with bootstrap range (NOT a coverage-bearing CI at n=2; only ~9 unique resampled values exist per group)
 - Multiple testing: Benjamini-Hochberg FDR across all pairwise comparisons
 
 Input: Batch annotation results from results/biological_analysis/cell_type_annotations/
@@ -270,7 +270,7 @@ def perform_differential_abundance(df: pd.DataFrame, cell_types: List[str]) -> p
     Tests each cell type for differences between:
       - Sham vs D1, Sham vs D3, Sham vs D7, D1 vs D3, D3 vs D7
 
-    Reports: Hedges' g (small-sample corrected), bootstrap 95% CIs,
+    Reports: Hedges' g (small-sample corrected), bootstrap range (NOT 95% CI at n=2),
     Mann-Whitney p-values (n=2 vs n=2, mostly non-significant — that's honest),
     and BH FDR-corrected p-values across all comparisons.
     """
@@ -596,10 +596,10 @@ def main():
 
     for idx, row in temporal_sorted.head(10).iterrows():
         direction = "+" if row['mean_2'] > row['mean_1'] else "-"
-        ci_str = f"[{row['ci_lower_95']:.2f}, {row['ci_upper_95']:.2f}]" if not np.isnan(row.get('ci_lower_95', np.nan)) else "[NA]"
+        ci_str = f"[{row['ci_lower_95']:.2f}, {row['ci_upper_95']:.2f}]" if not np.isnan(row.get('ci_lower_95', np.nan)) else "[NA]"  # bootstrap range, NOT a coverage-bearing 95% CI at n=2
         fdr_str = f"q={row.get('p_value_fdr', np.nan):.3f}" if not np.isnan(row.get('p_value_fdr', np.nan)) else "q=NA"
         print(f"\n  {row['cell_type']}")
-        print(f"    {row['comparison']:20s} | {direction}{row['fold_change']:.2f}x | g={row['hedges_g']:.2f} 95%CI {ci_str} | {fdr_str}")
+        print(f"    {row['comparison']:20s} | {direction}{row['fold_change']:.2f}x | g={row['hedges_g']:.2f} bootstrap-range {ci_str} | {fdr_str}")
         print(f"    {row['timepoint_1']:10s}: {row['mean_1']:.3%} +/- {row['std_1']:.3%} (n={row['n_mice_1']} mice)")
         print(f"    {row['timepoint_2']:10s}: {row['mean_2']:.3%} +/- {row['std_2']:.3%} (n={row['n_mice_2']} mice)")
 
@@ -616,10 +616,10 @@ def main():
 
         for idx, row in regional_sorted.head(10).iterrows():
             direction = "Med+" if row['mean_medulla'] > row['mean_cortex'] else "Ctx+"
-            ci_str = f"[{row['ci_lower_95']:.2f}, {row['ci_upper_95']:.2f}]" if not np.isnan(row.get('ci_lower_95', np.nan)) else "[NA]"
+            ci_str = f"[{row['ci_lower_95']:.2f}, {row['ci_upper_95']:.2f}]" if not np.isnan(row.get('ci_lower_95', np.nan)) else "[NA]"  # bootstrap range, NOT a coverage-bearing 95% CI at n=2
             fdr_str = f"q={row.get('p_value_fdr', np.nan):.3f}" if not np.isnan(row.get('p_value_fdr', np.nan)) else "q=NA"
             print(f"\n  {row['cell_type']} @ {row['timepoint']}")
-            print(f"    {direction} {row['fold_change']:.2f}x | g={row['hedges_g']:.2f} 95%CI {ci_str} | {fdr_str}")
+            print(f"    {direction} {row['fold_change']:.2f}x | g={row['hedges_g']:.2f} bootstrap-range {ci_str} | {fdr_str}")
             print(f"    Cortex:  {row['mean_cortex']:.3%} +/- {row['std_cortex']:.3%} (n={row['n_mice_cortex']} mice)")
             print(f"    Medulla: {row['mean_medulla']:.3%} +/- {row['std_medulla']:.3%} (n={row['n_mice_medulla']} mice)")
     else:
