@@ -4,9 +4,11 @@ Power analysis from pilot effect sizes.
 
 Reads temporal differential abundance results from an n=2 pilot study,
 estimates required sample sizes for adequately powered follow-up experiments,
-and produces a forest plot of pilot effect sizes with 95% CIs.
+and produces a forest plot of pilot effect sizes with bootstrap ranges
+(columns labeled ci_lower_95/ci_upper_95 for legacy reasons; at n=2
+these are bounds on observed values, NOT coverage-bearing CIs).
 
-n=2 per group means all confidence intervals are extremely wide and all
+n=2 per group means all bootstrap ranges are extremely wide and all
 p-values are non-significant. The value of this pilot is in estimating
 effect sizes for future study design — not inference.
 """
