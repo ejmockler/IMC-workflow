@@ -1,8 +1,12 @@
 # IMC Analysis Data Schema
 
-**Version**: 1.0
-**Last Updated**: 2025-11-09
+**Version**: 2.0
+**Last Updated**: 2026-04-20
 **Purpose**: Document the structure of analysis results for loading, validation, and downstream use
+
+**Scope (v2.0)**: This document covers two families of outputs.
+- **Phase 1 per-ROI pipeline** (§1-§5): `results/roi_results/roi_*_results.json.gz`.
+- **Phase 2 biological analysis** (§6-§7): `results/biological_analysis/cell_type_annotations/` (12-column parquet per ROI) and `results/biological_analysis/temporal_interfaces/` (17 parquets + `endpoint_summary.csv` + `run_provenance.json`).
 
 ---
 
@@ -160,6 +164,127 @@ ROI-specific metadata extracted from filename or config:
 **Type**: String
 **Format**: `"IMC_241218_Alun_ROI_{timepoint}_{mouse}_{roi_number}_{replicate}"`
 **Example**: `"IMC_241218_Alun_ROI_D1_M1_01_9"`
+
+---
+
+## 6. Cell Type Annotations (Phase 2 biological analysis)
+
+**Location**: `results/biological_analysis/cell_type_annotations/roi_<roi_id>_cell_types.parquet`
+**Generator**: `batch_annotate_all_rois.py` → `src/analysis/cell_type_annotation.py::annotate_roi_from_results`
+**One file per ROI** (24 files). Companion: `roi_<roi_id>_annotation_metadata.json` with gating thresholds + per-type counts.
+
+### Schema (12 columns)
+
+| Column | Type | Description |
+|---|---|---|
+| `superpixel_id` | int64 | SLIC superpixel ID (0-indexed within ROI at 10 µm scale) |
+| `x` | float64 | Centroid x in pixel units |
+| `y` | float64 | Centroid y in pixel units |
+| `cell_type` | object (str) | Discrete boolean-gating label (15 types including `"unassigned"`); priority-order assignment |
+| `confidence` | float64 | Gating confidence score (see cell_type_annotation.py) |
+| `lineage_immune` | float64 | Continuous [0, 1] lineage score; sigmoid-normalized from CD45 |
+| `lineage_endothelial` | float64 | Continuous [0, 1]; sigmoid-normalized from mean(CD31, CD34) |
+| `lineage_stromal` | float64 | Continuous [0, 1]; sigmoid-normalized from CD140a |
+| `subtype` | object (str) | Within-lineage subtype (neutrophil, m2_macrophage, myeloid, non_myeloid_immune; geometric-mean scored) |
+| `activation_cd44` | float64 | Continuous [0, 1] CD44 activation overlay |
+| `activation_cd140b` | float64 | Continuous [0, 1] CD140b activation overlay |
+| `composite_label` | object (str) | Concatenated lineage-string label used as Family B stratifier (e.g., `"immune+endothelial"`) |
+
+### Scale
+10 µm only (Phase 2 pre-registration §2 pins 10 µm a priori).
+
+### Typical size
+~2,400 rows per ROI (one row per superpixel).
+
+---
+
+## 7. Temporal Interface Analysis (Phase 2 pre-registered)
+
+**Location**: `results/biological_analysis/temporal_interfaces/`
+**Generator**: `run_temporal_interface_analysis.py` → `src/analysis/temporal_interface_analysis.py`
+**Plan**: `analysis_plans/temporal_interfaces_plan.md` (frozen 2026-04-17, amended)
+
+### Directory contents
+
+17 parquet files + `endpoint_summary.csv` (primary reviewer-facing) + `run_provenance.json`.
+
+### `endpoint_summary.csv` — primary table
+
+330 rows × 33 columns. Contents: Family A (48) + Family B (252) + Family C (30) endpoint rows, one per (family × endpoint × contrast).
+
+**Key columns:**
+
+| Column | Type | Description |
+|---|---|---|
+| `family` | str | `A_interface_clr` \| `B_continuous_neighborhood` \| `C_compartment_activation` |
+| `endpoint` | str | e.g. `immune_clr`, `vs_sham_mean_delta_lineage_immune`, `triple_overlap_fraction` |
+| `contrast` | str | One of 6 pairwise: `Sham_vs_D1`, `Sham_vs_D3`, `Sham_vs_D7`, `D1_vs_D3`, `D1_vs_D7`, `D3_vs_D7` |
+| `tp1`, `tp2` | str | Timepoint labels |
+| `n_mice_1`, `n_mice_2` | int | Sample size per group (2 each normally) |
+| `insufficient_support` | bool | True if a group has n<2 surviving mice (row preserved as NaN-with-flag) |
+| `mouse_mean_1`, `mouse_mean_2` | float | Per-group mean of mouse-level means |
+| `mouse_range_1`, `mouse_range_2` | float | Per-group max - min of mouse values |
+| `hedges_g` | float | Observed Hedges' g (small-sample-corrected Cohen's d) |
+| `g_shrunk_skeptical` | float | Posterior mean under prior N(0, 0.5²); NaN if pathological |
+| `g_shrunk_neutral` | float | Posterior mean under prior N(0, 1.0²); NaN if pathological |
+| `g_shrunk_optimistic` | float | Posterior mean under prior N(0, 2.0²); NaN if pathological |
+| `pooled_std` | float | Pooled within-group SD |
+| `g_pathological` | bool | True iff `|g| > 3 AND pooled_std < 0.01` (variance-collapse artifact) |
+| `bootstrap_range_min`, `bootstrap_range_max` | float | Bounds from 10k percentile bootstrap (NOT coverage-bearing CI) |
+| `n_unique_resamples` | int | Number of distinct g values in bootstrap (≤9 at n=2 per group) |
+| `n_required_80pct` | float | Sample size for 80% power given raw observed g |
+| `n_required_skeptical`, `n_required_neutral`, `n_required_optimistic` | float | Same under each shrunk g; NaN if pathological |
+| `normalization_mode` | str | `per_roi_sigmoid` \| `sham_reference` (Family A only) |
+| `sham_percentile` | float | Sham-reference percentile used (Family A sensitivity rows; 65/75/85) |
+| `normalization_sign_reverse` | bool | Family A: Sham→D7 g flips sign between per-ROI and Sham-ref regimes |
+| `normalization_g_collapse` | bool | Family A: Sham-ref magnitude < 20% of per-ROI |
+| `hedges_g_sham_ref` | float | Family A only: Sham-reference regime g for comparison |
+| `composite_label` | str | Family B only: the (post-hoc descriptive) stratifier |
+| `observed_range` | float | Mouse-level max - min (context) |
+| `threshold_sensitive` | bool | Family B: endpoint sign-flips across min-support sweep {10, 20, 40} |
+
+### Parquet schemas (17 files)
+
+**Family A inputs / outputs:**
+- `interface_fractions.parquet` — (8, 14). Mouse-level fraction per category × 8 mice (2 mice × 4 timepoints).
+- `interface_fractions_normalization_sensitivity.parquet` — (16, 15). Same but under Sham-reference 75ᵗʰ threshold.
+- `interface_clr.parquet` — (8, 10). CLR-transformed composition (8 categories → 8 CLR components after Bayesian-multiplicative zero replacement).
+- `interface_clr_no_none.parquet` — (8, 9). CLR sensitivity: computed excluding the "none" category.
+- `family_a_endpoints_global_norm.parquet` — (48, 27). Sham-reference endpoints at 75ᵗʰ percentile (primary).
+- `family_a_endpoints_norm_sweep.parquet` — (144, 27). Sham-reference at {65, 75, 85}.
+- `family_a_global_thresholds.parquet` — (3, 4). The three Sham-reference percentile thresholds per lineage.
+- `family_a_sensitivity_endpoints.parquet` — (144, 26). Lineage-threshold sweep {0.2, 0.3, 0.4}.
+- `sensitivity_thresholds.parquet` — (24, 13). Per-sweep threshold values.
+
+**Family B:**
+- `continuous_neighborhood_temporal.parquet` — (107, 10). Per (composite_label, mouse, timepoint) neighbor-minus-self delta, plus vs-Sham delta columns.
+- `continuous_neighborhood_missingness.parquet` — (100, 6). (composite_label × timepoint) filter status: `absent_biology` vs `below_min_support` vs `sufficient`; `kept_in_trajectory` flag.
+- `family_b_sensitivity_endpoints.parquet` — (864, 27). Min-support sweep {10, 20, 40} across all composite labels × lineages × contrasts.
+
+**Family C:**
+- `compartment_activation_temporal.parquet` — (8, 16). Per (mouse × timepoint) CD44⁺ rate within CD45⁺/CD31⁺/CD140b⁺/background compartments + triple overlap + n_rois.
+- `family_c_sensitivity_endpoints.parquet` — (90, 26). Sham-percentile sweep {65, 75, 85}.
+- `sham_reference_thresholds.parquet` — (1, 4). 75ᵗʰ-percentile thresholds for {CD45, CD31, CD140b, CD44} computed once on Sham ROIs.
+
+**Spatial coherence:**
+- `join_counts.parquet` — (192, 12). Per-ROI per-category: BB join count observed vs permutation null (1000 permutations, k=10 NN adjacency).
+- `lineage_morans_i.parquet` — (72, 5). Per (ROI × lineage) continuous Moran's I.
+
+### `run_provenance.json`
+
+| Key | Description |
+|---|---|
+| `git_commit` | Commit hash at run time |
+| `git_dirty` | True if working tree had uncommitted changes |
+| `config_sha256` | Hash of the frozen `config.json` |
+| `input_file_sha256` | Per-annotation-parquet SHA256 (24 entries) |
+| `package_versions` | numpy/pandas/scipy/sklearn versions |
+| `seeds` | RNG seeds used (permutations, bootstrap) |
+| `parameters` | Filter values, threshold sweeps, min-support settings |
+| `run_datetime` | ISO timestamp |
+| `excluded_rois` | List of excluded ROI IDs with rationale |
+
+Regenerate-if-changed: any modification of inputs, config, or module code invalidates the output directory per the plan's reproducibility-freeze rule.
 
 ---
 
@@ -505,6 +630,6 @@ def parallel_load_rois(roi_files, n_workers=4):
 
 ---
 
-**Schema Version**: 1.0
+**Schema Version**: 2.0
 **Maintained by**: IMC Analysis Pipeline
 **Questions**: See `CLAUDE.md` for development guidance
