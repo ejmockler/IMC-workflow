@@ -200,20 +200,21 @@ def hedges_g(group1: np.ndarray, group2: np.ndarray) -> float:
     return d * correction
 
 
-def bootstrap_effect_size_ci(group1: np.ndarray, group2: np.ndarray,
-                              n_bootstrap: int = 10000,
-                              ci: float = 0.95,
-                              random_state: int = 42) -> Tuple[float, float]:
+def bootstrap_effect_size_range(group1: np.ndarray, group2: np.ndarray,
+                                 n_bootstrap: int = 10000,
+                                 coverage_fraction: float = 0.95,
+                                 random_state: int = 42) -> Tuple[float, float]:
     """
-    Bootstrap range for Hedges' g (legacy function name; returns percentile
-    bounds of the resampled distribution).
+    Bootstrap range for Hedges' g (returns percentile bounds of the resampled
+    distribution at the given nominal coverage fraction).
 
     At n=2 per group, only ~9 unique Hedges' g values exist across bootstrap
     resamples, so the returned bounds are NOT a coverage-bearing confidence
-    interval — they are the min/max of the discrete resample distribution.
-    Downstream consumers: the columns `ci_lower_95` / `ci_upper_95` are kept
-    for API compatibility but should be read as bootstrap-range bounds. See
-    METHODS.md §Statistical Analysis.
+    interval — they are the min/max of the discrete resample distribution at
+    the chosen percentile cutoffs. See METHODS.md §Statistical Analysis.
+
+    Output columns in the CSVs use `bootstrap_range_min` / `bootstrap_range_max`
+    to match the temporal interfaces schema (`endpoint_summary.csv`).
     """
     if len(group1) < 2 or len(group2) < 2:
         return np.nan, np.nan
@@ -231,7 +232,7 @@ def bootstrap_effect_size_ci(group1: np.ndarray, group2: np.ndarray,
     if len(boot_gs) < 100:
         return np.nan, np.nan
 
-    alpha = (1 - ci) / 2
+    alpha = (1 - coverage_fraction) / 2
     return np.percentile(boot_gs, 100 * alpha), np.percentile(boot_gs, 100 * (1 - alpha))
 
 def aggregate_to_mouse_level(df: pd.DataFrame) -> pd.DataFrame:
@@ -321,7 +322,7 @@ def perform_differential_abundance(df: pd.DataFrame, cell_types: List[str]) -> p
 
             u_stat, p_value = mann_whitney_test(group1, group2)
             g = hedges_g(group1, group2)
-            ci_lower, ci_upper = bootstrap_effect_size_ci(group1, group2)
+            bootstrap_range_min, bootstrap_range_max = bootstrap_effect_size_range(group1, group2)
 
             # Fold change with pseudocount for stability
             eps = 1e-6
@@ -344,8 +345,8 @@ def perform_differential_abundance(df: pd.DataFrame, cell_types: List[str]) -> p
                 'u_statistic': u_stat,
                 'p_value_raw': p_value,
                 'hedges_g': g,
-                'ci_lower_95': ci_lower,
-                'ci_upper_95': ci_upper,
+                'bootstrap_range_min': bootstrap_range_min,
+                'bootstrap_range_max': bootstrap_range_max,
             }
 
             # CLR-transformed effect size (compositional-aware)
@@ -409,7 +410,7 @@ def perform_differential_abundance_continuous(
             std2 = np.std(group2, ddof=1) if len(group2) > 1 else 0
             u_stat, p_value = mann_whitney_test(group1, group2)
             g = hedges_g(group1, group2)
-            ci_lower, ci_upper = bootstrap_effect_size_ci(group1, group2)
+            bootstrap_range_min, bootstrap_range_max = bootstrap_effect_size_range(group1, group2)
 
             results.append({
                 'cell_type': f'lineage:{feature_name}',
@@ -427,8 +428,8 @@ def perform_differential_abundance_continuous(
                 'u_statistic': u_stat,
                 'p_value_raw': p_value,
                 'hedges_g': g,
-                'ci_lower_95': ci_lower,
-                'ci_upper_95': ci_upper,
+                'bootstrap_range_min': bootstrap_range_min,
+                'bootstrap_range_max': bootstrap_range_max,
             })
 
     results_df = pd.DataFrame(results)
@@ -497,7 +498,7 @@ def perform_regional_analysis(df: pd.DataFrame, cell_types: List[str]) -> pd.Dat
 
             u_stat, p_value = mann_whitney_test(cortex, medulla)
             g = hedges_g(cortex, medulla)
-            ci_lower, ci_upper = bootstrap_effect_size_ci(cortex, medulla)
+            bootstrap_range_min, bootstrap_range_max = bootstrap_effect_size_range(cortex, medulla)
 
             eps = 1e-6
             fold_change = (mean_medulla + eps) / (mean_cortex + eps)
@@ -515,8 +516,8 @@ def perform_regional_analysis(df: pd.DataFrame, cell_types: List[str]) -> pd.Dat
                 'u_statistic': u_stat,
                 'p_value_raw': p_value,
                 'hedges_g': g,
-                'ci_lower_95': ci_lower,
-                'ci_upper_95': ci_upper,
+                'bootstrap_range_min': bootstrap_range_min,
+                'bootstrap_range_max': bootstrap_range_max,
             })
 
     results_df = pd.DataFrame(results)
@@ -601,10 +602,10 @@ def main():
 
     for idx, row in temporal_sorted.head(10).iterrows():
         direction = "+" if row['mean_2'] > row['mean_1'] else "-"
-        ci_str = f"[{row['ci_lower_95']:.2f}, {row['ci_upper_95']:.2f}]" if not np.isnan(row.get('ci_lower_95', np.nan)) else "[NA]"  # bootstrap range, NOT a coverage-bearing 95% CI at n=2
+        range_str = f"[{row['bootstrap_range_min']:.2f}, {row['bootstrap_range_max']:.2f}]" if not np.isnan(row.get('bootstrap_range_min', np.nan)) else "[NA]"  # bootstrap range at nominal 95% coverage — NOT coverage-bearing at n=2
         fdr_str = f"q={row.get('p_value_fdr', np.nan):.3f}" if not np.isnan(row.get('p_value_fdr', np.nan)) else "q=NA"
         print(f"\n  {row['cell_type']}")
-        print(f"    {row['comparison']:20s} | {direction}{row['fold_change']:.2f}x | g={row['hedges_g']:.2f} bootstrap-range {ci_str} | {fdr_str}")
+        print(f"    {row['comparison']:20s} | {direction}{row['fold_change']:.2f}x | g={row['hedges_g']:.2f} bootstrap-range {range_str} | {fdr_str}")
         print(f"    {row['timepoint_1']:10s}: {row['mean_1']:.3%} +/- {row['std_1']:.3%} (n={row['n_mice_1']} mice)")
         print(f"    {row['timepoint_2']:10s}: {row['mean_2']:.3%} +/- {row['std_2']:.3%} (n={row['n_mice_2']} mice)")
 
@@ -621,10 +622,10 @@ def main():
 
         for idx, row in regional_sorted.head(10).iterrows():
             direction = "Med+" if row['mean_medulla'] > row['mean_cortex'] else "Ctx+"
-            ci_str = f"[{row['ci_lower_95']:.2f}, {row['ci_upper_95']:.2f}]" if not np.isnan(row.get('ci_lower_95', np.nan)) else "[NA]"  # bootstrap range, NOT a coverage-bearing 95% CI at n=2
+            range_str = f"[{row['bootstrap_range_min']:.2f}, {row['bootstrap_range_max']:.2f}]" if not np.isnan(row.get('bootstrap_range_min', np.nan)) else "[NA]"  # bootstrap range at nominal 95% coverage — NOT coverage-bearing at n=2
             fdr_str = f"q={row.get('p_value_fdr', np.nan):.3f}" if not np.isnan(row.get('p_value_fdr', np.nan)) else "q=NA"
             print(f"\n  {row['cell_type']} @ {row['timepoint']}")
-            print(f"    {direction} {row['fold_change']:.2f}x | g={row['hedges_g']:.2f} bootstrap-range {ci_str} | {fdr_str}")
+            print(f"    {direction} {row['fold_change']:.2f}x | g={row['hedges_g']:.2f} bootstrap-range {range_str} | {fdr_str}")
             print(f"    Cortex:  {row['mean_cortex']:.3%} +/- {row['std_cortex']:.3%} (n={row['n_mice_cortex']} mice)")
             print(f"    Medulla: {row['mean_medulla']:.3%} +/- {row['std_medulla']:.3%} (n={row['n_mice_medulla']} mice)")
     else:

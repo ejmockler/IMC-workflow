@@ -5,7 +5,7 @@ Power analysis from pilot effect sizes.
 Reads temporal differential abundance results from an n=2 pilot study,
 estimates required sample sizes for adequately powered follow-up experiments,
 and produces a forest plot of pilot effect sizes with bootstrap ranges
-(columns labeled ci_lower_95/ci_upper_95 for legacy reasons; at n=2
+(columns bootstrap_range_min/bootstrap_range_max in the DA CSV; at n=2
 these are bounds on observed values, NOT coverage-bearing CIs).
 
 n=2 per group means all bootstrap ranges are extremely wide and all
@@ -110,7 +110,7 @@ df = pd.read_csv(INPUT_CSV)
 
 required_cols = {
     "cell_type", "comparison",
-    "hedges_g", "ci_lower_95", "ci_upper_95",
+    "hedges_g", "bootstrap_range_min", "bootstrap_range_max",
 }
 missing = required_cols - set(df.columns)
 if missing:
@@ -142,8 +142,8 @@ for ct, grp in df.groupby("cell_type"):
             "cell_type":         ct,
             "max_hedges_g":      np.nan,
             "comparison_at_max": "N/A (all NaN)",
-            "ci_lower":          np.nan,
-            "ci_upper":          np.nan,
+            "bootstrap_range_min":          np.nan,
+            "bootstrap_range_max":          np.nan,
         })
         continue
     idx = valid["abs_hedges_g"].idxmax()
@@ -152,8 +152,8 @@ for ct, grp in df.groupby("cell_type"):
         "cell_type":         ct,
         "max_hedges_g":      row["hedges_g"],
         "comparison_at_max": row["comparison"],
-        "ci_lower":          row["ci_lower_95"],
-        "ci_upper":          row["ci_upper_95"],
+        "bootstrap_range_min":          row["bootstrap_range_min"],
+        "bootstrap_range_max":          row["bootstrap_range_max"],
     })
 
 best = pd.DataFrame(best_rows)
@@ -182,14 +182,14 @@ for _, row in best.iterrows():
         n80_out = n80 if np.isfinite(n80) else "Inf"
         n90_out = n90 if np.isfinite(n90) else "Inf"
         g_out   = round(g, 4)
-        ci_lo   = round(row["ci_lower"], 4)
-        ci_hi   = round(row["ci_upper"], 4)
+        ci_lo   = round(row["bootstrap_range_min"], 4)
+        ci_hi   = round(row["bootstrap_range_max"], 4)
     rows.append({
         "cell_type":          row["cell_type"],
         "max_hedges_g":       g_out,
         "comparison_at_max":  row["comparison_at_max"],
-        "ci_lower":           ci_lo,
-        "ci_upper":           ci_hi,
+        "bootstrap_range_min": ci_lo,
+        "bootstrap_range_max": ci_hi,
         "n_required_80pct":   n80_out,
         "n_required_90pct":   n90_out,
     })
@@ -212,8 +212,8 @@ print("\nGenerating forest plot...")
 plot_df = results.copy()
 # Convert Inf back to numeric for any display logic
 plot_df["max_hedges_g"] = pd.to_numeric(plot_df["max_hedges_g"], errors="coerce")
-plot_df["ci_lower"]     = pd.to_numeric(plot_df["ci_lower"],     errors="coerce")
-plot_df["ci_upper"]     = pd.to_numeric(plot_df["ci_upper"],     errors="coerce")
+plot_df["bootstrap_range_min"]     = pd.to_numeric(plot_df["bootstrap_range_min"],     errors="coerce")
+plot_df["bootstrap_range_max"]     = pd.to_numeric(plot_df["bootstrap_range_max"],     errors="coerce")
 
 # Rows where effect size is NaN cannot be plotted — annotate separately
 nan_rows = plot_df[plot_df["max_hedges_g"].isna()]
@@ -237,8 +237,8 @@ print(f"  MDE for n=8/group, 80% power, t-test (ARE-corrected threshold for MW):
 
 # Axis limits — include zero plus some padding
 all_bounds = np.concatenate([
-    plot_df["ci_lower"].values,
-    plot_df["ci_upper"].values,
+    plot_df["bootstrap_range_min"].values,
+    plot_df["bootstrap_range_max"].values,
     [0.0],
 ])
 x_min = min(all_bounds) - 0.3
@@ -264,8 +264,8 @@ ax.axvline(
 # --- effect size points + CI bars ---
 for i, (_, row) in enumerate(plot_df.iterrows()):
     g   = row["max_hedges_g"]
-    lo  = row["ci_lower"]
-    hi  = row["ci_upper"]
+    lo  = row["bootstrap_range_min"]
+    hi  = row["bootstrap_range_max"]
     ci_width_lo = g - lo
     ci_width_hi = hi - g
 

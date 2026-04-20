@@ -119,7 +119,7 @@ def main():
     print(f"\n📋 STATISTICAL VALIDATION:")
     print(f"   Pairwise Comparisons: 6 significant differences detected")
     print(f"   Effect Sizes: Medium to large (Cohen's d > 0.5)")
-    print(f"   Confidence Intervals: 95% CI reported for all metrics")
+    print(f"   Uncertainty reporting: demo only; pilot analyses report bootstrap ranges, not coverage-bearing CIs at n=2")
     print(f"   Multiple Testing: Bonferroni correction applied")
     
     print(f"\n💡 KEY RECOMMENDATIONS:")
