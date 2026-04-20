@@ -18,7 +18,7 @@
 - **Location:** `notebooks/biological_narratives/kidney_injury_spatial_analysis.ipynb` cell 12 ("What the Interfaces Reveal")
 - **Defect:** Numeric claims ("Triple-positive interfaces increase at D7 (18.5% → 21.4%)", "Immune-stromal interfaces peak at D7", "Endothelial-immune interfaces peak at D3") are not computed in the notebook. Source unknown; possibly chart eyeballing.
 - **Action:** REPLACE in-place
-- **Replaced by:** Quantified narrative pulled directly from `endpoint_summary.csv`. Each claim accompanied by mouse-level mean, observed range, Hedges' g (Type M corrected), n_required for 80% power (T28).
+- **Replaced by:** Quantified narrative pulled directly from `endpoint_summary.csv`. Each claim accompanied by mouse-level mean, observed range, Hedges' g plus Bayesian-shrunk range under three priors (skeptical / neutral / optimistic), n_required for 80% power under each prior (T28). (The earlier Type-M scalar correction referenced here was replaced by Bayesian shrinkage in the Gate 5 amendment; see `analysis_plans/temporal_interfaces_plan.md` amendment log.)
 
 ## D3 — D7-only multi-compartment coordination
 - **Location:** `notebooks/biological_narratives/kidney_injury_spatial_analysis.ipynb` cells 30 and 31 (Part 6)

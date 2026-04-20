@@ -60,8 +60,7 @@ The existing DA framework currently runs only 5 (omits D1_vs_D7); fixed in T19. 
 | Effect size | Hedges' g on mouse-level values | Small-sample-corrected Cohen's d |
 | Uncertainty | Percentile bootstrap with 10,000 iterations, **reported as "bootstrap range (min, max of 9 unique values at n=2 per group)" — NOT as 95% CI** | The resolution limit is 9 distinct values; CI notation implies coverage that does not exist |
 | Shrinkage | Every observed g is annotated with a **per-endpoint Bayesian shrinkage range** under three prior strengths on the true effect δ: skeptical N(0, 0.5²), neutral N(0, 1.0²), optimistic N(0, 2.0²). Posterior mean E[δ \| g_obs] = g_obs × prior_var / (prior_var + sampling_var), where sampling_var(g, n) = **2/n + g²/(4n)** (Hedges & Olkin 1985 asymptotic formula; switched to this textbook form in the Gate 5 amendment from an earlier non-standard 4/n + g²/(2n) — see §12). Replaces the prior single-scalar Type-M=0.65 correction with a defensible range. | n=2 winner's curse; Bayesian shrinkage is the standard treatment for noisy effect-size estimators under informative priors. |
-| Multiplicity (primary) | BH-FDR within each endpoint family separately | Distinct biological questions |
-| Multiplicity | At n=2, no real p-values exist; no FDR is computed. Family-arbitrage rank audit done by sorting `endpoint_summary.csv` on `|hedges_g|`. | Earlier proxy-FDR columns removed in Gate 6 (cognitive-anchoring risk) |
+| Multiplicity | At n=2, no real p-values exist; no FDR is computed. Family-arbitrage rank audit done by sorting `endpoint_summary.csv` on `|hedges_g|`. | Earlier proxy-FDR and per-family BH rows removed in Gate 6 (cognitive-anchoring risk) |
 | Power | For each observed g, report `n_required` under four effect-size assumptions: the raw observed g (*most optimistic lower bound*) and the three Bayesian-shrunk values under skeptical/neutral/optimistic priors (*sensitivity range*). **No single prior is designated as "default"** — the range itself is the finding. Downstream study designers pick the prior that matches their own scepticism about the observed pilot effect. | Converts findings into study-design statements with a transparent uncertainty band; avoids recreating the magic-scalar problem by anointing one prior |
 | Compositional | CLR with Bayesian-multiplicative zero replacement for Family A only | Family B/C endpoints are not exhaustive |
 | Pathology flag | `g_pathological: bool` set when `|g| > 3 AND pooled_std < 0.01` | Quarantines variance-collapse artifacts (e.g., g=−4.87 with mean diff 0.001) |
@@ -149,6 +148,10 @@ These limitations are restated in every notebook section consuming this plan.
 ### 2026-04-18 (Gate 4 capstone review response — superseded by shrinkage amendment above)
 - Hardcoded Type-M correction at 0.65 initially documented as a permissive midpoint ballpark. This approach itself was superseded in the next amendment when the full Bayesian shrinkage replacement landed.
 - Other Gate 4 findings (p-proxy column naming, bootstrap-range non-coverage, Family B framing) accepted with existing disclaimers — see Gate 4 capstone log.
+
+### 2026-04-20 (post-commits doc-audit — plan §5 multiplicity row consolidation)
+- Collapsed two contradictory multiplicity table rows in §5 (Statistical Methods) into one. The surviving row correctly states that at n=2 no real p-values exist, no FDR is computed, and family-arbitrage is audited by `|hedges_g|` rank. The removed row ("BH-FDR within each endpoint family separately") was a Gate 6 partial-removal residue — proxy-FDR columns were removed but the descriptive row survived and contradicted the row below it. Scope-limited to §5 table; no amendments to endpoints, contrasts, or filters.
+- Also updated `analysis_plans/deprecation_manifest.md` D2 entry to reference Bayesian shrinkage instead of the superseded Type-M scalar, pointing to this amendment log as the authoritative transition.
 
 ### 2026-04-17 (Gate 0 brutalist review response)
 Incorporated 11 critical/high findings from multi-critic Gate 0 review:
