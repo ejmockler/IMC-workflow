@@ -5,7 +5,7 @@
 ### Directory Structure (Current Implementation)
 ```
 src/
-├── analysis/                    # Core analysis modules (21 modules)
+├── analysis/                    # Core analysis modules (22 modules)
 │   ├── main_pipeline.py         # Production pipeline orchestrator
 │   ├── multiscale_analysis.py   # Multi-scale spatial analysis
 │   ├── ion_count_processing.py  # Ion count statistics & transformations
@@ -22,6 +22,7 @@ src/
 │   ├── parallel_processing.py   # Multi-ROI parallel processing
 │   ├── analysis_manifest.py     # Scientific objectives & manifest
 │   ├── cell_type_annotation.py  # Boolean gating + continuous membership annotation
+│   ├── temporal_interface_analysis.py # Phase 2: Family A/B/C endpoints, Bayesian shrinkage, join counts
 │   ├── clustering_comparison.py # Graph vs spatial clustering comparison
 │   ├── graph_clustering.py      # Graph-based clustering baseline
 │   ├── grid_segmentation.py     # Grid-based segmentation alternative

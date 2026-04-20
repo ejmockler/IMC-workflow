@@ -24,8 +24,9 @@ Multi-scale spatial proteomics framework for Imaging Mass Cytometry data, applie
 # 5. Figures
 .venv/bin/python generate_enrichment_heatmaps.py       # Temporal neighborhood heatmaps
 .venv/bin/python generate_power_analysis.py             # Effect size forest plot + sample size table
-.venv/bin/python run_bodenmiller_benchmark.py           # Steinbock concordance validation
 ```
+
+> **Note on `run_bodenmiller_benchmark.py`**: this script computes channel-level concordance (Spearman r≈0.996) between our raw-pixel loader and Steinbock cell-level means on a single-patient Bodenmiller ROI set. It validates data I/O only, not framework generalization. External validation of the temporal interface framework on Bodenmiller is tabled — the dataset is static (no timepoints) and single-patient (no biological replication), so Family A/B/C endpoints do not transfer. See `benchmarks/` for archived material.
 
 ## Entry Points
 
@@ -76,14 +77,15 @@ All parameters live in `config.json`. The `Config` class (`src/config.py`) is th
 results/
 ├── roi_results/                    # Per-ROI analysis (24 x JSON.gz)
 ├── biological_analysis/
-│   ├── cell_type_annotations/      # 24 parquet + metadata
-│   ├── differential_abundance/     # Temporal + regional CSVs
-│   ├── spatial_neighborhoods/      # Enrichment CSVs
+│   ├── cell_type_annotations/      # 24 parquet + metadata (12-col schema)
+│   ├── differential_abundance/     # Phase 1: temporal + regional CSVs
+│   ├── spatial_neighborhoods/      # Phase 1: cell-type-pair enrichment CSVs
+│   ├── temporal_interfaces/        # Phase 2: 17 parquets + endpoint_summary.csv + run_provenance.json
 │   ├── indra_panel_context.json
 │   └── indra_finding_annotations.csv
 ├── figures/                        # Publication figures
 ├── power_analysis/                 # Sample size requirements
-├── benchmark/                      # Bodenmiller concordance
+├── benchmark/                      # Channel-level Bodenmiller concordance (data I/O only)
 ├── validation_report.json
 ├── run_summary.json
 └── analysis_summary.json
