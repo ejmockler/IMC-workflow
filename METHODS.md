@@ -3,11 +3,14 @@
 ## Overview
 This document provides detailed methodology for the IMC analysis pipeline.
 
+**Two analytical phases.** This project proceeded in two phases sharing the same raw data and segmentation. **Phase 1** (§1-§7, §Differential Abundance, §Spatial Neighborhood Enrichment) is frequentist: boolean-gating cell types on SLIC superpixels, Mann-Whitney U with BH-FDR for differential abundance, permutation-based neighborhood enrichment. **Phase 2** (§Temporal Interface Analysis) is pre-registered and effect-size-first: three endpoint families (interface composition CLR, continuous neighborhood neighbor-minus-self, Sham-reference compartment activation) with per-endpoint Bayesian shrinkage under three priors and no FDR (n=2 per group makes coverage-bearing inference impossible). Phase 1 artifacts remain active as descriptive summaries; Phase 2 is the reviewer-facing analysis for candidate findings. See `analysis_plans/temporal_interfaces_plan.md` for the frozen Phase 2 pre-registration.
+
 **Key Methodological Features:**
 1. Multi-scale superpixel analysis with scale-adaptive graph construction
 2. Variance-based feature selection for coabundance features (153 → 30 features)
 3. Stability-based clustering optimization with bootstrap validation
-4. Kidney-specific cell type annotation via boolean gating
+4. Kidney-specific cell type annotation via boolean gating + continuous multi-label memberships
+5. Pre-registered Phase 2 temporal interface analysis with Bayesian-shrunk effect sizes
 
 ## Study Design
 
@@ -211,6 +214,39 @@ With n=2 per group, most comparisons are expected to be non-significant. Effect 
 ### Spatial Autocorrelation
 - **Marker-level**: Spearman correlation of marker expression with spatial coordinates
 - **Cluster-level**: Moran's I spatial coherence computed per ROI per scale as a heuristic quality metric for cluster spatial compactness (inverse-distance weights, cKDTree neighborhood). Higher values indicate spatially contiguous clusters. Note: Moran's I treats cluster labels as numeric, which is technically inappropriate for nominal (categorical) data; used here for quality assessment only, not primary analysis. For categorical spatial analysis in Phase 2 (temporal interface analysis), join-count statistics replace Moran's I — implemented in `src/analysis/temporal_interface_analysis.py` (`compute_join_count_bb`), with `compute_morans_i_continuous` applied only to continuous lineage scores. See `analysis_plans/temporal_interfaces_plan.md` §6 for the rationale.
+
+## Temporal Interface Analysis (Phase 2)
+
+Pre-registered, effect-size-first analysis consuming Phase 1 continuous lineage memberships at 10 μm scale. Plan frozen 2026-04-17 (`analysis_plans/temporal_interfaces_plan.md`); subsequent changes require amendment-block entries in that file. Orchestrator: `run_temporal_interface_analysis.py`. Pure-function module: `src/analysis/temporal_interface_analysis.py`.
+
+### Unit of analysis and sample size
+- Per-ROI quantities aggregated to per-mouse means; group size n=2 mice/timepoint at Sham/D1/D3/D7.
+- Mouse-level aggregation defeats superpixel-level pseudoreplication; no FDR at n=2 because formal p-values are mathematically out of reach. Family-arbitrage audit is by `|hedges_g|` rank-order in `endpoint_summary.csv`.
+
+### Endpoint families (pre-registered)
+- **Family A — Interface composition (compositional).** Mouse-level fraction of superpixels in each of 8 interface categories {immune, endothelial, stromal, immune+endothelial, immune+stromal, endothelial+stromal, triple, none}. CLR transform with **Bayesian-multiplicative zero replacement** (Martín-Fernández et al. 2003, Dirichlet α=0.5) rather than additive ε. Minimum-prevalence filter (<1% in all timepoints → collapsed to "other_rare"). Sensitivity: per-ROI sigmoid vs Sham-reference raw-marker thresholds at {65, 75, 85}ᵗʰ percentile.
+- **Family B — Continuous neighborhood lineage shifts.** Per (composite_label × neighbor_lineage), mouse-level mean of `neighbor_lineage_X − self_lineage_X` (neighbor-minus-self delta). Minimum support filter `n_superpixels ≥ 20` per row; filtered rows preserved as NaN-with-flag distinguishing `absent_biology` from `below_min_support`. Only temporal changes in the delta are interpretable (self-delta is biased by definition). Sensitivity sweep: `{10, 20, 40}` minimum support.
+- **Family C — Cross-compartment activation.** Mouse-level CD44⁺ rate within {CD45⁺, CD31⁺, CD140b⁺, background} compartments and triple-overlap fraction, where compartment positivity uses **Sham-reference** 75ᵗʰ-percentile thresholds computed once on Sham-only ROIs (prevents outcome contamination from D7-elevated markers driving the threshold). Sensitivity sweep: `{65, 75, 85}` Sham percentile.
+
+### Effect sizes and shrinkage
+- **Hedges' g** on mouse-level means (small-sample-corrected Cohen's d).
+- **Bayesian shrinkage** of g under three explicit priors on the true effect δ: skeptical N(0, 0.5²), neutral N(0, 1.0²), optimistic N(0, 2.0²). Posterior mean `E[δ | g_obs] = g_obs × prior_var / (prior_var + sampling_var)`.
+- **Sampling variance**: Hedges & Olkin (1985) asymptotic formula `v(g, n) = 2/n + g²/(4n)`. An earlier implementation used a non-textbook `4/n + g²/(2n)` inflation; the Gate 5 amendment switched to the standard form.
+- **No default prior.** The three-prior range is a pre-registered sensitivity analysis, not a Bayesian inference. Downstream study designers pick the prior matching their own scepticism.
+- **Bootstrap range**: percentile bootstrap over 10,000 iterations reported as min/max of the ~9 unique resamples at n=2 per group; not a coverage-bearing CI.
+- **Pathology flag**: `g_pathological = (|g| > 3 AND pooled_std < 0.01)` quarantines variance-collapse artifacts; pathological rows emit NaN for all shrunk-g and n_required columns.
+
+### Spatial coherence for interface labels
+- **Join-count statistics** (per binary interface indicator, e.g. `is_triple`, `is_immune+endothelial`) replace Moran's I on categorical labels. Adjacency: k=10 nearest neighbors in (x, y); null: label permutation within ROI, 1000 permutations; statistic: observed BB joins standardized by permutation mean/std. Filter: ≥10 positive superpixels per ROI.
+- **Moran's I** used only on *continuous* lineage scores (immune, endothelial, stromal).
+
+### Outputs (`results/biological_analysis/temporal_interfaces/`)
+17 parquet files (see `docs/DATA_SCHEMA.md`) + `endpoint_summary.csv` (primary reviewer-facing table, 330 rows × 33 columns across Families A/B/C and all 6 pairwise contrasts) + `run_provenance.json` (git commit, config hash, file sha256, seeds, parameters).
+
+### What is explicitly out of scope
+- Object-level lineage tracing (not possible with snapshot IMC).
+- Significance claims or BH-FDR (n=2 precludes coverage-bearing inference).
+- Extrapolation beyond UUO kidney injury on this 9-marker panel (panel-dependent).
 
 ## Quality Control
 
