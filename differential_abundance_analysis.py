@@ -205,10 +205,15 @@ def bootstrap_effect_size_ci(group1: np.ndarray, group2: np.ndarray,
                               ci: float = 0.95,
                               random_state: int = 42) -> Tuple[float, float]:
     """
-    Bootstrap confidence interval for Hedges' g.
+    Bootstrap range for Hedges' g (legacy function name; returns percentile
+    bounds of the resampled distribution).
 
-    Uses percentile method (BCa requires larger samples than n=2).
-    With n=2, CIs will be wide — that's the honest answer.
+    At n=2 per group, only ~9 unique Hedges' g values exist across bootstrap
+    resamples, so the returned bounds are NOT a coverage-bearing confidence
+    interval — they are the min/max of the discrete resample distribution.
+    Downstream consumers: the columns `ci_lower_95` / `ci_upper_95` are kept
+    for API compatibility but should be read as bootstrap-range bounds. See
+    METHODS.md §Statistical Analysis.
     """
     if len(group1) < 2 or len(group2) < 2:
         return np.nan, np.nan

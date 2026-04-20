@@ -1,7 +1,11 @@
-# Steinbock Benchmark Execution Status
+# [ARCHIVED 2026-04-20] Steinbock Benchmark Execution Status
+
+> **ARCHIVAL NOTICE.** This file is a historical execution log from the 2025-11-03 Steinbock Docker run that produced the Bodenmiller DeepCell cell-level outputs now living at `benchmarks/data/bodenmiller_example/steinbock_outputs/Patient1/`. Those output artifacts are still used by `run_bodenmiller_benchmark.py` for channel-level data-I/O concordance (Spearman r≈0.996 vs raw pixel means). The "Next Steps After Completion" section below describes a broader framework-validation plan that was subsequently tabled (see `benchmarks/notebooks/CRITICAL_ANALYSIS.retracted.md` and the 2026-04-20 brutalist review). Keep this file for execution provenance; do not treat it as live guidance.
+
+---
 
 **Date**: November 3, 2025
-**Status**: ✅ COMPLETED
+**Status**: ✅ COMPLETED (archived 2026-04-20)
 **Completion Time**: 1491s (~25 minutes)
 
 ---

@@ -7,7 +7,7 @@ between batches while preserving biological signal in ion count data.
 Key Features:
 - Sham-anchored normalization preserving biological dynamics
 - Scientific guardrails preventing invalid method combinations  
-- Bootstrap confidence intervals for n=2 replicate analysis  
+- Bootstrap ranges for n=2 replicate analysis (bounds on observed values; NOT coverage-bearing CIs — see METHODS.md §Statistical Analysis)
 - Comprehensive batch effect detection and validation
 - Memory-efficient implementation for large IMC datasets
 - Robust error handling and configuration validation
