@@ -57,6 +57,22 @@ src/analysis/main_pipeline.py
 - Dependency version recording
 - Output standardization
 
+### Temporal Interface Analysis (Phase 2)
+```
+src/analysis/temporal_interface_analysis.py
+run_temporal_interface_analysis.py           # orchestrator (root)
+analysis_plans/temporal_interfaces_plan.md   # pre-registration
+```
+- Pre-registered, three-family endpoint framework:
+  - **Family A**: interface-composition CLR with Bayesian-multiplicative zero replacement
+  - **Family B**: continuous neighborhood neighbor-minus-self lineage shifts
+  - **Family C**: Sham-reference compartment activation trajectories
+- Bayesian shrinkage of Hedges' g under three priors (skeptical / neutral / optimistic)
+- Hedges & Olkin (1985) sampling variance `v = 2/n + g²/(4n)`
+- Join-count statistics for categorical spatial coherence; continuous Moran's I for lineage scores
+- Consumes per-ROI annotation parquets; emits 17 parquets + `endpoint_summary.csv` + `run_provenance.json`
+- No FDR at n=2 by construction; family-arbitrage audit by `|hedges_g|` rank
+
 ## Support Infrastructure
 
 ### Quality Control
@@ -107,8 +123,8 @@ config.json               # Project configuration
 ```
 Raw IMC Data (.txt)
     |
-Ion Count Processing
-    | (arcsinh + normalization)
+Ion Count Processing (arcsinh + normalization)
+    |
 Multi-Scale Segmentation (SLIC at 10um, 20um, 40um)
     |
 Feature Extraction (protein expression + coabundance)
@@ -118,6 +134,14 @@ Spatial Clustering (Leiden with spatial weight)
 Validation & QC
     |
 Results Storage (HDF5/Parquet/JSON)
+    |
+    +--> Phase 1 post-processing:
+    |       batch_annotate_all_rois.py       (boolean gating + continuous memberships)
+    |       differential_abundance_analysis.py
+    |       spatial_neighborhood_analysis.py
+    |
+    +--> Phase 2 pre-registered analysis:
+            run_temporal_interface_analysis.py  (Family A/B/C, Bayesian shrinkage)
 ```
 
 ## Visualization
@@ -140,6 +164,8 @@ Analysis and visualization are decoupled. Notebooks consume analysis outputs.
 - `spatial_clustering.py`
 - `coabundance_features.py`
 - `batch_correction.py`
+- `cell_type_annotation.py`
+- `temporal_interface_analysis.py`  (Phase 2)
 
 ### Research/Experimental (Available)
 - `graph_clustering.py`

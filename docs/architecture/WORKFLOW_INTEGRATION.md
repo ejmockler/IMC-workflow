@@ -213,10 +213,30 @@ results/
     │   ├── temporal_differential_abundance.csv
     │   └── regional_differential_abundance.csv
     │
-    └── spatial_neighborhoods/     # Module 3
-        ├── roi_neighborhood_enrichments.csv
-        ├── temporal_neighborhood_enrichments.csv
-        └── regional_neighborhood_enrichments.csv
+    ├── spatial_neighborhoods/     # Module 3 (discrete cell-type-pair enrichment)
+    │   ├── temporal_neighborhood_enrichments.csv
+    │   └── regional_neighborhood_enrichments.csv
+    │
+    └── temporal_interfaces/       # Module 4 (Phase 2 pre-registered)
+        ├── endpoint_summary.csv           # primary reviewer-facing table (330 rows, 33 cols)
+        ├── run_provenance.json            # git hash, config hash, file sha256, seeds, parameters
+        ├── interface_fractions.parquet
+        ├── interface_fractions_normalization_sensitivity.parquet
+        ├── interface_clr.parquet
+        ├── interface_clr_no_none.parquet
+        ├── family_a_endpoints_global_norm.parquet
+        ├── family_a_endpoints_norm_sweep.parquet
+        ├── family_a_global_thresholds.parquet
+        ├── family_a_sensitivity_endpoints.parquet
+        ├── continuous_neighborhood_temporal.parquet
+        ├── continuous_neighborhood_missingness.parquet
+        ├── family_b_sensitivity_endpoints.parquet
+        ├── compartment_activation_temporal.parquet
+        ├── family_c_sensitivity_endpoints.parquet
+        ├── sham_reference_thresholds.parquet
+        ├── sensitivity_thresholds.parquet
+        ├── join_counts.parquet
+        └── lineage_morans_i.parquet
 ```
 
 ## Key Design Decisions
