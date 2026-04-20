@@ -129,11 +129,11 @@ The immune compartment shifts from acute (neutrophil-dominant) toward resolution
 
 ### Differential Abundance
 
-Unit of analysis: mouse (ROI proportions averaged within each mouse to prevent pseudoreplication). All q-values >= 0.86. Raw p-values are 0.333, 0.667, or 1.000 — the only values Mann-Whitney U can produce at n=2. Bootstrap 95% CIs are inherently degenerate: with 2 observations per group, only 4 unique bootstrap samples exist, yielding 9 unique Hedges' g values per comparison. CIs should be read as approximate bounds, not smooth distributions.
+Unit of analysis: mouse (ROI proportions averaged within each mouse to prevent pseudoreplication). All q-values >= 0.86. Raw p-values are 0.333, 0.667, or 1.000 — the only values Mann-Whitney U can produce at n=2. Bootstrap ranges are inherently degenerate: with 2 observations per group, only 4 unique bootstrap samples exist, yielding 9 unique Hedges' g values per comparison. Ranges are bounds on observed values, not coverage-bearing CIs.
 
 **Top effects by |Hedges' g|:**
 
-| Cell Type | Comparison | Hedges' g | 95% CI | Fold Change |
+| Cell Type | Comparison | Hedges' g | Bootstrap range | Fold Change |
 |-----------|-----------|-----------|--------|-------------|
 | Activated Fibroblast | Sham vs D1 | **-8.74** | [-15.8, -8.7] | 1.54x increase |
 | Activated Fibroblast | Sham vs D3 | **-4.21** | [-15.6, -4.2] | 1.50x increase |
@@ -420,7 +420,7 @@ Four notebooks present the analysis in a pedagogical arc:
 
 **Boolean gating** — Binary classification by marker expression thresholds. Superpixel is "positive" if expression exceeds a percentile-based cutoff.
 
-**Bootstrap CI** — Uncertainty estimate from resampling observed data with replacement. At n=2, only 9 unique effect size values exist per comparison.
+**Bootstrap range** — Bounds on observed effect size from resampling with replacement. At n=2, only 9 unique values exist per comparison; the range is a bound on observed values, not a coverage-bearing CI.
 
 **CLR (Centered Log-Ratio)** — Compositional data transform: CLR(x_i) = log(x_i / geometric_mean(x)). Removes sum-to-one constraint.
 

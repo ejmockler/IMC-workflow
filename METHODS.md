@@ -172,7 +172,7 @@ Boolean gating on arcsinh-transformed superpixel-level expression (10um scale):
 - When a superpixel matches multiple cell type gates, the first-defined cell type in config wins (priority-order assignment). Cell type ordering in config.json determines resolution of ambiguous assignments.
 
 ### Assignment Rate
-Mean assignment rate: ~21% (range 10-48% across ROIs). The remaining ~79% of superpixels are unassigned due to the 9-marker panel lacking sufficient markers for complete tissue annotation. Spatial analyses operate only on the identifiable fraction.
+Mean assignment rate: **22.4%** (range 14.8-31.8% across 24 ROIs under the 15-type ontology; see `RESULTS.md` for per-ROI distribution). The remaining ~77% of superpixels are unassigned due to the 9-marker panel lacking sufficient markers for complete tissue annotation. Spatial analyses operate only on the identifiable fraction.
 
 > **Proportions denominator.** Cell type proportions in differential abundance analysis use the total number of superpixels (including unassigned) as denominator. This means changes in the unassigned fraction across timepoints will shift all assigned cell type proportions without a true change in absolute abundance. An alternative denominator (assigned superpixels only) would be equally valid but measures relative composition within the identified fraction rather than tissue-wide prevalence. The total-superpixel denominator is reported; users should interpret proportion changes in the context of the ~79% unassigned tissue.
 
@@ -182,15 +182,15 @@ Mean assignment rate: ~21% (range 10-48% across ROIs). The remaining ~79% of sup
 - **Unit of analysis**: Mouse (biological replicate), not ROI
 - ROI-level proportions averaged within each mouse before testing (temporal and regional). Each ROI contributes equally regardless of superpixel count (unweighted mean). Current ROI sizes are roughly balanced (~2400 superpixels each); if ROI sizes diverge substantially, size-weighted aggregation should be considered.
 - Mann-Whitney U test on mouse-level means (n=2 per group)
-- Effect sizes: Hedges' g (small-sample corrected Cohen's d) with percentile bootstrap 95% CIs (10,000 iterations)
+- Effect sizes: Hedges' g (small-sample corrected Cohen's d) with percentile bootstrap ranges (10,000 iterations; see degeneracy disclaimer below — these are bounds on observed values, not coverage-bearing CIs)
 - Multiple testing: Benjamini-Hochberg FDR across all pairwise comparisons
 - **Compositional awareness**: Centered log-ratio (CLR) transformed effect sizes reported alongside raw proportions. CLR(x_i) = log(x_i / geometric_mean(x)), with pseudocount 1e-6 for zero proportions. The CLR transform includes the unassigned fraction (~79%) as a component, addressing spurious negative correlations from the shared denominator. Raw Hedges' g (unaffected by pseudocount choice) is the primary effect size; CLR-adjusted `hedges_g_clr` is supplementary. The pseudocount magnitude influences CLR values for rare cell types; sensitivity to this choice was not formally assessed in this pilot.
 
-With n=2 per group, most comparisons are expected to be non-significant. Effect sizes with CIs crossing zero are reported honestly.
+With n=2 per group, most comparisons are expected to be non-significant. Effect sizes with bootstrap ranges crossing zero are reported honestly.
 
-> **Mann-Whitney U at n=2.** With two observations per group, the Mann-Whitney U test can only produce three possible p-values (approximately 0.33, 0.67, 1.0 for two-sided tests). No comparison can reach conventional significance (p < 0.05) regardless of effect magnitude. The test is retained for completeness and forward compatibility with larger cohorts; Hedges' g effect sizes and bootstrap CIs are the primary inferential quantities.
+> **Mann-Whitney U at n=2.** With two observations per group, the Mann-Whitney U test can only produce three possible p-values (approximately 0.33, 0.67, 1.0 for two-sided tests). No comparison can reach conventional significance (p < 0.05) regardless of effect magnitude. The test is retained for completeness and forward compatibility with larger cohorts; Hedges' g effect sizes and bootstrap ranges are the primary inferential quantities.
 
-> **Bootstrap CI degeneracy at n=2.** With 2 mouse-level means per group and bootstrap resampling with replacement, only 4 unique bootstrap samples exist per group ({a,a}, {a,b}, {b,a}, {b,b}), yielding 3 unique group means. This produces a maximum of 9 unique Hedges' g values per comparison. The resulting CIs reflect the discrete sample space rather than smooth sampling distributions and should be interpreted as approximate bounds on effect magnitude, not precise interval estimates.
+> **Bootstrap range degeneracy at n=2.** With 2 mouse-level means per group and bootstrap resampling with replacement, only 4 unique bootstrap samples exist per group ({a,a}, {a,b}, {b,a}, {b,b}), yielding 3 unique group means. This produces a maximum of 9 unique Hedges' g values per comparison. The resulting ranges reflect the discrete sample space rather than smooth sampling distributions and should be interpreted as approximate bounds on observed effect magnitude, not coverage-bearing interval estimates.
 
 > **Regional comparisons are paired.** Cortex and medulla from the same mouse are paired observations. The current implementation uses Mann-Whitney U, which treats them as independent — between-mouse variance is conflated with between-region variance. A Wilcoxon signed-rank test would be more appropriate for paired data, but with n=2 pairs, neither test can reach significance. Effect sizes from regional comparisons should be interpreted with this caveat.
 
@@ -210,7 +210,7 @@ With n=2 per group, most comparisons are expected to be non-significant. Effect 
 
 ### Spatial Autocorrelation
 - **Marker-level**: Spearman correlation of marker expression with spatial coordinates
-- **Cluster-level**: Moran's I spatial coherence computed per ROI per scale as a heuristic quality metric for cluster spatial compactness (inverse-distance weights, cKDTree neighborhood). Higher values indicate spatially contiguous clusters. Note: Moran's I treats cluster labels as numeric, which is technically inappropriate for nominal (categorical) data; the Join Count Statistic would be the formally correct alternative. Used for quality assessment only, not primary analysis.
+- **Cluster-level**: Moran's I spatial coherence computed per ROI per scale as a heuristic quality metric for cluster spatial compactness (inverse-distance weights, cKDTree neighborhood). Higher values indicate spatially contiguous clusters. Note: Moran's I treats cluster labels as numeric, which is technically inappropriate for nominal (categorical) data; used here for quality assessment only, not primary analysis. For categorical spatial analysis in Phase 2 (temporal interface analysis), join-count statistics replace Moran's I — implemented in `src/analysis/temporal_interface_analysis.py` (`compute_join_count_bb`), with `compute_morans_i_continuous` applied only to continuous lineage scores. See `analysis_plans/temporal_interfaces_plan.md` §6 for the rationale.
 
 ## Quality Control
 
