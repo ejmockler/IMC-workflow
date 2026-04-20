@@ -472,7 +472,7 @@ Four notebooks present the analysis in a pedagogical arc:
 
 ---
 
-*Experiment: kidney_healing_2024. Config: `config.json`. Methods: `METHODS.md`. Last pipeline run: 2026-03-08.*
+*Experiment: kidney_healing_2024. Config: `config.json`. Methods: `METHODS.md`. Last Phase 1 pipeline run: 2026-03-31 (24 ROIs × 3 scales). Last Phase 2 temporal-interface run: 2026-04-18 (330 endpoint rows in `endpoint_summary.csv`).*
 
 
 ---

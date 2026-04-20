@@ -1,4 +1,16 @@
-# Critical Analysis: The 92.8% "Superpixel Variance" Finding
+# [RETRACTED 2026-04-20] Critical Analysis: The 92.8% "Superpixel Variance" Finding
+
+> **RETRACTION NOTICE (2026-04-20).** This document (dated 2025-11-08) is retained for historical reasoning but its quantitative claims must not be cited. The central numerical premise — that a 10 µm SLIC spacing parameter yields ~93 µm superpixels averaging 40-50 cells, with only ~20-30 superpixels per ROI at 10 µm — is wrong by roughly one to two orders of magnitude.
+>
+> **Evidence against the premise.** `benchmarks/our_outputs/bodenmiller_example/Patient1/roi_results/Patient1_pos1_1_1/provenance.json` reports `total_superpixels: 4229` across 4 scales for a single ROI. Kidney Phase 1 provenance (see `results/roi_results/`) reports ~2,400 superpixels per ROI at the 10 µm scale alone. The "20-30" count claimed in lines 36-42 of this document is incompatible with the pipeline's actual output by 50-100×.
+>
+> **What remains defensible.** The *qualitative* argument — that aggregating spatial information coarsens cell-type resolution and that single-cell and superpixel analyses answer different questions — is sound. That observation motivated the Phase 2 temporal interface analysis' use of continuous lineage memberships alongside discrete gating (rather than replacing superpixels with cell segmentation). But the specific numerical claims and the "Stop Reducing to Mouse-Level Means" recommendation based on them do not hold.
+>
+> **Status of Bodenmiller validation.** Tabled after the 2026-04-20 brutalist review: the framework under development is temporal (Family A/B/C pairwise timepoint contrasts) and cannot be validated on static single-patient Bodenmiller data. Channel-level data-I/O concordance (Spearman r≈0.996) has been demonstrated and is the claim this repository supports; framework generalization claims are not made. See `RESULTS.md` §"Temporal Interface Analysis" and `analysis_plans/temporal_interfaces_plan.md` for the current scope.
+>
+> Do not delete — git history already preserves the commit where this document was retracted (see commit log at `benchmarks/notebooks/CRITICAL_ANALYSIS.retracted.md`), but leaving the document visible with this header prevents the wrong numbers from being rediscovered as "forgotten evidence."
+
+---
 
 ## Executive Summary
 
