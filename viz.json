@@ -1,0 +1,118 @@
+{
+  "_comment": "Display-only configuration: colors, labels, plot layouts. Changes here do NOT affect analysis results or config_sha256 provenance. Loaded by src/viz_utils/viz_config.py::VizConfig.",
+  "cell_type_display": {
+    "neutrophil": {
+      "label": "Neutrophil",
+      "color": "#D62828"
+    },
+    "activated_m2_cd44": {
+      "label": "Activated M2 (CD44+)",
+      "color": "#E6A817"
+    },
+    "activated_m2_cd140b": {
+      "label": "Activated M2 (CD140b+)",
+      "color": "#DAA520"
+    },
+    "m2_macrophage": {
+      "label": "M2 Macrophage",
+      "color": "#FCBF49"
+    },
+    "activated_myeloid_cd44": {
+      "label": "Activated Myeloid (CD44+)",
+      "color": "#E63946"
+    },
+    "activated_myeloid_cd140b": {
+      "label": "Activated Myeloid (CD140b+)",
+      "color": "#F77F00"
+    },
+    "myeloid": {
+      "label": "Myeloid Cells",
+      "color": "#FF6B6B"
+    },
+    "activated_immune": {
+      "label": "Activated Immune",
+      "color": "#C44569"
+    },
+    "immune_cells": {
+      "label": "Immune Cells",
+      "color": "#E8A0BF"
+    },
+    "activated_endothelial_cd44": {
+      "label": "Activated Endothelial (CD44+)",
+      "color": "#06AED5"
+    },
+    "activated_endothelial_cd140b": {
+      "label": "Activated Endothelial (CD140b+)",
+      "color": "#086788"
+    },
+    "endothelial": {
+      "label": "Endothelial Cells",
+      "color": "#457B9D"
+    },
+    "activated_fibroblast_cd44": {
+      "label": "Activated Fibroblast (CD44+)",
+      "color": "#2A9D8F"
+    },
+    "activated_fibroblast_cd140b": {
+      "label": "Activated Fibroblast (CD140b+)",
+      "color": "#264653"
+    },
+    "fibroblast": {
+      "label": "Fibroblast",
+      "color": "#8AB17D"
+    }
+  },
+  "timepoint_display": {
+    "_comment": "Order is preserved via the analysis-side TIMEPOINT_ORDER constant in src/analysis/temporal_interface_analysis.py \u2014 this is display color only.",
+    "order": [
+      "Sham",
+      "D1",
+      "D3",
+      "D7"
+    ],
+    "colors": {
+      "Sham": "#457B9D",
+      "D1": "#2A9D8F",
+      "D3": "#F77F00",
+      "D7": "#E63946"
+    }
+  },
+  "channel_group_colormaps": {
+    "immune_markers": "Reds",
+    "vascular_markers": "Blues",
+    "stromal_markers": "Greens",
+    "adhesion_markers": "Purples",
+    "default": "viridis"
+  },
+  "validation_plots": {
+    "enabled": true,
+    "primary_markers": {
+      "immune_markers": "CD45",
+      "vascular_markers": "CD31",
+      "stromal_markers": "CD140a"
+    },
+    "always_include": [
+      "CD206",
+      "CD44"
+    ],
+    "show_bead_channels": true,
+    "show_background_channel": false,
+    "layout": {
+      "figsize": [
+        20,
+        12
+      ],
+      "top_row_panels": 4,
+      "bottom_row_panels": 5
+    }
+  },
+  "figure_defaults": {
+    "style": "whitegrid",
+    "dpi": 150,
+    "figsize": [
+      12,
+      6
+    ],
+    "font_size": 10
+  }
+}

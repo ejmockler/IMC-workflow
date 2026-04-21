@@ -30,9 +30,12 @@ Multi-scale spatial proteomics framework for Imaging Mass Cytometry data, applie
 
 ## Entry Points
 
-- **Methods**: `METHODS.md` (includes panel justification, ablation results, limitations)
+- **Methods**: `METHODS.md` (panel justification, statistical methods, limitations)
 - **Results**: `RESULTS.md` (experiment-specific findings with actual numbers)
 - **Result schema**: `docs/DATA_SCHEMA.md`
+- **Config**:
+  - `config.json` — analysis knobs (gating, thresholds, endpoints) loaded via `src.config.Config`
+  - `viz.json` — display knobs (colors, labels, plot defaults) loaded via `src.viz_utils.VizConfig`
 - **Loading results**: `src/utils/canonical_loader.py`
 - **INDRA knowledge base**: `results/biological_analysis/indra_panel_context.json`
 

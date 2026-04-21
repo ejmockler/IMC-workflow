@@ -105,10 +105,14 @@ class Config:
         
         # Metadata tracking
         self.metadata_tracking = self.raw.get('metadata_tracking', {})
-        
-        # Visualization configuration
-        self.visualization = self.raw.get('visualization', {})
-        
+
+        # Visualization configuration — now lives in viz.json (load via
+        # src.viz_utils.VizConfig). This attribute stays present as an empty
+        # dict to avoid breaking legacy callers that still reference
+        # `config.visualization` during the transition; new code should use
+        # VizConfig instead.
+        self.visualization = {}
+
         # Legacy support (for backwards compatibility)
         self.proteins = self.channels.get('protein_channels', [])
         self.experimental = self.raw.get('experimental', {})
@@ -194,17 +198,12 @@ class Config:
         return self.raw.copy()
     
     def validate_channel_consistency(self) -> None:
-        """Validate that visualization config references valid channels.
-        
-        Raises:
-            ValueError: If primary_markers reference non-existent protein channels
+        """Validate that channel_groups reference valid protein channels.
+
+        Viz-side consistency (validation_plots.primary_markers in viz.json) is
+        checked by VizConfig at load time, not here.
         """
         protein_channels = set(self.channels.get('protein_channels', []))
-        primary_markers = self.visualization.get('validation_plots', {}).get('primary_markers', {})
-        
-        for group_name, marker in primary_markers.items():
-            if marker not in protein_channels:
-                print(f"Warning: Primary marker '{marker}' for group '{group_name}' not found in protein_channels")
         
         # Validate that channel_groups reference valid protein channels
         channel_groups = self.channel_groups

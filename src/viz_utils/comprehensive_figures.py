@@ -309,13 +309,11 @@ def figure_discrete_type_distribution(
             mean_props[ct] = np.mean(vals)
         data.append(mean_props)
 
-    # Build color palette from config if available, otherwise generate
+    # Build color palette from viz.json if available, otherwise generate
     colors = {}
     try:
-        from src.config import Config
-        config = Config('config.json')
-        ct_defs = config.raw.get('cell_type_annotation', {}).get('cell_types', {})
-        colors = {name: defn.get('color', None) for name, defn in ct_defs.items()}
+        from .viz_config import VizConfig
+        colors = dict(VizConfig.load().cell_type_colors)
     except Exception:
         pass
 

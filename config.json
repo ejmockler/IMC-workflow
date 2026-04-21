@@ -172,108 +172,78 @@
     "_comment_priority": "Definition order = gating priority (first match wins). Most-specific gates listed first within each lineage to prevent greedy capture by broader gates.",
     "cell_types": {
       "neutrophil": {
-        "label": "Neutrophil",
         "positive_markers": ["CD45", "Ly6G"],
         "negative_markers": ["CD31", "CD34"],
-        "color": "#D62828",
         "family": "immune_neutrophil"
       },
       "activated_m2_cd44": {
-        "label": "Activated M2 (CD44+)",
         "positive_markers": ["CD45", "CD11b", "CD206", "CD44"],
         "negative_markers": ["CD34", "CD31"],
-        "color": "#E6A817",
         "family": "immune_m2"
       },
       "activated_m2_cd140b": {
-        "label": "Activated M2 (CD140b+)",
         "positive_markers": ["CD45", "CD11b", "CD206", "CD140b"],
         "negative_markers": ["CD34", "CD31"],
-        "color": "#DAA520",
         "family": "immune_m2"
       },
       "m2_macrophage": {
-        "label": "M2 Macrophage",
         "positive_markers": ["CD45", "CD11b", "CD206"],
         "negative_markers": ["CD34", "CD31", "CD44", "CD140b"],
-        "color": "#FCBF49",
         "family": "immune_m2"
       },
       "activated_myeloid_cd44": {
-        "label": "Activated Myeloid (CD44+)",
         "positive_markers": ["CD45", "CD11b", "CD44"],
         "negative_markers": ["CD34", "CD31", "CD206"],
-        "color": "#E63946",
         "family": "immune_myeloid"
       },
       "activated_myeloid_cd140b": {
-        "label": "Activated Myeloid (CD140b+)",
         "positive_markers": ["CD45", "CD11b", "CD140b"],
         "negative_markers": ["CD34", "CD31", "CD206"],
-        "color": "#F77F00",
         "family": "immune_myeloid"
       },
       "myeloid": {
-        "label": "Myeloid Cells",
         "positive_markers": ["CD45", "CD11b"],
         "negative_markers": ["CD34", "CD31", "CD44", "CD140b", "CD206"],
-        "color": "#FF6B6B",
         "family": "immune_myeloid"
       },
       "activated_immune": {
-        "label": "Activated Immune",
         "positive_markers": ["CD45", "CD44", "CD140b"],
         "negative_markers": ["CD34", "CD31", "CD11b"],
-        "color": "#C44569",
         "family": "immune_other"
       },
       "immune_cells": {
-        "label": "Immune Cells",
         "positive_markers": ["CD45"],
         "negative_markers": ["CD34", "CD31", "CD11b", "CD44", "CD140b"],
-        "color": "#E8A0BF",
         "family": "immune_other"
       },
       "activated_endothelial_cd44": {
-        "label": "Activated Endothelial (CD44+)",
         "positive_markers": ["CD31", "CD34", "CD44"],
         "negative_markers": ["CD45"],
-        "color": "#06AED5",
         "family": "endothelial"
       },
       "activated_endothelial_cd140b": {
-        "label": "Activated Endothelial (CD140b+)",
         "positive_markers": ["CD31", "CD34", "CD140b"],
         "negative_markers": ["CD45"],
-        "color": "#086788",
         "family": "endothelial"
       },
       "endothelial": {
-        "label": "Endothelial Cells",
         "positive_markers": ["CD31", "CD34"],
         "negative_markers": ["CD45", "CD44", "CD140b"],
-        "color": "#457B9D",
         "family": "endothelial"
       },
       "activated_fibroblast_cd44": {
-        "label": "Activated Fibroblast (CD44+)",
         "positive_markers": ["CD140a", "CD44"],
         "negative_markers": ["CD45", "CD31", "CD34"],
-        "color": "#2A9D8F",
         "family": "stromal"
       },
       "activated_fibroblast_cd140b": {
-        "label": "Activated Fibroblast (CD140b+)",
         "positive_markers": ["CD140a", "CD140b"],
         "negative_markers": ["CD45", "CD31", "CD34"],
-        "color": "#264653",
         "family": "stromal"
       },
       "fibroblast": {
-        "label": "Fibroblast",
         "positive_markers": ["CD140a"],
         "negative_markers": ["CD45", "CD31", "CD34", "CD44", "CD140b"],
-        "color": "#8AB17D",
         "family": "stromal"
       }
     },
@@ -582,37 +552,6 @@
         "png"
       ],
       "dpi": 150
-    }
-  },
-  "visualization": {
-    "validation_plots": {
-      "enabled": true,
-      "primary_markers": {
-        "immune_markers": "CD45",
-        "vascular_markers": "CD31",
-        "stromal_markers": "CD140a"
-      },
-      "colormaps": {
-        "immune_markers": "Reds",
-        "vascular_markers": "Blues",
-        "stromal_markers": "Greens",
-        "adhesion_markers": "Purples",
-        "default": "viridis"
-      },
-      "always_include": [
-        "CD206",
-        "CD44"
-      ],
-      "show_bead_channels": true,
-      "show_background_channel": false,
-      "layout": {
-        "figsize": [
-          20,
-          12
-        ],
-        "top_row_panels": 4,
-        "bottom_row_panels": 5
-      }
     }
   },
   "metadata_tracking": {

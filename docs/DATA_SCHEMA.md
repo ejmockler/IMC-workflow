@@ -1,12 +1,13 @@
 # IMC Analysis Data Schema
 
-**Version**: 2.0
-**Last Updated**: 2026-04-20
+**Version**: 2.1
+**Last Updated**: 2026-04-21
 **Purpose**: Document the structure of analysis results for loading, validation, and downstream use
 
-**Scope (v2.0)**: This document covers two families of outputs.
+**Scope (v2.1)**: This document covers two families of outputs and two configuration files.
 - **Phase 1 per-ROI pipeline** (§1-§5): `results/roi_results/roi_*_results.json.gz`.
 - **Phase 2 biological analysis** (§6-§7): `results/biological_analysis/cell_type_annotations/` (12-column parquet per ROI) and `results/biological_analysis/temporal_interfaces/` (17 parquets + `endpoint_summary.csv` + `run_provenance.json`).
+- **Configuration** (§8): `config.json` (analysis knobs) + `viz.json` (display knobs).
 
 ---
 
@@ -622,6 +623,68 @@ def parallel_load_rois(roi_files, n_workers=4):
 
 ---
 
+## 8. Configuration Files (v2.1)
+
+The project uses **two configuration files** with disjoint responsibilities:
+
+### `config.json` — analysis configuration
+
+Loaded via `src.config.Config`. Contents govern results and update `config_sha256` in provenance:
+
+| Section | Role |
+|---|---|
+| `data` | Raw data location, metadata file, file pattern |
+| `channels` | Protein/DNA/calibration/background channel assignments |
+| `channel_groups` | Semantic groupings of markers (biological relationships, consumed by both analysis and viz) |
+| `processing` | Arcsinh, DNA preprocessing, normalization |
+| `segmentation` | SLIC parameters, scales (µm) |
+| `cell_type_annotation` | Boolean-gating rules (15 types: `positive_markers`, `negative_markers`, `family`), positivity thresholds, `membership_axes` (continuous lineage/subtype/activation scoring + `composite_label_thresholds`) |
+| `biological_analysis` | Differential abundance, neighborhood enrichment, temporal trajectory specs |
+| `analysis` | Clustering, batch correction |
+| `quality_control`, `validation` | QC thresholds, scientific validation settings |
+| `output`, `performance` | I/O paths, parallelism, compression |
+| `metadata_tracking` | ROI metadata schema |
+
+Each `cell_types[*]` entry contains exactly: `positive_markers`, `negative_markers`, `family`. No labels, colors, or prose — those moved to `viz.json`.
+
+### `viz.json` — display configuration
+
+Loaded via `src.viz_utils.VizConfig`. Contents are display-only — changes here do NOT affect analysis results or `config_sha256`:
+
+| Section | Contents |
+|---|---|
+| `cell_type_display` | For each of 15 cell types: `{label, color}`. Human names + hex codes only. |
+| `timepoint_display` | `{order: [Sham, D1, D3, D7], colors: {...}}` |
+| `channel_group_colormaps` | matplotlib colormap name per channel group (`immune_markers` → `"Reds"`, etc.) |
+| `validation_plots` | Primary markers, always-included markers, layout (figsize, panels) for multichannel validation plots |
+| `figure_defaults` | Seaborn style, DPI, default figsize, font size (applied via `VizConfig.apply_rcparams()`) |
+
+### VizConfig API
+
+```python
+from src.viz_utils import VizConfig
+viz = VizConfig.load()                      # auto-discovers project root
+viz.apply_rcparams()                         # set matplotlib defaults
+
+viz.cell_type_colors['neutrophil']           # '#D62828'
+viz.cell_type_labels['activated_m2_cd44']    # 'Activated M2 (CD44+)'
+viz.cell_type_order                          # list in declaration order
+viz.ct_label('neutrophil')                   # 'Neutrophil' (with fallback for unknown ids)
+viz.timepoint_order                          # ['Sham', 'D1', 'D3', 'D7']
+viz.timepoint_colors['D7']                   # '#E63946'
+viz.channel_group_colormaps                  # {'immune_markers': 'Reds', ...}
+viz.validation_plots                         # full layout dict for multichannel viz
+viz.figure_defaults                          # {'style': 'whitegrid', 'dpi': 150, ...}
+```
+
+### Design decisions
+
+- `channel_groups` stays in `config.json` (biological groupings are analysis knowledge). Their color *mappings* (`channel_group_colormaps`) live in `viz.json`.
+- `timepoint_display.order` is a display hint; the authoritative analysis ordering is `TIMEPOINT_ORDER` in `src/analysis/temporal_interface_analysis.py` (pre-registered, frozen).
+- `Config.visualization` is retained as an empty dict for backward compatibility with callers that reference it; new code should use `VizConfig` directly.
+
+---
+
 ## Related Documentation
 
 - **Pipeline**: See `docs/architecture/ARCHITECTURE.md` for how results are generated
@@ -630,6 +693,6 @@ def parallel_load_rois(roi_files, n_workers=4):
 
 ---
 
-**Schema Version**: 2.0
+**Schema Version**: 2.1
 **Maintained by**: IMC Analysis Pipeline
 **Questions**: See `CLAUDE.md` for development guidance

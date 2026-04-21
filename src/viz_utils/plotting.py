@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.patches import Rectangle
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 try:
     import seaborn as sns
 except ImportError:
@@ -521,11 +521,19 @@ def plot_segmentation_overlay(
         logger.error(f"Failed to prepare spatial arrays: {e}")
         raise ValueError(f"Cannot prepare spatial arrays for plotting: {e}")
     
-    # Get visualization configuration with fallbacks
-    if hasattr(config, 'visualization'):
-        viz_config = config.visualization.get('validation_plots', {})
-    else:
-        # Fallback configuration
+    # Get visualization configuration from viz.json (VizConfig).
+    # Falls back to an inline default if viz.json is missing or malformed so
+    # unit tests that construct a bare Config still work.
+    viz_config: Dict[str, Any] = {}
+    try:
+        from .viz_config import VizConfig
+        vc = VizConfig.load()
+        viz_config = dict(vc.validation_plots)
+        # VizConfig keeps the colormap registry separate from validation_plots
+        # (see viz.json schema). Re-inject so the layout code below sees a
+        # single dict, matching the legacy shape.
+        viz_config.setdefault('colormaps', vc.channel_group_colormaps)
+    except Exception:
         viz_config = {
             'primary_markers': {'immune_markers': 'CD45', 'vascular_markers': 'CD31', 'stromal_markers': 'CD140a'},
             'colormaps': {'immune_markers': 'Reds', 'vascular_markers': 'Blues', 'stromal_markers': 'Greens', 'default': 'viridis'},

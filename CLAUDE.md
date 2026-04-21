@@ -57,11 +57,12 @@ src/
 
 ## Development Principles
 
-### Configuration-Driven Design
-- All parameters externalized to `config.json`
-- `Config` class provides single source of truth
-- No hardcoded values in analysis modules
-- Experiment-agnostic through configurable metadata mapping
+### Configuration-Driven Design (two files)
+- `config.json` — **analysis**: data paths, channels, processing, segmentation, cell-type gating rules, biological analysis specs, QC thresholds, output/performance. Loaded via `src.config.Config`. Changes here affect results and update `config_sha256` in provenance.
+- `viz.json` — **display**: cell-type labels + colors, timepoint colors, channel-group colormaps, validation-plot layout, figure defaults. Loaded via `src.viz_utils.VizConfig`. Changes here do NOT alter analysis results.
+- Analysis consumers (gating engine, temporal-interface module, INDRA grounding) read only `config.json`.
+- Notebooks and plotting utilities load both — `VizConfig.load()` returns colors, labels, `apply_rcparams()` helper.
+- Rationale: a color tweak shouldn't look like an analysis change in a diff, and a viz-only commit should leave the config hash stable.
 
 ### Clean Architecture Patterns
 1. **Analysis Pipeline**: Produces standardized data products (HDF5/Parquet/JSON)
