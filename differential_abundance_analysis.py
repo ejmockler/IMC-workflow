@@ -26,6 +26,7 @@ from scipy.stats.mstats import gmean
 
 from src.utils.metadata import parse_roi_metadata as _parse_canonical
 from src.utils.paths import get_paths
+from src.config import Config
 
 _PATHS = get_paths()
 
@@ -539,6 +540,9 @@ def main():
     print("Differential Abundance Analysis - Kidney Injury Time Course")
     print("="*80)
 
+    # Load canonical analysis config (Layer A cell type roster)
+    config = Config()
+
     # Load metadata with actual anatomical regions
     print("\nLoading experimental metadata...")
     metadata_df = load_metadata()
@@ -559,23 +563,30 @@ def main():
     print(f"  Regions: {sorted([r for r in abundance_df['region'].unique() if r is not None])}")
     print(f"  Mice: {sorted([m for m in abundance_df['mouse'].unique() if m is not None])}")
 
-    # Get all cell types (excluding unassigned)
-    cell_type_cols = [c for c in abundance_df.columns if c.endswith('_count') and not c.startswith('unassigned')]
+    # Config-defined cell types (Layer A — the 15 gated types from config.json)
+    config_cell_types = list(config.raw['cell_type_annotation']['cell_types'].keys())
+    cell_type_cols = [f'{ct}_count' for ct in config_cell_types if f'{ct}_count' in abundance_df.columns]
     cell_types = [c.replace('_count', '') for c in cell_type_cols]
+
+    # Subtype rollups (Layer B — within-lineage within-immune refinement)
+    subtype_cols = [c for c in abundance_df.columns if c.startswith('subtype_') and c.endswith('_count')]
+    subtype_types = [c.replace('_count', '') for c in subtype_cols]
 
     # Note: CLR transform applied inside perform_differential_abundance()
     # AFTER mouse-level aggregation, because mean(CLR(x)) ≠ CLR(mean(x))
 
-    print(f"  Cell types: {len(cell_types)}")
+    print(f"  Cell types (config-defined, Layer A): {len(cell_types)}")
     for ct in cell_types:
         total_count = abundance_df[f'{ct}_count'].sum()
         print(f"    - {ct}: {total_count} total")
 
-    # Lineage-level continuous analysis (if available)
+    # Lineage-level continuous analysis (Layer B rollup — 3 axes)
     lineage_cols = [c for c in abundance_df.columns if c.startswith('lineage_') and c.endswith('_mean')]
     lineage_names = [c.replace('lineage_', '').replace('_mean', '') for c in lineage_cols]
     if lineage_names:
-        print(f"  Lineage scores: {lineage_names}")
+        print(f"  Lineage rollups (Layer B): {lineage_names}")
+    if subtype_types:
+        print(f"  Subtype rollups (Layer B): {subtype_types}")
 
     # Perform differential abundance analysis (mouse-level)
     print("\n" + "-"*80)
@@ -583,17 +594,29 @@ def main():
     print("-"*80)
     print("  Unit of analysis: mouse (ROI proportions averaged within each mouse)")
 
+    # Layer A — DA on the 15 config-defined cell types only
     temporal_results = perform_differential_abundance(abundance_df, cell_types)
 
-    # Also run DA on continuous lineage scores
+    # Layer B — rollups (3 continuous lineage scores + subtype proportions),
+    # computed separately so the 15-type Layer A dataframe stays clean.
+    rollup_frames = []
     if lineage_names:
         lineage_temporal = perform_differential_abundance_continuous(
             abundance_df, lineage_cols, lineage_names
         )
         if len(lineage_temporal) > 0:
-            temporal_results = pd.concat([temporal_results, lineage_temporal], ignore_index=True)
+            rollup_frames.append(lineage_temporal)
+    if subtype_types:
+        subtype_temporal = perform_differential_abundance(abundance_df, subtype_types)
+        if len(subtype_temporal) > 0:
+            rollup_frames.append(subtype_temporal)
+    rollup_results = (
+        pd.concat(rollup_frames, ignore_index=True) if rollup_frames else pd.DataFrame()
+    )
 
-    print(f"\n  {len(temporal_results)} comparisons, BH FDR applied")
+    print(f"\n  {len(temporal_results)} Layer A (config cell type) comparisons, BH FDR applied")
+    if len(rollup_results) > 0:
+        print(f"  {len(rollup_results)} Layer B (lineage + subtype rollup) comparisons")
     n_sig_fdr = temporal_results['significant_fdr'].sum() if 'significant_fdr' in temporal_results.columns else 0
     print(f"  Significant after FDR: {n_sig_fdr}")
 
@@ -637,6 +660,8 @@ def main():
 
     abundance_df.to_csv(output_dir / 'roi_abundances.csv', index=False)
     temporal_results.to_csv(output_dir / 'temporal_differential_abundance.csv', index=False)
+    if len(rollup_results) > 0:
+        rollup_results.to_csv(output_dir / 'temporal_lineage_rollups.csv', index=False)
 
     if len(regional_results) > 0:
         regional_results.to_csv(output_dir / 'regional_differential_abundance.csv', index=False)
@@ -645,7 +670,9 @@ def main():
     print("Analysis Complete")
     print(f"{'='*80}")
     print(f"\n✓ ROI abundances: {output_dir / 'roi_abundances.csv'}")
-    print(f"✓ Temporal results: {output_dir / 'temporal_differential_abundance.csv'}")
+    print(f"✓ Temporal results (Layer A, 15 cell types): {output_dir / 'temporal_differential_abundance.csv'}")
+    if len(rollup_results) > 0:
+        print(f"✓ Rollups (Layer B, lineage + subtype): {output_dir / 'temporal_lineage_rollups.csv'}")
     if len(regional_results) > 0:
         print(f"✓ Regional results: {output_dir / 'regional_differential_abundance.csv'}")
     print(f"\n{'='*80}\n")
