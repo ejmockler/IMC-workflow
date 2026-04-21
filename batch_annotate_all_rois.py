@@ -181,10 +181,13 @@ def main():
             # Add continuous membership summary
             if memberships is not None:
                 ls = memberships['lineage_scores']
+                # Use the composite-label lineage threshold (the one that
+                # actually classifies a superpixel as single/multi/no-lineage
+                # in the parquet output) rather than the subtype gate, which
+                # governs a different decision.
                 lineage_threshold = float(
                     config.raw['cell_type_annotation']['membership_axes']
-                    .get('subtypes', {})
-                    .get('subtype_threshold', 0.3)
+                    ['composite_label_thresholds']['lineage']
                 )
                 above_thresh = {ln: (scores > lineage_threshold).sum() for ln, scores in ls.items()}
                 n_lineages = sum((scores > lineage_threshold).astype(int) for scores in ls.values())

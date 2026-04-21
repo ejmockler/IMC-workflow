@@ -387,8 +387,32 @@ def compute_continuous_memberships(
         activation_scores[act_name] = _marker_score(act_marker)
 
     # --- Derive composite discrete labels for backward compatibility ---
+    # Hard-require the three threshold keys; silent fallback to defaults on a
+    # typo like 'dominace' would produce unintended composite_labels with
+    # correct-looking config hashes.
+    if 'composite_label_thresholds' not in membership_config:
+        raise KeyError(
+            "config.cell_type_annotation.membership_axes.composite_label_thresholds "
+            "is required; expected {lineage, activation, dominance}"
+        )
+    composite_cfg = membership_config['composite_label_thresholds']
+    for k in ('lineage', 'activation', 'dominance'):
+        if k not in composite_cfg:
+            raise KeyError(f"composite_label_thresholds missing required key '{k}'")
+    lin_thr = float(composite_cfg['lineage'])
+    act_thr = float(composite_cfg['activation'])
+    dom_ratio = float(composite_cfg['dominance'])
+    if not 0.0 < lin_thr < 1.0:
+        raise ValueError(f"composite_label_thresholds.lineage must be in (0,1); got {lin_thr}")
+    if not 0.0 < act_thr < 1.0:
+        raise ValueError(f"composite_label_thresholds.activation must be in (0,1); got {act_thr}")
+    if dom_ratio < 1.0:
+        raise ValueError(f"composite_label_thresholds.dominance must be >= 1.0; got {dom_ratio}")
     composite_labels = _derive_composite_labels(
-        lineage_scores, subtype_labels, activation_scores
+        lineage_scores, subtype_labels, activation_scores,
+        dominance_ratio=dom_ratio,
+        lineage_threshold=lin_thr,
+        activation_threshold=act_thr,
     )
 
     return {
@@ -410,6 +434,10 @@ def _derive_composite_labels(
     lineage_threshold: float = 0.3,
     activation_threshold: float = 0.3,
 ) -> np.ndarray:
+    # NOTE: these defaults must stay aligned with the canonical values in
+    # config.cell_type_annotation.membership_axes.composite_label_thresholds.
+    # Production code paths hard-require the config keys; the defaults exist
+    # only so direct unit-test calls can override them explicitly.
     """
     Derive discrete composite labels from continuous membership axes.
 
