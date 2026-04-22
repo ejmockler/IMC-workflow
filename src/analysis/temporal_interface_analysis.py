@@ -32,12 +32,10 @@ from scipy.stats import gmean
 
 from src.utils.metadata import parse_roi_metadata
 
-
-# ---------------------------------------------------------------------------
-# Constants (frozen by analysis_plans/temporal_interfaces_plan.md)
-# ---------------------------------------------------------------------------
-
-LINEAGE_COLS: Tuple[str, ...] = ('lineage_immune', 'lineage_endothelial', 'lineage_stromal')
+# Frozen constants live in a zero-dependency module so config/viz loaders
+# can import them without transitively importing scipy/pandas via
+# src.analysis.__init__.
+from src.constants import LINEAGE_COLS, TIMEPOINT_ORDER  # noqa: F401
 LINEAGE_NAMES: Tuple[str, ...] = ('immune', 'endothelial', 'stromal')
 
 INTERFACE_CATEGORIES: Tuple[str, ...] = (
@@ -70,7 +68,8 @@ SHRINKAGE_PRIOR_SD_SKEPTICAL: float = 0.5    # sceptical: small effects expected
 SHRINKAGE_PRIOR_SD_NEUTRAL: float = 1.0      # neutral: medium effects plausible
 SHRINKAGE_PRIOR_SD_OPTIMISTIC: float = 2.0   # optimistic: large effects plausible
 
-TIMEPOINT_ORDER: Tuple[str, ...] = ('Sham', 'D1', 'D3', 'D7')
+# TIMEPOINT_ORDER imported from src.analysis.constants (see top-of-file import)
+# to avoid dragging scipy/pandas into viz-config loaders that need just this tuple.
 PAIRWISE_CONTRASTS: Tuple[Tuple[str, str], ...] = (
     ('Sham', 'D1'), ('Sham', 'D3'), ('Sham', 'D7'),
     ('D1', 'D3'), ('D1', 'D7'),

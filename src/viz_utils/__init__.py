@@ -13,7 +13,7 @@ from .plotting import (
 )
 
 from .comprehensive_figures import generate_all_figures
-from .viz_config import VizConfig
+from .viz_config import VizConfig, VizConfigValidationError
 
 __all__ = [
     'plot_roi_overview',
@@ -22,4 +22,5 @@ __all__ = [
     'plot_scale_comparison',
     'generate_all_figures',
     'VizConfig',
+    'VizConfigValidationError',
 ]

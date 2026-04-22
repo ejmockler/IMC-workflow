@@ -14,6 +14,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
 
+class VizConfigValidationError(ValueError):
+    """Raised when viz.json disagrees with config.json on load-bearing keys.
+
+    Examples that trigger this: renaming a cell type in config.json without
+    updating viz.json, changing the analysis TIMEPOINT_ORDER without
+    propagating to viz.json timepoint_display.order.
+    """
+
+
 def _find_project_root(start: Path) -> Path:
     """Walk up from start until we find a directory containing config.json."""
     for candidate in (start, *start.parents):
@@ -39,8 +48,22 @@ class VizConfig:
     # ---- construction ----------------------------------------------------
 
     @classmethod
-    def load(cls, path: Optional[Path] = None) -> 'VizConfig':
-        """Load viz.json. If path is None, search upward from CWD for project root."""
+    def load(
+        cls,
+        path: Optional[Path] = None,
+        validate: bool = True,
+    ) -> 'VizConfig':
+        """Load viz.json. If path is None, search upward from CWD for project root.
+
+        When ``validate=True`` (default), cross-checks viz.json against
+        config.json to catch silent drift between the two files:
+          - ``cell_type_display`` keys must match ``cell_type_annotation.cell_types``
+          - ``timepoint_display.order`` must match ``TIMEPOINT_ORDER``
+            from ``src.analysis.temporal_interface_analysis``
+
+        Raises ``VizConfigValidationError`` on mismatch. Set ``validate=False``
+        only in test fixtures that intentionally construct a partial VizConfig.
+        """
         if path is None:
             root = _find_project_root(Path.cwd().resolve())
             path = root / 'viz.json'
@@ -51,7 +74,77 @@ class VizConfig:
             raise FileNotFoundError(f'viz.json not found at {path}')
         with open(path) as f:
             raw = json.load(f)
-        return cls(raw=raw, project_root=root)
+        instance = cls(raw=raw, project_root=root)
+        if validate:
+            instance._validate_against_analysis_config()
+        return instance
+
+    # ---- cross-file validation -------------------------------------------
+
+    def _validate_against_analysis_config(self) -> None:
+        """Hard-fail on drift between viz.json and the analysis-side truths.
+
+        Two invariants:
+          1. Cell type roster in viz.json == cell type roster in config.json.
+             A collaborator renaming a type in one file and not the other
+             would otherwise produce plots with missing colors or mislabeled
+             categories.
+          2. timepoint_display.order == TIMEPOINT_ORDER (module constant).
+             Display ordering must match the pre-registered analysis ordering
+             for Family A/B/C comparisons.
+        """
+        errors: List[str] = []
+
+        # Invariant 1: cell type roster
+        try:
+            with open(self.project_root / 'config.json') as f:
+                cfg = json.load(f)
+            config_types = set(
+                cfg.get('cell_type_annotation', {}).get('cell_types', {}).keys()
+            )
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            errors.append(f'cannot load config.json for cross-check: {e}')
+            config_types = None
+
+        if config_types is not None:
+            viz_types = set(self.cell_type_display.keys())
+            missing_in_viz = config_types - viz_types
+            extra_in_viz = viz_types - config_types
+            if missing_in_viz:
+                errors.append(
+                    f'cell types in config.json but missing from viz.json '
+                    f'cell_type_display: {sorted(missing_in_viz)}'
+                )
+            if extra_in_viz:
+                errors.append(
+                    f'cell types in viz.json cell_type_display but not in '
+                    f'config.json: {sorted(extra_in_viz)}'
+                )
+
+        # Invariant 2: timepoint order. Import from the zero-dependency
+        # constants module so loading viz.json doesn't drag in scipy/pandas
+        # via src.analysis.__init__.
+        try:
+            from src.constants import TIMEPOINT_ORDER
+            expected_order = list(TIMEPOINT_ORDER)
+        except ImportError:
+            expected_order = None  # tolerate missing constants module
+
+        if expected_order is not None:
+            viz_order = self.timepoint_order
+            if viz_order != expected_order:
+                errors.append(
+                    f'timepoint_display.order {viz_order} does not match '
+                    f'analysis-side TIMEPOINT_ORDER {expected_order}'
+                )
+
+        if errors:
+            joined = '\n  - '.join(errors)
+            raise VizConfigValidationError(
+                f'viz.json is out of sync with analysis config:\n  - {joined}\n'
+                f'Fix either viz.json or config.json so they agree, or load with '
+                f'VizConfig.load(validate=False) in a test fixture.'
+            )
 
     # ---- cell-type display -----------------------------------------------
 

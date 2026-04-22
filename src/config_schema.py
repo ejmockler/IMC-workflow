@@ -368,6 +368,165 @@ class PerformanceConfig(BaseModel):
         return v
 
 
+class CellTypeDefinition(BaseModel):
+    """A single cell type gating rule from config.cell_type_annotation.cell_types.
+
+    Each entry must specify the markers that must be positive AND the markers
+    that must be negative for the gate to match. ``family`` groups cells for
+    INDRA lineage inference (see build_indra_evidence_table.get_lineage).
+    """
+
+    positive_markers: List[str] = Field(
+        ...,
+        min_length=1,
+        description="Markers required positive for this cell type (AND logic)"
+    )
+    negative_markers: List[str] = Field(
+        default_factory=list,
+        description="Markers required negative for this cell type"
+    )
+    family: str = Field(
+        ...,
+        description="Lineage family label (e.g., 'immune_m2', 'endothelial'); used for INDRA grouping"
+    )
+
+    # Tolerate _comment-style extras; forbid typoed real fields.
+    model_config = ConfigDict(extra='allow')
+
+    @model_validator(mode='after')
+    def validate_only_comment_extras(self):
+        known = {'positive_markers', 'negative_markers', 'family'}
+        extras = set(self.model_extra or {}) - known
+        bad = [k for k in extras if not k.startswith('_')]
+        if bad:
+            raise ValueError(
+                f"Cell type definition has unexpected keys: {sorted(bad)}. "
+                f"Valid: {sorted(known)}. Use '_comment' prefix for annotations."
+            )
+        return self
+
+    @model_validator(mode='after')
+    def validate_no_marker_overlap(self):
+        """A marker cannot be in both positive and negative lists for one gate."""
+        overlap = set(self.positive_markers) & set(self.negative_markers)
+        if overlap:
+            raise ValueError(
+                f"Cell type gate has markers in both positive_markers and "
+                f"negative_markers: {sorted(overlap)}. A marker cannot be "
+                f"both required present and required absent."
+            )
+        return self
+
+
+class CompositeLabelThresholds(BaseModel):
+    """Thresholds that discretize continuous lineage scores into composite_labels.
+
+    These directly control which superpixels become 'mixed' vs 'unassigned'
+    vs lineage-specific in the Phase 2 Family B input. Changes here change
+    Family B endpoint rows; re-run run_temporal_interface_analysis.py.
+    """
+
+    lineage: float = Field(
+        ...,
+        gt=0.0,
+        lt=1.0,
+        description="Sigmoid-normalized score above this = lineage-positive"
+    )
+    activation: float = Field(
+        ...,
+        gt=0.0,
+        lt=1.0,
+        description="Sigmoid-normalized score above this = activation overlay fires"
+    )
+    dominance: float = Field(
+        ...,
+        ge=1.0,
+        description="Top score must be >= this × second score to be called dominant (else 'mixed')"
+    )
+
+    # Allow `_comment` keys (this repo's JSON convention); forbid anything else
+    # so a typo like 'linage' surfaces immediately.
+    model_config = ConfigDict(extra='allow')
+
+    @model_validator(mode='after')
+    def validate_only_comment_extras(self):
+        known = {'lineage', 'activation', 'dominance'}
+        extras = set(self.model_extra or {}) - known
+        bad = [k for k in extras if not k.startswith('_')]
+        if bad:
+            raise ValueError(
+                f"composite_label_thresholds has unexpected keys: {sorted(bad)}. "
+                f"Use '_comment' prefix for annotations."
+            )
+        return self
+
+
+class MembershipAxesConfig(BaseModel):
+    """Continuous multi-label membership configuration (Phase 2 inputs).
+
+    Each superpixel gets scores [0,1] on each lineage axis (non-exclusive) and
+    each activation marker. Subtypes refine within-lineage. These continuous
+    outputs feed Family A/B/C in run_temporal_interface_analysis.
+    """
+
+    composite_label_thresholds: CompositeLabelThresholds
+
+    # lineages, subtypes, activation, normalization, sigmoid_steepness, _comment
+    # are validated loosely (shape validated by the annotation engine itself).
+    model_config = ConfigDict(extra='allow')
+
+
+class CellTypeAnnotationConfig(BaseModel):
+    """Boolean gating + continuous membership configuration.
+
+    Validates the 15-ish cell_types dictionary and the composite-label
+    thresholds that discretize continuous scores for Family B. Catches
+    typos at config-load time rather than mid-pipeline.
+    """
+
+    enabled: bool = Field(True, description="Whether to run cell type annotation")
+    method: str = Field(
+        "boolean_gating",
+        pattern="^boolean_gating$",
+        description="Annotation method (only boolean_gating implemented)"
+    )
+    positivity_threshold: Dict[str, Any]
+    cell_types: Dict[str, CellTypeDefinition] = Field(
+        ...,
+        min_length=1,
+        description="Mapping of cell_type_id → gating definition"
+    )
+    membership_axes: MembershipAxesConfig
+
+    model_config = ConfigDict(extra='allow')  # extras policed below
+
+    @model_validator(mode='after')
+    def validate_only_known_or_comment_extras(self):
+        known = {'enabled', 'method', 'positivity_threshold', 'cell_types', 'membership_axes'}
+        extras = set(self.model_extra or {}) - known
+        bad = [k for k in extras if not k.startswith('_')]
+        if bad:
+            raise ValueError(
+                f"cell_type_annotation has unexpected keys: {sorted(bad)}. "
+                f"Valid: {sorted(known)}. Use '_comment' prefix for annotations."
+            )
+        return self
+
+    @model_validator(mode='after')
+    def validate_cell_type_markers_consistent(self):
+        """All markers used in any cell_type gate must be consistent — a
+        misspelled marker in one gate but not another is a latent bug."""
+        all_markers: set = set()
+        for name, defn in self.cell_types.items():
+            all_markers.update(defn.positive_markers)
+            all_markers.update(defn.negative_markers)
+        # This doesn't check against channels.protein_channels (that happens in
+        # the validate_channel_consistency method on Config), it just exposes
+        # the roster so a future cross-check has a clean API.
+        self._all_markers = frozenset(all_markers)
+        return self
+
+
 class IMCConfig(BaseModel):
     """
     Root configuration with full validation.
@@ -383,6 +542,7 @@ class IMCConfig(BaseModel):
     quality_control: QualityControlConfig
     output: OutputConfig
     performance: PerformanceConfig
+    cell_type_annotation: CellTypeAnnotationConfig
 
     # Analysis config is complex nested dict - validate key parts
     analysis: Dict[str, Any]
@@ -391,6 +551,30 @@ class IMCConfig(BaseModel):
     segmentation: Dict[str, Any]
 
     model_config = ConfigDict(extra='allow')  # Allow extra fields for backward compatibility
+
+    @model_validator(mode='after')
+    def validate_cell_type_markers_in_protein_channels(self):
+        """Every marker referenced in a cell_type gate must exist in channels.protein_channels.
+
+        Catches the classic failure mode: a typo in a gate (e.g., `CD451` instead of
+        `CD45`) would otherwise silently never fire, producing an empty gate. This
+        surfaces the typo at load time.
+        """
+        protein_set = set(self.channels.protein_channels)
+        errors: List[str] = []
+        for name, defn in self.cell_type_annotation.cell_types.items():
+            for marker in defn.positive_markers + defn.negative_markers:
+                if marker not in protein_set:
+                    errors.append(
+                        f"cell_type '{name}' references marker '{marker}' which "
+                        f"is not in channels.protein_channels"
+                    )
+        if errors:
+            raise ValueError(
+                "Cell type markers reference channels not in protein_channels:\n  - "
+                + "\n  - ".join(errors)
+            )
+        return self
 
     @field_validator('analysis')
     @classmethod

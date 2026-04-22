@@ -522,9 +522,17 @@ def plot_segmentation_overlay(
         raise ValueError(f"Cannot prepare spatial arrays for plotting: {e}")
     
     # Get visualization configuration from viz.json (VizConfig).
-    # Falls back to an inline default if viz.json is missing or malformed so
-    # unit tests that construct a bare Config still work.
+    # Only FileNotFoundError triggers the inline fallback (for test environments
+    # that construct a bare Config without a viz.json). Any other exception —
+    # malformed JSON, validation failure, import error — is logged at WARNING
+    # so the problem surfaces rather than silently using stale defaults.
     viz_config: Dict[str, Any] = {}
+    inline_defaults = {
+        'primary_markers': {'immune_markers': 'CD45', 'vascular_markers': 'CD31', 'stromal_markers': 'CD140a'},
+        'colormaps': {'immune_markers': 'Reds', 'vascular_markers': 'Blues', 'stromal_markers': 'Greens', 'default': 'viridis'},
+        'always_include': ['CD206', 'CD44'],
+        'max_additional_channels': 5,
+    }
     try:
         from .viz_config import VizConfig
         vc = VizConfig.load()
@@ -533,13 +541,20 @@ def plot_segmentation_overlay(
         # (see viz.json schema). Re-inject so the layout code below sees a
         # single dict, matching the legacy shape.
         viz_config.setdefault('colormaps', vc.channel_group_colormaps)
-    except Exception:
-        viz_config = {
-            'primary_markers': {'immune_markers': 'CD45', 'vascular_markers': 'CD31', 'stromal_markers': 'CD140a'},
-            'colormaps': {'immune_markers': 'Reds', 'vascular_markers': 'Blues', 'stromal_markers': 'Greens', 'default': 'viridis'},
-            'always_include': ['CD206', 'CD44'],
-            'max_additional_channels': 5
-        }
+    except FileNotFoundError:
+        # Expected in test environments; silently use inline defaults.
+        viz_config = dict(inline_defaults)
+    except Exception as e:
+        # Anything else (malformed viz.json, validation error, import error)
+        # is a real problem — log loudly then degrade to defaults so a plot
+        # still renders. The WARNING is the point: silent fallback was the
+        # pre-audit failure mode.
+        logger.warning(
+            f"VizConfig.load() failed with {type(e).__name__}: {e}. "
+            f"Falling back to inline default validation-plot config. "
+            f"Fix viz.json to restore canonical values."
+        )
+        viz_config = dict(inline_defaults)
     layout_config = viz_config.get('layout', {})
     figsize = tuple(layout_config.get('figsize', [20, 12]))
     
