@@ -166,9 +166,10 @@ def test_sham_reference_threshold_uses_only_sham():
             np.full(50, 1.0),   # D7 — low
         ]),
         'timepoint': ['Sham'] * 50 + ['D7'] * 50,
+        'mouse': ['MS1'] * 25 + ['MS2'] * 25 + ['MS1'] * 25 + ['MS2'] * 25,
     })
     thresholds = tia.compute_sham_reference_thresholds(df, ['CD45'], percentile=75)
-    # Sham 75th percentile of [10, 10, ...] = 10
+    # Sham per-mouse 75th percentile of constant 10.0 -> 10.0 for both MS1 and MS2
     assert thresholds['CD45'] == pytest.approx(10.0)
 
 
@@ -536,8 +537,10 @@ def test_morans_i_with_nan_values():
 
 
 def test_compute_sham_reference_thresholds_raises_on_no_sham():
-    df = pd.DataFrame({'CD45': [1.0, 2.0], 'timepoint': ['D1', 'D7']})
-    with pytest.raises(ValueError, match="No Sham"):
+    df = pd.DataFrame({
+        'CD45': [1.0, 2.0], 'timepoint': ['D1', 'D7'], 'mouse': ['MS1', 'MS2'],
+    })
+    with pytest.raises(ValueError, match="no superpixels with"):
         tia.compute_sham_reference_thresholds(df, ['CD45'])
 
 
@@ -545,6 +548,7 @@ def test_compute_sham_reference_thresholds_raises_on_all_nan_marker():
     df = pd.DataFrame({
         'CD45': [np.nan, np.nan, 1.0, 2.0],
         'timepoint': ['Sham', 'Sham', 'D7', 'D7'],
+        'mouse': ['MS1', 'MS2', 'MS1', 'MS2'],
     })
     with pytest.raises(ValueError, match="no finite Sham"):
         tia.compute_sham_reference_thresholds(df, ['CD45'])
@@ -576,9 +580,11 @@ def test_compute_global_marker_thresholds_sham_only_default():
         'CD34': np.full(100, 4.0),
         'CD140a': np.arange(100, dtype=float),
         'timepoint': ['Sham'] * 50 + ['D7'] * 50,
+        'mouse': ['MS1'] * 25 + ['MS2'] * 25 + ['MS1'] * 25 + ['MS2'] * 25,
     })
     sham_thr = tia.compute_global_marker_thresholds(df, percentile=75.0, sham_only=True)
-    # Sham CD45 is constant 1.0; 75th percentile = 1.0 (unaffected by D7=10)
+    # Sham CD45 is constant 1.0; per-mouse 75th percentile is 1.0 for both
+    # mice, averaged = 1.0 (unaffected by D7=10)
     assert abs(sham_thr['immune'] - 1.0) < 1e-9
 
 
@@ -591,6 +597,7 @@ def test_compute_global_marker_thresholds_pooled_includes_d7():
         'CD34': np.full(100, 4.0),
         'CD140a': np.arange(100, dtype=float),
         'timepoint': ['Sham'] * 50 + ['D7'] * 50,
+        'mouse': ['MS1'] * 25 + ['MS2'] * 25 + ['MS1'] * 25 + ['MS2'] * 25,
     })
     pooled_thr = tia.compute_global_marker_thresholds(df, percentile=75.0, sham_only=False)
     # Pooled 75th percentile of [1]*50 + [10]*50 = 10.0 (driven by D7)
@@ -598,8 +605,11 @@ def test_compute_global_marker_thresholds_pooled_includes_d7():
 
 
 def test_compute_global_marker_thresholds_sham_only_requires_timepoint():
-    df = pd.DataFrame({'CD45': [1.0], 'CD31': [1.0], 'CD34': [1.0], 'CD140a': [1.0]})
-    with pytest.raises(ValueError, match="sham_only=True requires"):
+    df = pd.DataFrame({
+        'CD45': [1.0], 'CD31': [1.0], 'CD34': [1.0], 'CD140a': [1.0],
+        'mouse': ['MS1'],
+    })
+    with pytest.raises(ValueError, match="missing 'timepoint'"):
         tia.compute_global_marker_thresholds(df, sham_only=True)
 
 

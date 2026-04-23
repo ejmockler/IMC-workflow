@@ -214,7 +214,8 @@ def compute_continuous_memberships(
     expression_matrix: np.ndarray,
     marker_names: List[str],
     membership_config: Dict[str, Any],
-    threshold_config: Dict[str, Any]
+    threshold_config: Dict[str, Any],
+    reference_distribution: Dict[str, Dict[str, float]],
 ) -> Dict[str, Any]:
     """
     Compute continuous multi-label memberships for each superpixel.
@@ -231,7 +232,18 @@ def compute_continuous_memberships(
         expression_matrix: [n_superpixels, n_markers] arcsinh-transformed expression
         marker_names: List of marker names corresponding to columns
         membership_config: membership_axes config section
-        threshold_config: Positivity threshold config (for subtype gating)
+        threshold_config: Positivity threshold config (for discrete-gating
+            subtype logic — NOT for continuous normalization)
+        reference_distribution: REQUIRED. ``{marker: {threshold, scale}}`` dict
+            produced by ``src.analysis.sham_reference.build_reference_distribution``.
+            The sigmoid for each lineage/subtype/activation marker is centered on
+            ``threshold`` (pooled-Sham per-mouse percentile) and its steepness is
+            ``sigmoid_steepness / scale`` where ``scale`` is the experiment-wide
+            IQR. Separating threshold (center) from scale (steepness) is the
+            Gate-6 seam closure: the previous per-ROI IQR-scaled sigmoid
+            compressed temporal dynamics because each ROI re-centered on its own
+            distribution. No silent fallback is permitted — production callers
+            must pass an explicit reference; see ``generate_sham_reference.py``.
 
     Returns:
         Dictionary with:
@@ -240,66 +252,84 @@ def compute_continuous_memberships(
         - subtype_scores: Dict[subtype_name → np.ndarray[n_superpixels] float in [0,1]]
         - activation_scores: Dict[activation_name → np.ndarray[n_superpixels] float in [0,1]]
         - composite_labels: np.ndarray[n_superpixels] string (derived strict type or 'mixed'/'unassigned')
-        - normalization_params: Dict with per-marker min/max used for normalization
+        - normalization_params: per-marker threshold/scale used (for provenance)
+        - thresholds_used: alias of normalization_params for back-compat
     """
     n_superpixels = expression_matrix.shape[0]
-    normalization = membership_config.get('normalization', 'sigmoid_threshold')
 
-    # Validate that all referenced markers exist in the panel
-    marker_set = set(marker_names)
+    # Validate reference_distribution shape before anything else — missing keys
+    # here would produce silently-wrong sigmoid scores with correct-looking
+    # config_sha256. Match the hard-validation style already used by
+    # composite_label_thresholds below.
+    if not isinstance(reference_distribution, dict) or not reference_distribution:
+        raise ValueError(
+            "compute_continuous_memberships: reference_distribution is required "
+            "and must be a non-empty dict. Build via "
+            "src.analysis.sham_reference.build_reference_distribution."
+        )
+
+    # Collect markers actually consumed by the membership engine
+    needed_markers: set = set()
     for lineage_def in membership_config.get('lineages', {}).values():
         if isinstance(lineage_def, dict):
-            for m in lineage_def.get('markers', []):
-                if m not in marker_set:
-                    raise ValueError(f"Lineage marker '{m}' not in panel {marker_names}")
+            needed_markers.update(lineage_def.get('markers', []))
     for subtype_def in membership_config.get('subtypes', {}).get('definitions', {}).values():
-        for m in subtype_def.get('positive', []) + subtype_def.get('negative', []):
-            if m not in marker_set:
-                raise ValueError(f"Subtype marker '{m}' not in panel {marker_names}")
+        needed_markers.update(subtype_def.get('positive', []))
+        needed_markers.update(subtype_def.get('negative', []))
     for act_marker in membership_config.get('activation', {}).get('markers', {}).values():
-        if act_marker not in marker_set:
-            raise ValueError(f"Activation marker '{act_marker}' not in panel {marker_names}")
+        needed_markers.add(act_marker)
 
-    # Compute per-marker boolean thresholds (same as discrete gating)
-    _, boolean_thresholds = compute_marker_positivity(
-        expression_matrix, marker_names,
-        threshold_config.get('per_marker_override', {}),
-        threshold_config
-    )
+    # Validate the panel covers them
+    marker_set = set(marker_names)
+    missing_panel = needed_markers - marker_set
+    if missing_panel:
+        raise ValueError(
+            f"compute_continuous_memberships: markers {sorted(missing_panel)} "
+            f"referenced in membership_config but missing from panel {marker_names}"
+        )
 
-    # --- Normalize expression to [0, 1] per marker ---
-    # Sigmoid centered on the boolean threshold: values at the threshold → 0.5,
-    # well above → ~1.0, well below → ~0.0. Steepness controlled by scale factor.
-    norm_params = {}
+    # Validate the reference covers them
+    missing_ref = needed_markers - set(reference_distribution.keys())
+    if missing_ref:
+        raise ValueError(
+            f"compute_continuous_memberships: reference_distribution missing "
+            f"markers {sorted(missing_ref)} required for sigmoid normalization"
+        )
+    for m in needed_markers:
+        ref_entry = reference_distribution[m]
+        if 'threshold' not in ref_entry or 'scale' not in ref_entry:
+            raise ValueError(
+                f"compute_continuous_memberships: reference_distribution['{m}'] "
+                f"must have both 'threshold' and 'scale' keys; got {ref_entry}"
+            )
+
+    # --- Normalize expression to [0, 1] via Sham-reference sigmoid ---
+    # threshold (center) from Sham-reference per-mouse percentile;
+    # scale (steepness denominator) from experiment-wide IQR. Separating them
+    # avoids the Sham-IQR-inflates-compresses-injury pathology.
+    sigmoid_steepness = float(membership_config.get('sigmoid_steepness', 10.0))
+    norm_params: Dict[str, Dict[str, float]] = {}
     normalized = np.zeros_like(expression_matrix, dtype=float)
-    sigmoid_steepness = membership_config.get('sigmoid_steepness', 10.0)
 
     for i, marker in enumerate(marker_names):
         col = expression_matrix[:, i]
-        threshold = boolean_thresholds.get(marker, np.median(col))
-
-        if normalization == 'sigmoid_threshold':
-            # Scale relative to IQR so steepness is meaningful across markers.
-            # For zero-inflated markers (IQR≈0), fall back to range/4 to avoid
-            # the sigmoid degenerating into a step function.
-            iqr = np.percentile(col, 75) - np.percentile(col, 25)
-            if iqr < 1e-6:
-                iqr = (col.max() - col.min()) / 4.0  # approximate spread
-            scale = sigmoid_steepness / max(iqr, 1e-6)
+        if marker in reference_distribution:
+            ref = reference_distribution[marker]
+            threshold = float(ref['threshold'])
+            scale_denom = float(ref['scale'])
+            scale = sigmoid_steepness / max(scale_denom, 1e-6)
             z = np.clip(scale * (col - threshold), -500, 500)
             normalized[:, i] = 1.0 / (1.0 + np.exp(-z))
             norm_params[marker] = {
-                'method': 'sigmoid', 'threshold': float(threshold),
-                'iqr': float(iqr), 'steepness': float(sigmoid_steepness)
+                'method': 'sham_reference_sigmoid',
+                'threshold': threshold,
+                'scale_denom': scale_denom,
+                'steepness': sigmoid_steepness,
             }
-        elif normalization == 'minmax_per_roi':
-            vmin, vmax = float(col.min()), float(col.max())
-            denom = vmax - vmin
-            normalized[:, i] = (col - vmin) / denom if denom > 0 else 0.0
-            norm_params[marker] = {'method': 'minmax', 'min': vmin, 'max': vmax}
         else:
-            normalized[:, i] = col
-            norm_params[marker] = {'method': 'raw'}
+            # Marker is in the panel but not consumed by memberships — leave
+            # at zero (will not be read). Still record for provenance.
+            norm_params[marker] = {'method': 'unused_by_memberships'}
 
     def _marker_index(marker: str) -> int:
         return marker_names.index(marker)
@@ -333,7 +363,10 @@ def compute_continuous_memberships(
     subtype_threshold = subtype_config.get('subtype_threshold', 0.3)
     subtype_defs = subtype_config.get('definitions', {})
 
-    thresholds_used = boolean_thresholds
+    # thresholds_used kept as an alias of norm_params so existing downstream
+    # readers (batch_annotate_all_rois.py output metadata) don't break on the
+    # key change. norm_params now records Sham-reference threshold + scale.
+    thresholds_used = norm_params
 
     # Compute subtype scores using geometric mean to normalize across marker count.
     # Raw product penalizes subtypes with more markers (each factor < 1 shrinks the
@@ -584,7 +617,8 @@ def annotate_clusters_by_enrichment(
 def annotate_roi_from_results(
     roi_results: Dict[str, Any],
     config: 'Config',
-    scale: str = '10.0'
+    scale: str = '10.0',
+    reference_distribution: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> Dict[str, Any]:
     """
     Annotate a single ROI's superpixels with cell types from existing results.
@@ -596,6 +630,11 @@ def annotate_roi_from_results(
         roi_results: Dictionary containing multiscale analysis results
         config: Configuration object with cell type annotation settings
         scale: Which spatial scale to annotate (default: '10.0' µm)
+        reference_distribution: ``{marker: {threshold, scale}}`` dict required
+            when ``cell_type_annotation.membership_axes`` is configured. Built
+            once per pipeline run by ``generate_sham_reference.py`` and passed
+            to every ROI so all ROIs share the same sigmoid centering.
+            Discrete-gating annotation is unaffected by this argument.
 
     Returns:
         Dictionary containing:
@@ -618,13 +657,40 @@ def annotate_roi_from_results(
 
     scale_results = multiscale_results[scale]
 
-    # Extract features (arcsinh-transformed expression matrix)
-    features = scale_results.get('features')
-    if features is None:
-        raise ValueError("No features found in scale results")
-
     # Get marker names (protein channels)
     marker_names = config.channels.get('protein_channels', [])
+
+    # Build the arcsinh expression matrix for gating + continuous memberships.
+    # The ``features`` matrix in roi_results is the raw coabundance-augmented
+    # feature set used for clustering (30 cols: 9 raw markers + 21 derived);
+    # its leading columns are RAW ion counts, not arcsinh. Using it for
+    # continuous memberships would apply a Sham-reference built on arcsinh
+    # values to raw-count inputs — the sigmoid would saturate for every row.
+    # Use ``transformed_arrays`` (arcsinh per marker) so the engine and the
+    # reference agree on scale.
+    transformed = scale_results.get('transformed_arrays')
+    if not transformed:
+        raise ValueError(
+            f"No transformed_arrays in scale {scale} results; expected per-marker "
+            f"arcsinh arrays produced by multiscale_analysis"
+        )
+    missing = [m for m in marker_names if m not in transformed]
+    if missing:
+        raise ValueError(
+            f"transformed_arrays missing protein channels {missing}; "
+            f"check that multiscale_analysis ran with the current config"
+        )
+    expression_matrix = np.column_stack(
+        [np.asarray(transformed[m], dtype=float) for m in marker_names]
+    )
+
+    # Cluster-annotation-by-enrichment reads the original clustering feature
+    # matrix (raw coabundance). Preserved separately to avoid a silent
+    # cluster-annotation scale shift: fold-change (cluster_mean/global_mean)
+    # is NOT invariant under arcsinh, so switching the cluster path to
+    # arcsinh would silently flip cluster-to-celltype mappings against a
+    # 1.5-enrichment threshold calibrated for raw counts.
+    cluster_feature_matrix = scale_results.get('features')
 
     # Extract cluster labels (for cluster annotation)
     cluster_labels = scale_results.get('cluster_labels')
@@ -633,9 +699,10 @@ def annotate_roi_from_results(
     cell_type_definitions = annotation_config.get('cell_types', {})
     threshold_config = annotation_config.get('positivity_threshold', {})
 
-    # Perform main annotation
+    # Perform main annotation (on arcsinh expression — percentile gating is
+    # scale-invariant so this matches the legacy boolean assignments exactly).
     cell_type_labels, confidence_scores, annotation_metadata = annotate_cell_types(
-        features,
+        expression_matrix,
         marker_names,
         cell_type_definitions,
         threshold_config
@@ -647,24 +714,38 @@ def annotate_roi_from_results(
         'annotation_metadata': annotation_metadata
     }
 
-    # Continuous multi-label memberships (if configured)
+    # Continuous multi-label memberships (if configured). Uses the arcsinh
+    # expression matrix + Sham reference.
     membership_config = annotation_config.get('membership_axes', {})
     if membership_config:
+        if reference_distribution is None:
+            raise ValueError(
+                "annotate_roi_from_results: cell_type_annotation.membership_axes "
+                "is configured but reference_distribution was not provided. "
+                "Build one via src.analysis.sham_reference.build_reference_distribution "
+                "(or load results/biological_analysis/sham_reference_10.0um.json) "
+                "and pass it here. Silent fallback would reintroduce the per-ROI "
+                "sigmoid confound."
+            )
         memberships = compute_continuous_memberships(
-            features,
+            expression_matrix,
             marker_names,
             membership_config,
-            threshold_config
+            threshold_config,
+            reference_distribution=reference_distribution,
         )
         results['memberships'] = memberships
 
-    # Cluster annotation (if clustering was performed)
-    if cluster_labels is not None:
+    # Cluster annotation (if clustering was performed). Uses the ORIGINAL raw
+    # coabundance feature matrix — fold-change enrichment isn't invariant
+    # under arcsinh, so migrating this path would silently shift the
+    # 1.5-enrichment cluster-to-celltype mapping.
+    if cluster_labels is not None and cluster_feature_matrix is not None:
         cluster_annotation_config = config.raw.get('biological_analysis', {}).get('cluster_annotation', {})
         if cluster_annotation_config.get('enabled', True):
             cluster_annotations = annotate_clusters_by_enrichment(
                 cluster_labels,
-                features,
+                cluster_feature_matrix,
                 marker_names,
                 cell_type_definitions,
                 enrichment_threshold=cluster_annotation_config.get('enrichment_threshold', 1.5),

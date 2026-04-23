@@ -1,14 +1,41 @@
 {
-  "run_datetime_utc": "2026-04-21T08:36:09.764818Z",
-  "git_commit": "f69117945ada30ee3a55d85f3a26b2c111949149",
+  "run_datetime_utc": "2026-04-23T11:39:36.868499Z",
+  "git_commit": "cf0e33741815611c99753e6666fb4f7a28fe624e",
   "git_dirty": true,
   "git_untracked_critical_files": [],
   "git_modified_critical_files": [
-    "results/biological_analysis/temporal_interfaces/run_provenance.json"
+    "results/biological_analysis/differential_abundance/regional_differential_abundance.csv",
+    "results/biological_analysis/differential_abundance/roi_abundances.csv",
+    "results/biological_analysis/differential_abundance/temporal_differential_abundance.csv",
+    "results/biological_analysis/differential_abundance/temporal_lineage_rollups.csv",
+    "results/biological_analysis/spatial_neighborhoods/regional_neighborhood_enrichments.csv",
+    "results/biological_analysis/spatial_neighborhoods/temporal_neighborhood_enrichments.csv",
+    "results/biological_analysis/temporal_interfaces/compartment_activation_temporal.parquet",
+    "results/biological_analysis/temporal_interfaces/continuous_neighborhood_missingness.parquet",
+    "results/biological_analysis/temporal_interfaces/continuous_neighborhood_temporal.parquet",
+    "results/biological_analysis/temporal_interfaces/endpoint_summary.csv",
+    "results/biological_analysis/temporal_interfaces/family_a_endpoints_global_norm.parquet",
+    "results/biological_analysis/temporal_interfaces/family_a_endpoints_norm_sweep.parquet",
+    "results/biological_analysis/temporal_interfaces/family_a_global_thresholds.parquet",
+    "results/biological_analysis/temporal_interfaces/family_a_sensitivity_endpoints.parquet",
+    "results/biological_analysis/temporal_interfaces/family_b_sensitivity_endpoints.parquet",
+    "results/biological_analysis/temporal_interfaces/family_c_sensitivity_endpoints.parquet",
+    "results/biological_analysis/temporal_interfaces/interface_clr.parquet",
+    "results/biological_analysis/temporal_interfaces/interface_clr_no_none.parquet",
+    "results/biological_analysis/temporal_interfaces/interface_fractions.parquet",
+    "results/biological_analysis/temporal_interfaces/interface_fractions_normalization_sensitivity.parquet",
+    "results/biological_analysis/temporal_interfaces/join_counts.parquet",
+    "results/biological_analysis/temporal_interfaces/lineage_morans_i.parquet",
+    "results/biological_analysis/temporal_interfaces/run_provenance.json",
+    "results/biological_analysis/temporal_interfaces/sensitivity_thresholds.parquet",
+    "results/biological_analysis/temporal_interfaces/sham_reference_thresholds.parquet",
+    "run_temporal_interface_analysis.py",
+    "src/analysis/temporal_interface_analysis.py",
+    "tests/test_temporal_interface_analysis.py"
   ],
   "analysis_file_sha256": {
-    "src/analysis/temporal_interface_analysis.py": "09cf5937177be82fca7ec7b59647f940e3febf9bdd583f8d1ec38b259e8f17a7",
-    "run_temporal_interface_analysis.py": "7878bbeb024f66aae9400a8043bdcf79ec2fc4baba626953113c34ca98b2b873",
+    "src/analysis/temporal_interface_analysis.py": "ba50d5f8a1844385eb31ab480aad8de821817273f42de7715a74278a7507fb56",
+    "run_temporal_interface_analysis.py": "15a810d3ad354d8ecfc667b57c44728744e4496f7c7e0db027154750f2fd762b",
     "analysis_plans/temporal_interfaces_plan.md": "b16e944a552a3ba01daf44465b9339323229dd083cd4740510fb1d3f21ca1b46",
     "analysis_plans/deprecation_manifest.md": "b7eccfee047450be2641542acba29df4a1836648ba6d6f36a5b29a4f7e3adb47"
   },
@@ -40,6 +67,15 @@
       20,
       40
     ],
+    "continuous_sham_reference": {
+      "artifact_path": "results/biological_analysis/sham_reference_10.0um.json",
+      "artifact_sha256": "345f53e54406bca2d40ee0eaf45bbd7a24f633ef7d582a4d0f3315ec856b70a3",
+      "percentile": 60.0,
+      "aggregation": "per_mouse",
+      "n_sham_mice": 2,
+      "n_sham_rois": 6,
+      "note": "Drives compute_continuous_memberships sigmoid centers via batch_annotate_all_rois. Deferred sensitivity sweep at 50/60/70 pct is a Phase-1.5 follow-up."
+    },
     "sham_reference_percentile_default": 75.0,
     "sham_reference_percentile_sensitivity_sweep": [
       65.0,

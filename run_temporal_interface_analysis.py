@@ -118,6 +118,21 @@ def write_provenance(annotations: pd.DataFrame, scale_um: float) -> Dict[str, ob
         .to_dict(orient='records')
     )
 
+    # Load Sham-reference artifact metadata so the continuous-path
+    # normalization knob is recorded alongside the raw-marker sweep
+    # percentiles. Critical for reviewer reproducibility (Codex #5).
+    sham_ref_path = (
+        REPO_ROOT / 'results' / 'biological_analysis' /
+        f'sham_reference_{scale_um}um.json'
+    )
+    if sham_ref_path.exists():
+        sham_ref_sha = hashlib.sha256(sham_ref_path.read_bytes()).hexdigest()
+        with open(sham_ref_path) as f:
+            sham_ref_meta = json.load(f).get('_metadata', {})
+    else:
+        sham_ref_sha = None
+        sham_ref_meta = {}
+
     provenance = {
         'run_datetime_utc': datetime.datetime.utcnow().isoformat() + 'Z',
         'git_commit': git_hash,
@@ -159,6 +174,18 @@ def write_provenance(annotations: pd.DataFrame, scale_um: float) -> Dict[str, ob
             'lineage_threshold_sensitivity_sweep': [0.2, 0.3, 0.4],
             'min_support_default': tia.DEFAULT_MIN_SUPPORT,
             'min_support_sensitivity_sweep': [10, 20, 40],
+            'continuous_sham_reference': {
+                'artifact_path': str(sham_ref_path.relative_to(REPO_ROOT))
+                    if sham_ref_path.exists() else None,
+                'artifact_sha256': sham_ref_sha,
+                'percentile': sham_ref_meta.get('percentile'),
+                'aggregation': sham_ref_meta.get('aggregation'),
+                'n_sham_mice': sham_ref_meta.get('n_sham_mice'),
+                'n_sham_rois': sham_ref_meta.get('n_sham_rois'),
+                'note': 'Drives compute_continuous_memberships sigmoid centers '
+                        'via batch_annotate_all_rois. Deferred sensitivity '
+                        'sweep at 50/60/70 pct is a Phase-1.5 follow-up.',
+            },
             'sham_reference_percentile_default': tia.DEFAULT_SHAM_PERCENTILE,
             'sham_reference_percentile_sensitivity_sweep': [65.0, 75.0, 85.0],
             'min_prevalence_for_collapse': tia.DEFAULT_MIN_PREVALENCE,
@@ -185,10 +212,35 @@ def write_provenance(annotations: pd.DataFrame, scale_um: float) -> Dict[str, ob
 # Family A — Interface fractions + CLR + threshold sensitivity
 # ---------------------------------------------------------------------------
 
-def run_family_a(annotations: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+def _load_continuous_sham_percentile(scale_um: float) -> float:
+    """Read the continuous-Sham percentile from the artifact so we can
+    stamp it onto per_roi_sigmoid endpoint rows (reviewers need to see it
+    without cross-referencing a separate file). Returns np.nan if the
+    artifact is missing (e.g., a diagnostic-only run without memberships).
+    """
+    path = (
+        REPO_ROOT / 'results' / 'biological_analysis' /
+        f'sham_reference_{scale_um}um.json'
+    )
+    if not path.exists():
+        return float('nan')
+    with open(path) as f:
+        meta = json.load(f).get('_metadata', {})
+    pct = meta.get('percentile')
+    return float(pct) if pct is not None else float('nan')
+
+
+def run_family_a(
+    annotations: pd.DataFrame,
+    continuous_sham_percentile: float = float('nan'),
+) -> Dict[str, pd.DataFrame]:
     """Returns dict: interface_fractions (mouse-level), interface_clr,
     interface_clr_no_none, sensitivity_thresholds, family_a_endpoints,
     normalization_sensitivity.
+
+    ``continuous_sham_percentile`` is stamped onto every per_roi_sigmoid
+    endpoint row so reviewers can see which Sham percentile drove the
+    sigmoid centers.
     """
     out: Dict[str, pd.DataFrame] = {}
 
@@ -265,7 +317,10 @@ def run_family_a(annotations: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         clr_with, value_cols=clr_value_cols, family='A_interface_clr',
     )
     endpoints['normalization_mode'] = 'per_roi_sigmoid'
-    endpoints['sham_percentile'] = np.nan
+    # The continuous-Sham percentile that drove compute_continuous_memberships.
+    # Populated here so reviewers can see the value on every Family A per_roi
+    # row without cross-referencing sham_reference_10.0um.json.
+    endpoints['sham_percentile'] = continuous_sham_percentile
 
     primary_global = sensitivity_endpoint_frames[1]  # 75th percentile
     out['family_a_endpoints'] = endpoints
@@ -277,22 +332,37 @@ def run_family_a(annotations: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         for p in sweep_percentiles
     ])
 
-    # Sign-reversal annotation merged into the per-ROI endpoint table so it
-    # propagates to endpoint_summary.csv (Gate 6 critique: sign-reversal must
-    # not live only in console output).
+    # Normalization audit merged into the per-ROI endpoint table so every
+    # comparison carries its disagreement flags. Symmetric magnitude check
+    # added alongside the historical asymmetric one (Claude brutalist: the
+    # asymmetric metric flags only "per_roi inflates, sham_ref deflates"
+    # direction and understands disagreement by ~13×).
     rev = endpoints[['endpoint', 'contrast', 'hedges_g']].merge(
         primary_global[['endpoint', 'contrast', 'hedges_g']],
         on=['endpoint', 'contrast'], suffixes=('_per_roi', '_sham_ref'),
     )
+    per_roi_g = rev['hedges_g_per_roi']
+    sham_ref_g = rev['hedges_g_sham_ref']
+    both_finite = per_roi_g.notna() & sham_ref_g.notna()
     rev['normalization_sign_reverse'] = (
-        np.sign(rev['hedges_g_per_roi']) != np.sign(rev['hedges_g_sham_ref'])
-    ) & rev['hedges_g_per_roi'].notna() & rev['hedges_g_sham_ref'].notna()
+        np.sign(per_roi_g) != np.sign(sham_ref_g)
+    ) & both_finite
     rev['normalization_g_collapse'] = (
-        rev['hedges_g_per_roi'].abs() > 0.5
-    ) & (rev['hedges_g_sham_ref'].abs() < 0.2 * rev['hedges_g_per_roi'].abs())
+        per_roi_g.abs() > 0.5
+    ) & (sham_ref_g.abs() < 0.2 * per_roi_g.abs())
+    # Symmetric magnitude disagreement: either path has |g|>0.5 AND the
+    # two paths disagree by >= 2x in the larger magnitude.
+    abs_max = np.maximum(per_roi_g.abs(), sham_ref_g.abs())
+    abs_diff = (per_roi_g - sham_ref_g).abs()
+    rev['normalization_magnitude_disagree'] = (
+        (abs_max > 0.5) & (abs_diff / abs_max.where(abs_max > 0, 1) > 0.5)
+    ) & both_finite
     out['family_a_endpoints'] = endpoints.merge(
-        rev[['endpoint', 'contrast', 'normalization_sign_reverse',
-             'normalization_g_collapse', 'hedges_g_sham_ref']],
+        rev[['endpoint', 'contrast',
+             'normalization_sign_reverse',
+             'normalization_g_collapse',
+             'normalization_magnitude_disagree',
+             'hedges_g_sham_ref']],
         on=['endpoint', 'contrast'], how='left',
     )
     return out
@@ -358,6 +428,13 @@ def _run_family_b_at_support(
         delta_vs_sham, value_cols=delta_cols,
         family='B_continuous_neighborhood', extra_index_cols=['composite_label'],
     )
+    # Family B neighbor-minus-self is computed on the Sham-referenced
+    # continuous lineage scores (lineage_immune/endothelial/stromal cols in
+    # the parquet), so it inherits the Seam-1 Sham-reference sigmoid. Stamp
+    # so every row carries its normalization provenance; downstream
+    # reviewers no longer need to chase Family A to infer it.
+    if not family_b_endpoints.empty:
+        family_b_endpoints['normalization_mode'] = 'sham_reference_v2_continuous'
     return delta_vs_sham, missingness, family_b_endpoints
 
 
@@ -402,6 +479,12 @@ def _run_family_c_at_percentile(
     endpoints = tia.pairwise_endpoint_table(
         mouse, value_cols=rate_cols, family='C_compartment_activation',
     )
+    # Family C operates directly on raw markers with Sham-only per-mouse
+    # percentile thresholds — independent of compute_continuous_memberships.
+    # Stamp so every row carries its normalization provenance.
+    if not endpoints.empty:
+        endpoints['normalization_mode'] = 'sham_reference_raw_marker_per_mouse'
+        endpoints['sham_percentile'] = percentile
     return sham_thresholds, mouse, endpoints
 
 
@@ -488,8 +571,13 @@ def main(scale_um: float = 10.0) -> None:
     (OUTPUT_DIR / 'run_provenance.json').write_text(json.dumps(provenance, indent=2))
     print(f"  Wrote provenance: {OUTPUT_DIR / 'run_provenance.json'}")
 
+    # Continuous-Sham percentile that drove compute_continuous_memberships,
+    # stamped onto per_roi_sigmoid Family A rows so it appears in
+    # endpoint_summary.csv alongside the raw-marker sweep percentile.
+    continuous_sham_pct = _load_continuous_sham_percentile(scale_um)
+
     print("\n[Family A] Interface fractions + CLR + threshold sensitivity + normalization sensitivity")
-    fa = run_family_a(annotations)
+    fa = run_family_a(annotations, continuous_sham_percentile=continuous_sham_pct)
     fa['interface_fractions'].to_parquet(OUTPUT_DIR / 'interface_fractions.parquet')
     fa['interface_clr'].to_parquet(OUTPUT_DIR / 'interface_clr.parquet')
     fa['interface_clr_no_none'].to_parquet(OUTPUT_DIR / 'interface_clr_no_none.parquet')

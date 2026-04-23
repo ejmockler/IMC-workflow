@@ -36,6 +36,10 @@ from src.utils.metadata import parse_roi_metadata
 # can import them without transitively importing scipy/pandas via
 # src.analysis.__init__.
 from src.constants import LINEAGE_COLS, TIMEPOINT_ORDER  # noqa: F401
+from src.analysis.sham_reference import (
+    sham_reference_thresholds,
+    experiment_wide_percentile,
+)
 LINEAGE_NAMES: Tuple[str, ...] = ('immune', 'endothelial', 'stromal')
 
 INTERFACE_CATEGORIES: Tuple[str, ...] = (
@@ -137,45 +141,43 @@ def compute_global_marker_thresholds(
     annotations: pd.DataFrame,
     percentile: float = 75.0,
     sham_only: bool = True,
+    aggregation: str = 'per_mouse',
 ) -> Dict[str, float]:
-    """Per-marker global thresholds.
+    """Per-marker global thresholds at the *lineage* level.
 
-    Used as the normalization-sensitivity counterpart to the default per-ROI
-    sigmoid-normalized lineage thresholds. Lineage definitions match
-    cell_type_annotation.py: immune=CD45, endothelial=mean(CD31, CD34),
-    stromal=CD140a.
+    Lineage definitions match cell_type_annotation.py: immune=CD45,
+    endothelial=mean(CD31, CD34), stromal=CD140a. Delegates to the shared
+    ``sham_reference_thresholds`` primitive for filter + aggregation, with
+    the endothelial compound column materialized first so
+    ``percentile(mean(CD31, CD34))`` semantics are preserved (averaging
+    per-marker percentiles would not give the same number for non-uniform
+    distributions).
 
     Args:
-        sham_only: if True (default), thresholds are computed from Sham
-            superpixels only — matches the Family C philosophy of using
-            unperturbed baseline as reference. This avoids outcome
-            contamination (Codex Gate 6 critique): pooling across all
-            timepoints lets the elevated D7 distribution drive the
-            threshold, partially obscuring the D7 effect when measured
-            against it. If False, pools across all superpixels.
-        percentile: which percentile of the (Sham or pooled) distribution
-            to use as the cutoff. Default 75th matches Family C Sham-
-            reference convention.
-
-    Returns dict with immune/endothelial/stromal threshold values.
+        sham_only: Sham-only (default) matches Family C philosophy; pooled
+            across all timepoints exists for diagnostic comparison.
+        percentile: default 75th (Family A/C sensitivity sweep convention).
+        aggregation: ``'per_mouse'`` (default) respects n=2 biological
+            replicates; ``'pool'`` concatenates superpixels (legacy).
     """
     if not {'CD45', 'CD31', 'CD34', 'CD140a'}.issubset(annotations.columns):
         raise ValueError("Missing required raw-marker columns for global thresholds.")
+
+    df = annotations.copy()
+    df['_endothelial_mean'] = (df['CD31'] + df['CD34']) / 2.0
+    markers = ['CD45', '_endothelial_mean', 'CD140a']
+
     if sham_only:
-        if 'timepoint' not in annotations.columns:
-            raise ValueError("sham_only=True requires a 'timepoint' column.")
-        ref = annotations[annotations['timepoint'] == 'Sham']
-        if ref.empty:
-            raise ValueError("No Sham superpixels found for sham_only threshold reference.")
+        per_marker = sham_reference_thresholds(
+            df, markers, percentile, aggregation=aggregation,
+        )
     else:
-        ref = annotations
+        per_marker = experiment_wide_percentile(df, markers, percentile)
+
     return {
-        'immune': float(np.percentile(ref['CD45'].values, percentile)),
-        'endothelial': float(np.percentile(
-            (ref['CD31'].values + ref['CD34'].values) / 2.0,
-            percentile,
-        )),
-        'stromal': float(np.percentile(ref['CD140a'].values, percentile)),
+        'immune': per_marker['CD45'],
+        'endothelial': per_marker['_endothelial_mean'],
+        'stromal': per_marker['CD140a'],
     }
 
 
@@ -559,25 +561,19 @@ def compute_sham_reference_thresholds(
     annotations_with_metadata: pd.DataFrame,
     markers: Sequence[str],
     percentile: float = DEFAULT_SHAM_PERCENTILE,
+    aggregation: str = 'per_mouse',
 ) -> Dict[str, float]:
-    """Global per-marker threshold from Sham superpixels only.
+    """Per-marker threshold from Sham superpixels (Family C compartments).
 
-    Uses nanpercentile to ignore NaN entries; raises if a marker has zero
-    finite Sham values (otherwise the threshold would silently be NaN and
-    every downstream comparison would evaluate False).
+    Thin wrapper over ``sham_reference_thresholds`` preserved for backward
+    compatibility with run_temporal_interface_analysis Family C call sites.
+    Default aggregation is per-mouse (respects biological replication unit);
+    pass ``aggregation='pool'`` for legacy superpixel-pooled behavior.
     """
-    sham = annotations_with_metadata[annotations_with_metadata['timepoint'] == 'Sham']
-    if sham.empty:
-        raise ValueError("No Sham superpixels found; cannot compute reference thresholds.")
-    thresholds: Dict[str, float] = {}
-    for m in markers:
-        if m not in sham.columns:
-            raise ValueError(f"Marker '{m}' missing from annotations.")
-        finite = sham[m].values[np.isfinite(sham[m].values)]
-        if finite.size == 0:
-            raise ValueError(f"Marker '{m}' has no finite Sham values.")
-        thresholds[m] = float(np.percentile(finite, percentile))
-    return thresholds
+    return sham_reference_thresholds(
+        annotations_with_metadata, markers, percentile,
+        aggregation=aggregation,
+    )
 
 
 def compute_compartment_activation_per_roi(
