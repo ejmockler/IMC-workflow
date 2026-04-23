@@ -244,7 +244,17 @@ class ClusteringConfig(BaseModel):
     @field_validator('spatial_weight')
     @classmethod
     def validate_spatial_weight_reasonable(cls, v):
-        """Validate spatial weight is reasonable for IMC data."""
+        """Validate spatial weight is reasonable for IMC data.
+
+        NOTE: the scalar ``spatial_weight`` field is overridden at runtime
+        by the scale-adaptive heuristic in multiscale_analysis.py (see
+        that file around :330). It is retained in the schema for
+        backwards-compatibility with older configs; the runtime emits a
+        warning when the scalar value differs from the scale-adaptive
+        value. Validating 1.0 here is a legacy bright-line check — do not
+        add more constraints on this field; prefer deprecating it when
+        the config migration is ready.
+        """
         if v == 1.0:
             raise ValueError(
                 "spatial_weight=1.0 ignores all feature information. "

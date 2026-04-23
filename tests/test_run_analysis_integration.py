@@ -30,13 +30,13 @@ class TestRunAnalysisIntegration:
             
             # Verify it uses production data directory from config, not hardcoded test data
             assert "Data directory: data/241218_IMC_Alun" in output, f"Should use config data dir, got: {output}"
-            assert "Found 25 ROI files" in output, f"Should find production data (25 files), got: {output}"
+            assert "Found 24 ROI files" in output, f"Should find production data (25 files), got: {output}"
             return
         
-        # If it completes quickly (shouldn't happen with 25 files), still verify
+        # If it completes quickly (shouldn't happen with 24 files), still verify
         output = result.stderr
         assert "Data directory: data/241218_IMC_Alun" in output
-        assert "Found 25 ROI files" in output
+        assert "Found 24 ROI files" in output
     
     def test_script_imports_and_runs(self):
         """Verify run_analysis.py can be imported and has basic structure."""

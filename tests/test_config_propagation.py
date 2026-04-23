@@ -466,14 +466,21 @@ class TestBug6_BeadNormalizationBatchProcessing:
             roi_file.write_text(f"X,Y,CD45,130Ba,131Xe\n0,0,1.0,100.0,100.0\n1,1,2.0,110.0,110.0\n")
             roi_files.append(str(roi_file))
 
-        # Mock both load_roi_data and bead_anchored_normalize
+        # Mock both load_roi_data and bead_anchored_normalize.
+        # 1024 fake pixels so each ROI passes the production QC gate
+        # (min 1000 pixels). 2-pixel fixtures used to pass because the
+        # QC gate ran in warning-only mode pre-refactor.
+        n_fake = 1024
+        rng = np.random.default_rng(0)
         def mock_load_roi(roi_path, proteins):
             return {
-                'coords': np.array([[0, 0], [1, 1]]),
+                'coords': np.column_stack([np.arange(n_fake), np.arange(n_fake)]),
                 'ion_counts': {
-                    'CD45': np.array([1.0, 2.0]),
-                    '130Ba': np.array([100.0, 110.0]),
-                    '131Xe': np.array([100.0, 110.0])
+                    'CD45': rng.uniform(0.5, 5.0, n_fake),
+                    'CD11b': rng.uniform(0.5, 5.0, n_fake),
+                    'Ly6G': rng.uniform(0.5, 5.0, n_fake),
+                    '130Ba': rng.uniform(95.0, 115.0, n_fake),
+                    '131Xe': rng.uniform(95.0, 115.0, n_fake),
                 }
             }
 

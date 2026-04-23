@@ -152,13 +152,19 @@ class TestArcSinhProperties:
         values=arrays(
             dtype=np.float64,
             shape=st.integers(10, 1000),
-            elements=st.floats(0, 10000, allow_nan=False, allow_infinity=False)
+            elements=st.floats(0, 10000, allow_nan=False, allow_infinity=False,
+                               allow_subnormal=False)
         ),
-        scale_factor=st.floats(0.1, 10.0, allow_nan=False, allow_infinity=False)
+        scale_factor=st.floats(0.1, 10.0, allow_nan=False, allow_infinity=False,
+                               allow_subnormal=False)
     )
     @settings(max_examples=20, deadline=None)
     def test_arcsinh_monotonicity_preserved(self, values, scale_factor):
-        """arcsinh(ax) should preserve monotonicity for a > 0."""
+        """arcsinh is monotone on [0, ∞): if a < b then arcsinh(s*a) < arcsinh(s*b)
+        for any s > 0. Assert that on the *transformed* outputs, not on the raw
+        inputs (earlier version of this test discarded the transform result and
+        effectively asserted the monotonicity of positive scalar multiplication,
+        which is a property of × not of arcsinh)."""
         assume(len(values) >= 2)
         assume(scale_factor > 0)
         # Exclude pathological cases where all/most values are effectively zero
@@ -167,24 +173,27 @@ class TestArcSinhProperties:
 
         # Scale values
         scaled_values = values * scale_factor
-        
+
         # Transform both
         ion_counts_orig = {'test': values}
         ion_counts_scaled = {'test': scaled_values}
-        
+
         transformed_orig, _ = apply_arcsinh_transform(ion_counts_orig)
         transformed_scaled, _ = apply_arcsinh_transform(ion_counts_scaled)
-        
+
         orig_result = transformed_orig['test']
         scaled_result = transformed_scaled['test']
-        
-        # Sort indices for original
-        orig_sort_idx = np.argsort(values)
-        scaled_sort_idx = np.argsort(scaled_values)
-        
-        # Sorted arrays should be in same order
-        assert np.array_equal(orig_sort_idx, scaled_sort_idx), \
-            "Scaling broke monotonicity order"
+
+        # Sorted order of the TRANSFORMED outputs must match. Under arcsinh,
+        # rank within each transformed array must equal rank in the raw input
+        # (arcsinh is strictly increasing on [0, ∞)); and the two transforms
+        # (at scale 1 and at scale s) must agree with each other.
+        assert np.array_equal(np.argsort(orig_result), np.argsort(values)), \
+            "arcsinh(values) is not order-preserving vs raw values"
+        assert np.array_equal(np.argsort(scaled_result), np.argsort(scaled_values)), \
+            "arcsinh(scaled_values) is not order-preserving vs raw scaled values"
+        assert np.array_equal(np.argsort(orig_result), np.argsort(scaled_result)), \
+            "arcsinh(x) and arcsinh(s*x) produce different argsort orders"
     
     @given(
         values=arrays(

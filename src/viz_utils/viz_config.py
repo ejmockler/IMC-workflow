@@ -84,7 +84,7 @@ class VizConfig:
     def _validate_against_analysis_config(self) -> None:
         """Hard-fail on drift between viz.json and the analysis-side truths.
 
-        Two invariants:
+        Four invariants:
           1. Cell type roster in viz.json == cell type roster in config.json.
              A collaborator renaming a type in one file and not the other
              would otherwise produce plots with missing colors or mislabeled
@@ -92,21 +92,28 @@ class VizConfig:
           2. timepoint_display.order == TIMEPOINT_ORDER (module constant).
              Display ordering must match the pre-registered analysis ordering
              for Family A/B/C comparisons.
+          3. channel_group_colormaps keys ⊆ config.channels.channel_groups
+             (plus 'default'). Catches stale colormap entries that survive
+             a channel-group rename on the analysis side.
+          4. validation_plots.primary_markers values ⊆ protein_channels, and
+             .always_include ⊆ protein_channels. Catches markers deleted from
+             the config panel but surviving in viz layout.
         """
         errors: List[str] = []
 
-        # Invariant 1: cell type roster
+        # Load config.json once for all cross-checks.
         try:
             with open(self.project_root / 'config.json') as f:
                 cfg = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            errors.append(f'cannot load config.json for cross-check: {e}')
+            cfg = None
+
+        # Invariant 1: cell type roster
+        if cfg is not None:
             config_types = set(
                 cfg.get('cell_type_annotation', {}).get('cell_types', {}).keys()
             )
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            errors.append(f'cannot load config.json for cross-check: {e}')
-            config_types = None
-
-        if config_types is not None:
             viz_types = set(self.cell_type_display.keys())
             missing_in_viz = config_types - viz_types
             extra_in_viz = viz_types - config_types
@@ -136,6 +143,45 @@ class VizConfig:
                 errors.append(
                     f'timepoint_display.order {viz_order} does not match '
                     f'analysis-side TIMEPOINT_ORDER {expected_order}'
+                )
+
+        # Invariant 3: channel_group_colormaps keys vs config channel_groups.
+        # 'default' is always permitted.
+        if cfg is not None:
+            channel_group_names = set(cfg.get('channel_groups', {}).keys())
+            colormap_keys = set(self.channel_group_colormaps.keys()) - {'default'}
+            extra_colormap = colormap_keys - channel_group_names
+            if extra_colormap:
+                errors.append(
+                    f'channel_group_colormaps has keys not present in '
+                    f'config.channel_groups (or \"default\"): '
+                    f'{sorted(extra_colormap)}'
+                )
+
+        # Invariant 4: validation_plots markers vs protein_channels.
+        if cfg is not None:
+            protein_channels = set(cfg.get('channels', {}).get('protein_channels', []))
+            vp = self.validation_plots
+            primary = vp.get('primary_markers', {}) or {}
+            primary_vals = set(
+                v for v in primary.values()
+                if isinstance(v, str) and not v.startswith('_')
+            )
+            bad_primary = primary_vals - protein_channels
+            if bad_primary:
+                errors.append(
+                    f'validation_plots.primary_markers references markers not '
+                    f'in config.channels.protein_channels: {sorted(bad_primary)}'
+                )
+            always_include = set(
+                m for m in (vp.get('always_include') or [])
+                if isinstance(m, str) and not m.startswith('_')
+            )
+            bad_always = always_include - protein_channels
+            if bad_always:
+                errors.append(
+                    f'validation_plots.always_include references markers not '
+                    f'in config.channels.protein_channels: {sorted(bad_always)}'
                 )
 
         if errors:

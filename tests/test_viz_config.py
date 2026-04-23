@@ -101,3 +101,38 @@ def test_multiple_mismatches_reported_together(tmp_path: Path) -> None:
     assert 'neutrophil' in msg
     assert 'ghost_type' in msg
     assert 'timepoint_display.order' in msg
+
+
+def test_extra_channel_group_colormap_raises(tmp_path: Path) -> None:
+    """Colormap keys must subset config.channel_groups (or be 'default')."""
+    cfg, viz = _read_canonical_configs()
+    viz['channel_group_colormaps']['ghost_markers'] = 'Oranges'
+    viz_path = _write_pair(tmp_path, cfg, viz)
+    with pytest.raises(VizConfigValidationError, match='ghost_markers'):
+        VizConfig.load(viz_path)
+
+
+def test_default_colormap_always_permitted(tmp_path: Path) -> None:
+    """The special 'default' colormap key does not require a config entry."""
+    cfg, viz = _read_canonical_configs()
+    # Canonical viz.json already has default=viridis; removing + re-adding
+    # in a fresh tmpdir must still pass.
+    viz['channel_group_colormaps'] = {'default': 'viridis'}
+    viz_path = _write_pair(tmp_path, cfg, viz)
+    VizConfig.load(viz_path)  # should not raise
+
+
+def test_primary_marker_not_in_panel_raises(tmp_path: Path) -> None:
+    cfg, viz = _read_canonical_configs()
+    viz['validation_plots']['primary_markers']['vascular_markers'] = 'CDghost'
+    viz_path = _write_pair(tmp_path, cfg, viz)
+    with pytest.raises(VizConfigValidationError, match='CDghost'):
+        VizConfig.load(viz_path)
+
+
+def test_always_include_marker_not_in_panel_raises(tmp_path: Path) -> None:
+    cfg, viz = _read_canonical_configs()
+    viz['validation_plots']['always_include'] = ['CD44', 'CDphantom']
+    viz_path = _write_pair(tmp_path, cfg, viz)
+    with pytest.raises(VizConfigValidationError, match='CDphantom'):
+        VizConfig.load(viz_path)
