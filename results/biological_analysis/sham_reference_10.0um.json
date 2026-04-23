@@ -30,10 +30,10 @@
     "n_total_rois": 24,
     "n_total_superpixels": 58137,
     "config_sha256": "85c314245576f72b2f24e03240bc077e7608619d3627fb88de4d0101e6548170",
-    "generated_at_utc": "2026-04-23T11:06:22.276133Z",
+    "generated_at_utc": "2026-04-23T12:43:14.320093+00:00",
     "python_version": "3.12.10",
     "generator_script": "generate_sham_reference.py",
-    "git_hash": "cf0e33741815611c99753e6666fb4f7a28fe624e",
+    "git_hash": "6563e90f84ff84eb7183762c188bcbd7609b2429",
     "git_dirty": true
   },
   "reference": {
