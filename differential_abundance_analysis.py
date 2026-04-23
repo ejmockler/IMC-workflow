@@ -81,6 +81,13 @@ def compute_abundances(batch_summary: dict, metadata_df: pd.DataFrame) -> pd.Dat
         for cell_type, count in cell_type_counts.items():
             row[f'{cell_type}_count'] = count
             row[f'{cell_type}_prop'] = count / n_total if n_total > 0 else 0.0
+        # A ``_density_per_mm2`` column was briefly emitted here as a Phase 2
+        # Seam-3 "non-compositional" surface. Brutalist review verified it
+        # reduced algebraically to ``2500 × prop`` (density/prop = 2500 to
+        # double-precision across all ROIs; n_total CV is only ~2%), so it
+        # was a rescaled closed simplex, not independent evidence. Removed.
+        # Genuine non-compositional corroboration for Family A CLR lives in
+        # Family C (raw-marker CD44+ compartment rates, different primitive).
 
         # Continuous lineage membership scores (if available)
         membership = summary.get('membership', {})
@@ -663,6 +670,67 @@ def main():
     if len(rollup_results) > 0:
         rollup_results.to_csv(output_dir / 'temporal_lineage_rollups.csv', index=False)
 
+    # Rank-based top-5 per contrast — unconditional, no threshold, no filter.
+    # Phase 2 Seam 2 response to the post-hoc-headline-filter concern: the
+    # co-headline table is threshold-based, so it can drift if the filter is
+    # ever relaxed. The rank table is the selection-free reference.
+    #
+    # Discipline inherited from endpoint_summary.csv (Gate 4–6):
+    #  - Sort on |g_shrunk_neutral| (not raw |g|) because raw g at n=2 vs n=2
+    #    explodes on pooled-SD collapses; shrunken g is the interpretable
+    #    magnitude the plan already commits to.
+    #  - g_pathological flag (|g|>3 AND pooled_std<0.01) quarantines
+    #    variance-collapse artifacts.
+    #  - Drop Mann-Whitney / BH-FDR columns: at n=2 vs n=2 every p-value is
+    #    mathematically 0.333 or 1.0 and every q is 0.5 or 1.0; keeping them
+    #    here invites the exact "q=0.5 so it's fine" misread Gate 6 closed.
+    if len(temporal_results) > 0 and 'hedges_g' in temporal_results.columns:
+        rt = temporal_results.copy()
+
+        # Pooled SD for pathology gate (matches cohens_d implementation).
+        n1 = rt['n_mice_1'].astype(float)
+        n2 = rt['n_mice_2'].astype(float)
+        s1 = rt['std_1'].astype(float)
+        s2 = rt['std_2'].astype(float)
+        denom = (n1 + n2 - 2).replace(0, np.nan)
+        rt['pooled_std'] = np.sqrt(((n1 - 1) * s1**2 + (n2 - 1) * s2**2) / denom)
+        rt['g_pathological'] = (rt['hedges_g'].abs() > 3.0) & (rt['pooled_std'] < 0.01)
+
+        # Bayesian shrinkage under three priors. Sampling variance per
+        # Hedges & Olkin (1985): v = 2/n + g^2/(4n). Per-prior posterior
+        # mean: E[delta|g] = g * prior_var / (prior_var + v). At n=2 v is
+        # large so shrinkage is aggressive; that's the point.
+        n_eff = ((n1 * n2) / (n1 + n2)).replace(0, np.nan)
+        v_sampling = 2.0 / n_eff + rt['hedges_g']**2 / (4.0 * n_eff)
+        for name, sd in (
+            ('skeptical', 0.5), ('neutral', 1.0), ('optimistic', 2.0),
+        ):
+            prior_var = sd ** 2
+            shrunk = rt['hedges_g'] * prior_var / (prior_var + v_sampling)
+            shrunk = shrunk.where(~rt['g_pathological'], np.nan)
+            rt[f'g_shrunk_{name}'] = shrunk
+
+        # Output columns — terse by design. No p-values or FDR (n=2 floors).
+        keep_cols = [
+            'cell_type', 'comparison', 'timepoint_1', 'timepoint_2',
+            'n_mice_1', 'n_mice_2', 'mean_1', 'mean_2', 'pooled_std',
+            'hedges_g', 'g_shrunk_skeptical', 'g_shrunk_neutral',
+            'g_shrunk_optimistic', 'g_pathological',
+            'bootstrap_range_min', 'bootstrap_range_max',
+        ]
+        rt_slim = rt[[c for c in keep_cols if c in rt.columns]].copy()
+
+        rank_frames = []
+        for contrast, group in rt_slim.groupby('comparison'):
+            # Rank on |g_shrunk_neutral| (matches plan §Phase 2 amendment).
+            # NaN (pathological) rows sink to the bottom via fillna(-inf).
+            score = group['g_shrunk_neutral'].abs().fillna(-np.inf)
+            ranked = group.reindex(score.sort_values(ascending=False).index).head(5).copy()
+            ranked['rank'] = range(1, len(ranked) + 1)
+            rank_frames.append(ranked)
+        rank_table = pd.concat(rank_frames, ignore_index=True)
+        rank_table.to_csv(output_dir / 'temporal_top_ranked_by_effect.csv', index=False)
+
     if len(regional_results) > 0:
         regional_results.to_csv(output_dir / 'regional_differential_abundance.csv', index=False)
 
@@ -673,6 +741,8 @@ def main():
     print(f"✓ Temporal results (Layer A, 15 cell types): {output_dir / 'temporal_differential_abundance.csv'}")
     if len(rollup_results) > 0:
         print(f"✓ Rollups (Layer B, lineage + subtype): {output_dir / 'temporal_lineage_rollups.csv'}")
+    if (output_dir / 'temporal_top_ranked_by_effect.csv').exists():
+        print(f"✓ Rank-based top-5 per contrast: {output_dir / 'temporal_top_ranked_by_effect.csv'}")
     if len(regional_results) > 0:
         print(f"✓ Regional results: {output_dir / 'regional_differential_abundance.csv'}")
     print(f"\n{'='*80}\n")
