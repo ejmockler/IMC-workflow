@@ -1,12 +1,14 @@
 {
-  "run_datetime_utc": "2026-04-23T12:43:42.690070Z",
-  "git_commit": "6563e90f84ff84eb7183762c188bcbd7609b2429",
+  "run_datetime_utc": "2026-04-23T19:51:10.415894Z",
+  "git_commit": "ea8f27dbb69cbc77d19f868c5d9e14b5bc8fbe9f",
   "git_dirty": true,
   "git_untracked_critical_files": [],
-  "git_modified_critical_files": [],
+  "git_modified_critical_files": [
+    "run_temporal_interface_analysis.py"
+  ],
   "analysis_file_sha256": {
     "src/analysis/temporal_interface_analysis.py": "ba50d5f8a1844385eb31ab480aad8de821817273f42de7715a74278a7507fb56",
-    "run_temporal_interface_analysis.py": "15a810d3ad354d8ecfc667b57c44728744e4496f7c7e0db027154750f2fd762b",
+    "run_temporal_interface_analysis.py": "d2a870cbc98456d68af74af0e71dce684aa0aa8b4e3652fa0bb6578c1304f71a",
     "analysis_plans/temporal_interfaces_plan.md": "c6a8695fc6b430837f921a57eb24ce35b913f547fd0f842500a5906a606dcc11",
     "analysis_plans/deprecation_manifest.md": "b7eccfee047450be2641542acba29df4a1836648ba6d6f36a5b29a4f7e3adb47"
   },

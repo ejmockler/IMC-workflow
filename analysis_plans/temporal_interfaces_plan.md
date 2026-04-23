@@ -167,7 +167,15 @@ A density-per-mm² column was drafted for `roi_abundances.csv` and removed after
 **Deferred to Phase 1.5 (documented follow-up, not blocking current commit)**:
 - Continuous Sham-percentile sensitivity sweep at 50/60/70 pct (companion to the existing raw-marker 65/75/85 sweep).
 - Parallel raw-marker Sham-reference path for Family B neighbor-minus-self (currently Family B inherits the Sham-reference sigmoid but has no independent audit path).
-- Pre-registration obligations §Family B support-sensitivity demotion flag + §Family A CLR-without-`none` sensitivity propagation (pre-existing gaps; unrelated to Seam 1 work).
+- ~~Pre-registration obligations §Family B support-sensitivity demotion flag + §Family A CLR-without-`none` sensitivity propagation (pre-existing gaps; unrelated to Seam 1 work).~~ **Closed 2026-04-23 Phase 1.5a — see amendment below.**
+
+### 2026-04-23 Phase 1.5a (pre-registration compliance closure)
+
+Two pre-existing pre-reg obligations (predating Seam 1 work) were flagged by the Phase 1 post-cascade brutalist gate as missing in code. Both are now in `endpoint_summary.csv`:
+
+- **§Family B support-sensitivity demotion (plan §87)**: `run_family_b` now computes presence sets across the `min_support` ∈ {10, 20, 40} sweep. Every primary (ms=20) endpoint row is stamped `support_sensitive=True` if its `(endpoint, contrast, composite_label)` key is missing at any of the three supports (filter-fragility). Initial run: 90 of 270 Family B endpoints flagged support-sensitive — a non-trivial fraction, reported for every row rather than buried in a sidecar table.
+
+- **§Family A CLR-without-`none` sensitivity (plan §31)**: `run_family_a` now computes Family A endpoints on `interface_clr_no_none` alongside `interface_clr` and surfaces two new columns in the primary Family A endpoint table: `hedges_g_no_none` (the raw g under the 7-category CLR) and `clr_none_sensitivity=True` if the sign of `hedges_g` reverses when `none` is excluded. Initial run: 0 of 48 Family A endpoints flip sign when the `none` category is excluded — Family A trajectories are qualitatively robust to that compositional choice. This is itself a pre-registered result, not a silent pass.
 
 ### 2026-04-18 (Gate 6 — close remaining methodological seams)
 - Removed `p_proxy_from_g`, `q_proxy_within_family`, `q_proxy_pooled` columns from endpoint_summary.csv. At n=2 these were normal-CDF approximations from |g|, not real p-values; Gate 4/5 critics flagged them as cognitive-anchoring risk regardless of column-comment disclaimers. The researcher-degrees-of-freedom audit they supported (within-family vs pooled FDR rank comparison) can be recovered by sorting endpoint_summary by |hedges_g|. The `add_pooled_fdr_proxy()` helper was deleted from the module.

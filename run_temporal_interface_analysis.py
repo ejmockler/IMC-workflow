@@ -317,6 +317,39 @@ def run_family_a(
         clr_with, value_cols=clr_value_cols, family='A_interface_clr',
     )
     endpoints['normalization_mode'] = 'per_roi_sigmoid'
+
+    # Pre-registration obligation §5 (CLR sensitivity): compare endpoints
+    # with and without the 'none' category. A qualitative change (sign
+    # reversal of Hedges' g on the same category across the two CLR
+    # transforms) is flagged via ``clr_none_sensitivity`` — 'none'
+    # participates in the CLR geometric mean, so excluding it shifts every
+    # other category's log-ratio non-uniformly.
+    clr_without_cols = [c for c in clr_without.columns if c.endswith('_clr')]
+    endpoints_no_none = tia.pairwise_endpoint_table(
+        clr_without, value_cols=clr_without_cols, family='A_interface_clr',
+    ) if clr_without_cols else pd.DataFrame()
+    if not endpoints_no_none.empty:
+        merged = endpoints[['endpoint', 'contrast', 'hedges_g']].merge(
+            endpoints_no_none[['endpoint', 'contrast', 'hedges_g']],
+            on=['endpoint', 'contrast'], suffixes=('', '_no_none'),
+            how='left',
+        )
+        both_finite = (
+            merged['hedges_g'].notna() & merged['hedges_g_no_none'].notna()
+        )
+        sign_flip = (
+            np.sign(merged['hedges_g']) != np.sign(merged['hedges_g_no_none'])
+        ) & both_finite
+        endpoints = endpoints.merge(
+            merged[['endpoint', 'contrast', 'hedges_g_no_none']].assign(
+                clr_none_sensitivity=sign_flip.values,
+            ),
+            on=['endpoint', 'contrast'], how='left',
+        )
+    else:
+        endpoints['hedges_g_no_none'] = np.nan
+        endpoints['clr_none_sensitivity'] = False
+
     # The continuous-Sham percentile that drove compute_continuous_memberships.
     # Populated here so reviewers can see the value on every Family A per_roi
     # row without cross-referencing sham_reference_10.0um.json.
@@ -445,16 +478,41 @@ def run_family_b(annotations: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     )
     out['continuous_neighborhood_temporal'] = primary_dvs
     out['continuous_neighborhood_missingness'] = primary_miss
-    out['family_b_endpoints'] = primary_endpoints
 
     # Sensitivity sweep across min_support (10/20/40)
     sensitivity_rows: List[pd.DataFrame] = []
+    presence_by_ms: Dict[int, set] = {}
     for ms in (10, 20, 40):
         _, _, ep = _run_family_b_at_support(annotations, min_support=ms)
         if not ep.empty:
             ep['min_support'] = ms
             sensitivity_rows.append(ep)
+            presence_by_ms[ms] = set(
+                zip(ep['endpoint'], ep['contrast'], ep['composite_label'])
+            )
+        else:
+            presence_by_ms[ms] = set()
     out['family_b_sensitivity'] = pd.concat(sensitivity_rows, ignore_index=True) if sensitivity_rows else pd.DataFrame()
+
+    # Pre-registration obligation §Family B: flag findings that appear at
+    # one support threshold but not another (filter-fragile). A row in the
+    # primary sweep (ms=20) is support_sensitive if the same
+    # (endpoint, contrast, composite_label) key is NOT present at every
+    # min_support in the sweep. The threshold_sensitive flag built in
+    # assemble_endpoint_summary catches sign reversals across the sweep;
+    # this catches the presence-based fragility pre-reg §87 specifies.
+    if not primary_endpoints.empty:
+        all_ms = set(presence_by_ms.keys())
+
+        def _support_sensitive(row: pd.Series) -> bool:
+            key = (row['endpoint'], row['contrast'], row['composite_label'])
+            return any(key not in presence_by_ms[ms] for ms in all_ms)
+
+        primary_endpoints = primary_endpoints.copy()
+        primary_endpoints['support_sensitive'] = primary_endpoints.apply(
+            _support_sensitive, axis=1,
+        )
+    out['family_b_endpoints'] = primary_endpoints
     return out
 
 
