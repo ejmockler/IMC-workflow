@@ -165,9 +165,41 @@ A density-per-mm² column was drafted for `roi_abundances.csv` and removed after
 - **Shared-reference tautology between Family A paths**: both paths anchor on the same Sham baseline. Sign agreement between them is partly built-in. The symmetric magnitude-disagreement count is the honest upper bound on independent measurement; it is not claimed as independent replication.
 
 **Deferred to Phase 1.5 (documented follow-up, not blocking current commit)**:
-- Continuous Sham-percentile sensitivity sweep at 50/60/70 pct (companion to the existing raw-marker 65/75/85 sweep).
-- Parallel raw-marker Sham-reference path for Family B neighbor-minus-self (currently Family B inherits the Sham-reference sigmoid but has no independent audit path).
+- ~~Continuous Sham-percentile sensitivity sweep at 50/60/70 pct (companion to the existing raw-marker 65/75/85 sweep).~~ **Closed 2026-04-23 Phase 1.5b — see amendment below.**
+- ~~Parallel raw-marker Sham-reference path for Family B neighbor-minus-self (currently Family B inherits the Sham-reference sigmoid but has no independent audit path).~~ **Closed 2026-04-23 Phase 1.5c — see amendment below.**
 - ~~Pre-registration obligations §Family B support-sensitivity demotion flag + §Family A CLR-without-`none` sensitivity propagation (pre-existing gaps; unrelated to Seam 1 work).~~ **Closed 2026-04-23 Phase 1.5a — see amendment below.**
+
+### 2026-04-23 Phase 1.5c (Family B parallel raw-marker audit — DISCOVERY)
+
+`audit_family_b_raw_markers.py` runs Family B neighbor-minus-self with the sigmoid Sham-reference lineage scores replaced by raw arcsinh markers (`lineage_immune_raw = CD45`; `lineage_endothelial_raw = mean(CD31, CD34)`; `lineage_stromal_raw = CD140a`). The neighbor-minus-self operation is differential, so any Sham-reference additive offset cancels — the raw-marker path is genuinely sigmoid-independent.
+
+**Significant finding** that this audit surfaced and the sigmoid path missed:
+
+Under the raw-marker Family B, Sham→D7 has **18 endpoints** clearing `|g_shrunk_neutral| > 0.5` (none `g_pathological`); under the sigmoid Family B, **0 endpoints** cleared that threshold. The top raw-marker headlines concentrate on `vs_sham_mean_delta_lineage_immune` — neighbors of various composite-label superpixels acquire more immune-marker expression Sham→D7 than the center cell itself:
+
+| composite_label | endpoint | raw g | g_neut |
+|-----------------|----------|------:|-------:|
+| stromal | delta_lineage_immune | +3.98 | +1.000 |
+| activated_endothelial_cd44 | delta_lineage_immune | +4.11 | +0.999 |
+| activated_stromal_cd140b_cd44 | delta_lineage_endothelial | +4.45 | +0.994 |
+| activated_endothelial_cd44 | delta_lineage_endothelial | +3.33 | +0.983 |
+| activated_endothelial_cd140b | delta_lineage_immune | +3.08 | +0.967 |
+
+**Interpretation caveat.** The sigmoid/raw disagreement (55/166 endpoints with ≥2× magnitude divergence, 8/166 sign reversals at |g|>0.5) is consistent with sigmoid saturation: most superpixels bimodalize to ~0 or ~1 on lineage scores, so neighbor-minus-self on sigmoid scores is near-zero for most superpixels and only fires at interfaces. Raw arcsinh markers vary continuously, giving neighbor-minus-self more dynamic range. The raw-marker finding is consistent with published UUO biology (immune infiltration into non-immune compartments) but these endpoints were **not pre-registered as a primary path** — the pre-reg pre-specified Family B on continuous memberships. The raw-marker audit is reported as a sensitivity-analysis discovery, not as a replacement for the primary pre-registered path.
+
+Output: `family_b_raw_marker_audit.parquet` (540 rows = 270 primary + 270 raw); `family_b_raw_marker_comparison.csv` (per-endpoint sign_reverse + magnitude_disagree flags across the two lineage sources).
+
+### 2026-04-23 Phase 1.5b (continuous Sham-percentile sensitivity sweep)
+
+`sweep_continuous_sham_pct.py` tests whether Family A CLR endpoints are stable when the Sham-reference percentile driving `compute_continuous_memberships`' sigmoid center varies across {50, 60, 70}. Runs in-memory (no parquet round-trip, no cascade re-run). Does not alter persistent pipeline artifacts.
+
+**Stability result (48 Family A endpoints × 3 percentiles)**:
+- 3/48 endpoints sign-mix across the sweep (all |g|)
+- 2/41 endpoints sign-mix at |g|>0.5
+- Triple-interface headline is Sham-pct-invariant under neutral shrinkage: `endothelial+immune+stromal_clr` Sham→D7 neutral g = 1.000 / 0.987 / 0.965 at pcts 50 / 60 / 70
+- `stromal_clr` raw g varies widely (−13.75 → −6.71 → −3.75) but its neutral-shrunk value is more contained (−0.54 → −0.88 → −1.00) — shrinkage is load-bearing for magnitude interpretation
+
+Output: `family_a_continuous_sham_pct_sweep.parquet` (144 rows); `continuous_sham_pct_sweep.csv` (per-endpoint sign-mix + relative-range stability).
 
 ### 2026-04-23 Phase 1.5a (pre-registration compliance closure)
 

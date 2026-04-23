@@ -108,9 +108,15 @@ print(co.to_string(index=False))
 
 Expected output matches the co-headline rows in `ONE_PAGER.md`.
 
-## Family B result (not a headline, reported for completeness)
+## Family B result (two paths; primary = pre-registered sigmoid)
 
-Family B (continuous neighbor-minus-self delta) produced no endpoint passing |g_shrunk_neutral| > 0.5 at Sham→D7 under primary `min_support=20`. The full Family B table is at `family_b_endpoints.parquet`; sensitivity across `min_support` ∈ {10, 20, 40} at `family_b_sensitivity_endpoints.parquet`. The absence of Family B Sham→D7 headlines is itself a pre-registered result, not a silent demotion.
+**Primary (pre-registered) — sigmoid Sham-ref continuous lineage scores.** Family B produced 0 endpoints passing |g_shrunk_neutral| > 0.5 at Sham→D7 under primary `min_support=20`. The full Family B table is at `family_b_endpoints.parquet`; sensitivity across `min_support` ∈ {10, 20, 40} at `family_b_sensitivity_endpoints.parquet` with per-row `support_sensitive` flag (90/270 rows filter-fragile).
+
+**Sensitivity check (Phase 1.5c, post-hoc) — raw arcsinh markers.** `audit_family_b_raw_markers.py` replaces the sigmoid lineage columns with raw-marker composites (`lineage_immune_raw = CD45`; `lineage_endothelial_raw = mean(CD31, CD34)`; `lineage_stromal_raw = CD140a`) and reruns the same neighbor-minus-self pipeline. Neighbor-minus-self is differential, so any Sham-ref additive offset cancels — the raw-marker path is genuinely sigmoid-independent. Surfaces **18 Sham→D7 endpoints** at |g_shrunk_neutral| > 0.5 (none pathological), dominated by `vs_sham_mean_delta_lineage_immune` on various composite labels. These are consistent with immune infiltration into non-immune compartments. **They are not pre-registered and should not replace the primary Family B result**; they are a documented sensitivity-analysis discovery with an explicit caveat. Output: `family_b_raw_marker_audit.parquet` + `family_b_raw_marker_comparison.csv`. Sigmoid/raw disagreement: 55/166 ≥2× magnitude disagree, 8/166 sign reverse at |g|>0.5 — the sigmoid path compresses neighbor-minus-self via saturation (most superpixels bimodalize on lineage scores).
+
+## Continuous Sham-percentile sensitivity (Phase 1.5b)
+
+`sweep_continuous_sham_pct.py` runs three in-memory Family A paths at continuous Sham-ref percentiles ∈ {50, 60, 70} without altering persistent artifacts. Output: `family_a_continuous_sham_pct_sweep.parquet` (144 rows), `continuous_sham_pct_sweep.csv` (per-endpoint stability). Headline `endothelial+immune+stromal_clr` Sham→D7 neutral g = 1.000 / 0.987 / 0.965 across 50 / 60 / 70 (Sham-pct-invariant under shrinkage). `stromal_clr` raw g is more variable (−13.75 → −6.71 → −3.75) but its neutral-shrunk value is contained (−0.54 → −0.88 → −1.00).
 
 ## Key methodological refactors in this commit series
 

@@ -10,7 +10,7 @@ Snapshot for external review. Every file referenced is pinned by SHA-256 + git c
 | Branch | `main` |
 | `config.json` SHA-256 | `85c314245576f72b2f24e03240bc077e7608619d3627fb88de4d0101e6548170` |
 | `viz.json` SHA-256 | `422a14a03eff4cd7934ce1ec35138e1891d293b65e167dc8d4db498bfb6c0bd2` |
-| `analysis_plans/temporal_interfaces_plan.md` SHA-256 | `c6a8695fc6b430837f921a57eb24ce35b913f547fd0f842500a5906a606dcc11` |
+| `analysis_plans/temporal_interfaces_plan.md` SHA-256 | `468d6c2c7da656e24f11b4ce73a4f8a87b3186824294ad574cc8530ba9fc375d` |
 | `results/biological_analysis/sham_reference_10.0um.json` SHA-256 | `35c3faed6d05d12597cbf545c5a9b4acd5557b8d026abc5ade119c1be824800b` |
 | Sham-ref artifact `_metadata.git_hash` | `6563e90f84ff84eb7183762c188bcbd7609b2429` (regenerated from the pinned commit; the earlier `cf0e337` / `git_dirty=True` build captured by any notebook pre-dating this manifest has been superseded) |
 | Python | 3.12.10 |
@@ -61,10 +61,10 @@ This rule is applied unchanged for any follow-up cohort; any relaxation in a fut
 
 ## Known deferred follow-ups (non-blocking for this pilot's one-pager)
 
-- Continuous Sham-percentile sensitivity sweep at 50/60/70.
-- Parallel raw-marker Sham-reference path for Family B neighbor-minus-self.
-- Pre-reg compliance: Family B support-sensitivity demotion flag; Family A CLR-without-`none` sensitivity propagation.
-- Tissue-mask-based non-compositional density (SLIC-constant surface retracted as algebraically equivalent to `2500 × proportion`).
+- ~~Continuous Sham-percentile sensitivity sweep at 50/60/70.~~ **Closed Phase 1.5b — `continuous_sham_pct_sweep.csv` + amendment in plan.**
+- ~~Parallel raw-marker Sham-reference path for Family B neighbor-minus-self.~~ **Closed Phase 1.5c — `family_b_raw_marker_comparison.csv` + amendment in plan.** Surfaced 18 post-hoc discovery endpoints at Sham→D7; reported as sensitivity analysis, not pre-registered.
+- ~~Pre-reg compliance: Family B support-sensitivity demotion flag; Family A CLR-without-`none` sensitivity propagation.~~ **Closed Phase 1.5a — `support_sensitive` + `clr_none_sensitivity` columns now in `endpoint_summary.csv`.**
+- Tissue-mask-based non-compositional density (SLIC-constant surface retracted as algebraically equivalent to `2500 × proportion`) — remains open.
 
 ## Reviewer entry points
 
