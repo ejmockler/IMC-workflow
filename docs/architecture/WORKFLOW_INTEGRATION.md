@@ -119,10 +119,17 @@
 - `src/analysis/cell_type_annotation.py` - annotate_roi_from_results()
 
 **Biological Analysis Scripts** (root directory):
-- `batch_annotate_all_rois.py` - Module 1: discrete + continuous annotation
-- `differential_abundance_analysis.py` - Module 2: discrete cell-type DA (mouse-level Hedges' g + BH-FDR)
+- `generate_sham_reference.py` - Module 0 (Phase 1): writes the pinned Sham-reference threshold + scale artifact at `results/biological_analysis/sham_reference_10.0um.json`. Required input for Module 1.
+- `batch_annotate_all_rois.py` - Module 1: discrete boolean gating + continuous Sham-referenced membership annotation. Validates the Sham-reference artifact's full provenance (config_sha256, percentile, aggregation, per-marker threshold+scale) at load. `--archive-prior` rolls forward annotations under a new Sham reference.
+- `differential_abundance_analysis.py` - Module 2: cell-type DA (mouse-level Hedges' g + Bayesian-shrunk rank companion at `temporal_top_ranked_by_effect.csv`)
 - `spatial_neighborhood_analysis.py` - Module 3: discrete neighborhood enrichment (cell-type-pair only; the prior continuous self-stratification path was removed in 2026-04-18 and replaced by Module 4)
 - `run_temporal_interface_analysis.py` - Module 4: pre-registered temporal interface analysis with three endpoint families (interface composition CLR, continuous neighborhood neighbor-minus-self, Sham-reference compartment activation). See `analysis_plans/temporal_interfaces_plan.md` for the frozen pre-registration and `src/analysis/temporal_interface_analysis.py` for the pure-function module.
+
+**Phase 1.5 / 5 sensitivity audits** (root directory; not part of the standard run-loop, but always reachable):
+- `sweep_continuous_sham_pct.py` - Family A continuous Sham-pct sweep {50, 60, 70}; writes `family_a_continuous_sham_pct_sweep.parquet` + `continuous_sham_pct_sweep.csv`.
+- `audit_family_b_raw_markers.py` - Family B sigmoid-vs-raw-marker basis comparison; writes `family_b_raw_marker_audit.parquet` + `family_b_raw_marker_comparison.csv`. Prints both sigmoid and raw headline counts (Phase 5.5: required so the prior "0 sigmoid headlines" mis-statement cannot recur).
+- `audit_tissue_mask_density.py` - Phase 5.1 empirical-closure audit for area-based density; writes `tissue_area_audit.csv` (one row per ROI + gate-verdict + closure-scope footer).
+- `verify_frozen_prereg.py` - Phase 5.6: recomputes pinned SHAs in `review_packet/FROZEN_PREREG.md`; exits non-zero on drift.
 
 **Config Integration**:
 ```json
@@ -217,26 +224,32 @@ results/
     │   ├── temporal_neighborhood_enrichments.csv
     │   └── regional_neighborhood_enrichments.csv
     │
-    └── temporal_interfaces/       # Module 4 (Phase 2 pre-registered)
-        ├── endpoint_summary.csv           # primary reviewer-facing table (330 rows, 33 cols)
-        ├── run_provenance.json            # git hash, config hash, file sha256, seeds, parameters
-        ├── interface_fractions.parquet
-        ├── interface_fractions_normalization_sensitivity.parquet
-        ├── interface_clr.parquet
-        ├── interface_clr_no_none.parquet
-        ├── family_a_endpoints_global_norm.parquet
-        ├── family_a_endpoints_norm_sweep.parquet
-        ├── family_a_global_thresholds.parquet
-        ├── family_a_sensitivity_endpoints.parquet
-        ├── continuous_neighborhood_temporal.parquet
-        ├── continuous_neighborhood_missingness.parquet
-        ├── family_b_sensitivity_endpoints.parquet
-        ├── compartment_activation_temporal.parquet
-        ├── family_c_sensitivity_endpoints.parquet
-        ├── sham_reference_thresholds.parquet
-        ├── sensitivity_thresholds.parquet
-        ├── join_counts.parquet
-        └── lineage_morans_i.parquet
+    ├── temporal_interfaces/       # Module 4 (Phase 2 pre-registered) + Phase 1.5 sensitivity outputs
+    │   ├── endpoint_summary.csv           # primary reviewer-facing table (348 rows × 37 cols)
+    │   ├── run_provenance.json            # git hash, config hash, file sha256, seeds, parameters, continuous Sham-reference artifact path/SHA/percentile/aggregation
+    │   ├── interface_fractions.parquet
+    │   ├── interface_fractions_normalization_sensitivity.parquet
+    │   ├── interface_clr.parquet
+    │   ├── interface_clr_no_none.parquet
+    │   ├── family_a_endpoints_global_norm.parquet
+    │   ├── family_a_endpoints_norm_sweep.parquet
+    │   ├── family_a_global_thresholds.parquet
+    │   ├── family_a_sensitivity_endpoints.parquet
+    │   ├── family_a_continuous_sham_pct_sweep.parquet  # Phase 1.5b
+    │   ├── continuous_sham_pct_sweep.csv               # Phase 1.5b (per-endpoint stability summary)
+    │   ├── continuous_neighborhood_temporal.parquet
+    │   ├── continuous_neighborhood_missingness.parquet
+    │   ├── family_b_sensitivity_endpoints.parquet
+    │   ├── family_b_raw_marker_audit.parquet           # Phase 1.5c (sigmoid + raw-marker bases, 540 rows)
+    │   ├── family_b_raw_marker_comparison.csv          # Phase 1.5c (per-endpoint sign + magnitude flags)
+    │   ├── compartment_activation_temporal.parquet
+    │   ├── family_c_sensitivity_endpoints.parquet
+    │   ├── sham_reference_thresholds.parquet
+    │   ├── sensitivity_thresholds.parquet
+    │   ├── join_counts.parquet
+    │   └── lineage_morans_i.parquet
+    ├── sham_reference_10.0um.json # Phase 1: pinned Sham-reference threshold + scale per marker
+    └── tissue_area_audit.csv      # Phase 5.1: tissue-mask area-based density empirical-closure audit
 ```
 
 ## Key Design Decisions

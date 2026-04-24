@@ -5,6 +5,8 @@
 
 **Rule:** No deprecated path may be left as a `# deprecated` comment, dead branch, or "alongside the old way" display. Every entry below is either deleted or replaced in-place.
 
+> **Phase 1.5 / 5 scope note (2026-04-23).** Phase 1 (Sham-reference normalization), Phase 1.5 (continuous-Sham-pct sweep + Family B raw-marker basis + pre-reg compliance flags), and Phase 5 (deferred-item closures + Phase 1.5c factual correction + freeze-manifest verifier) are **closures of pre-existing deferrals**, not new deprecations. They are tracked as amendment blocks in `analysis_plans/temporal_interfaces_plan.md` and reflected in `review_packet/FROZEN_PREREG.md` "Closures and remaining open work" section. This deprecation manifest remains a Phase 1/2-era historical record; it is not the right place to log Phase 1.5/5 work.
+
 ---
 
 ## D1 — Pseudoreplicated interface fractions

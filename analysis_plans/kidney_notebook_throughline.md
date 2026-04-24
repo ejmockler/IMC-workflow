@@ -3,6 +3,8 @@
 **Date frozen:** 2026-04-18 (revised same day after Gate A brutalist review)
 **Status:** Frozen for implementation (T49). Revision incorporates critical Gate A findings: CLR compositional tautology, Part 7 pre-registration conflict, Part 5 bridge invalidity, and Codex's tier-structure architecture.
 
+> **Phase 1 / 5 supersession note (2026-04-23).** This throughline was written when per-ROI sigmoid was the primary continuous-membership normalization. **Phase 1** replaced per-ROI sigmoid with a Sham-reference-centered sigmoid in the cell-type annotation engine (commit `51f120d`), which is exactly the upstream fix the alternative-hypothesis-discriminator passage at cell 37 (line 168 below) recommended for follow-up cohorts. The discriminator language is retained for historical context; the *current* alternative to discriminate is whether the Family A CLR signal survives in a non-compositional surface (Family C does so partially; Phase 5.1 closed the area-based density alternative empirically — see `analysis_plans/temporal_interfaces_plan.md` Phase 5 amendments). For the current methodological framing, defer to the plan amendment log + `review_packet/METHODS_SUMMARY.md`.
+
 ## Central question (revised post-Gate-A)
 
 **What candidate hypothesis can we synthesize from convergent post-hoc readings of these pre-existing analyses?**

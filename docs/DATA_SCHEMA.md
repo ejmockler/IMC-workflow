@@ -6,7 +6,7 @@
 
 **Scope (v2.1)**: This document covers two families of outputs and two configuration files.
 - **Phase 1 per-ROI pipeline** (§1-§5): `results/roi_results/roi_*_results.json.gz`.
-- **Phase 2 biological analysis** (§6-§7): `results/biological_analysis/cell_type_annotations/` (12-column parquet per ROI) and `results/biological_analysis/temporal_interfaces/` (17 parquets + `endpoint_summary.csv` + `run_provenance.json`).
+- **Phase 2 biological analysis** (§6-§7): `results/biological_analysis/cell_type_annotations/` (12-column parquet per ROI) and `results/biological_analysis/temporal_interfaces/` (19 parquets + `endpoint_summary.csv` + Phase 1.5 sensitivity CSVs + `run_provenance.json`).
 - **Configuration** (§8): `config.json` (analysis knobs) + `viz.json` (display knobs).
 
 ---
@@ -207,11 +207,11 @@ ROI-specific metadata extracted from filename or config:
 
 ### Directory contents
 
-17 parquet files + `endpoint_summary.csv` (primary reviewer-facing) + `run_provenance.json`.
+19 parquet files + `endpoint_summary.csv` (primary reviewer-facing) + `continuous_sham_pct_sweep.csv` (Phase 1.5b) + `family_b_raw_marker_comparison.csv` (Phase 1.5c) + `run_provenance.json`. Sister artifact at `results/biological_analysis/sham_reference_10.0um.json` is the Sham-reference normalization input (consumed by `batch_annotate_all_rois.py`); sister artifact at `results/biological_analysis/tissue_area_audit.csv` is the Phase 5.1 closure audit.
 
 ### `endpoint_summary.csv` — primary table
 
-330 rows × 33 columns. Contents: Family A (48) + Family B (252) + Family C (30) endpoint rows, one per (family × endpoint × contrast).
+348 rows × 37 columns. Contents: Family A (48) + Family B (270) + Family C (30) endpoint rows, one per (family × endpoint × contrast). Row growth from the prior 330 reflects Phase 1.5a additions (`support_sensitive` + `clr_none_sensitivity`-bearing rows) and Phase 1.5c per-Family-A-row corroboration columns.
 
 **Key columns:**
 
@@ -235,41 +235,54 @@ ROI-specific metadata extracted from filename or config:
 | `n_unique_resamples` | int | Number of distinct g values in bootstrap (≤9 at n=2 per group) |
 | `n_required_80pct` | float | Sample size for 80% power given raw observed g |
 | `n_required_skeptical`, `n_required_neutral`, `n_required_optimistic` | float | Same under each shrunk g; NaN if pathological |
-| `normalization_mode` | str | `per_roi_sigmoid` \| `sham_reference` (Family A only) |
-| `sham_percentile` | float | Sham-reference percentile used (Family A sensitivity rows; 65/75/85) |
-| `normalization_sign_reverse` | bool | Family A: Sham→D7 g flips sign between per-ROI and Sham-ref regimes |
-| `normalization_g_collapse` | bool | Family A: Sham-ref magnitude < 20% of per-ROI |
-| `hedges_g_sham_ref` | float | Family A only: Sham-reference regime g for comparison |
+| `normalization_mode` | str | Family A: `per_roi_sigmoid` \| `sham_reference_v2_continuous` \| `sham_reference_raw_marker_per_mouse`. Family B: `sham_reference_v2_continuous`. Family C: `sham_reference_raw_marker_per_mouse`. (`per_roi_sigmoid` retained on legacy sensitivity rows; the primary path is Sham-reference v2 since Phase 1.) |
+| `sham_percentile` | float | Sham percentile used: 75 (Family A primary path); 65/75/85 (Family A sensitivity); per-row Family C sham percentile |
+| `normalization_sign_reverse` | bool | Family A: g flips sign between sigmoid Sham-ref and raw-marker Sham-ref paths (both Sham-anchored since Phase 1) |
+| `normalization_magnitude_disagree` | bool | Family A: ≥2× symmetric magnitude divergence between sigmoid and raw-marker Sham-ref paths (replaces the asymmetric `normalization_g_collapse`; primary headline-filter signal) |
+| `normalization_g_collapse` | bool | Family A: legacy asymmetric flag (Sham-ref magnitude < 20% of per-ROI). Retained for backward-compat audits; the primary headline filter uses `normalization_magnitude_disagree` instead. |
+| `hedges_g_sham_ref` | float | Family A: raw-marker Sham-ref regime g for comparison against the sigmoid path |
+| `hedges_g_no_none` | float | Family A only: g under the 7-category CLR (excluding the `none` category) — Phase 1.5a |
+| `clr_none_sensitivity` | bool | Family A only: True if `hedges_g` sign reverses when `none` is excluded from the CLR (Phase 1.5a; 0/48 flips in pilot) |
+| `support_sensitive` | bool | Family B only: True if the (endpoint, contrast, composite_label) row is missing at any of `min_support` ∈ {10, 20, 40} (Phase 1.5a; 90/270 flagged in pilot) |
 | `composite_label` | str | Family B only: the (post-hoc descriptive) stratifier |
 | `observed_range` | float | Mouse-level max - min (context) |
-| `threshold_sensitive` | bool | Family B: endpoint sign-flips across min-support sweep {10, 20, 40} |
+| `threshold_sensitive` | bool | Family B: endpoint sign-flips across min-support sweep {10, 20, 40} (independent of the presence-based `support_sensitive`) |
 
-### Parquet schemas (17 files)
+### Parquet schemas (19 files)
+
+Row/column counts below were verified against the current run; small drift is possible after re-runs since some sensitivity outputs are subject to filter changes. Authoritative source is the actual file.
 
 **Family A inputs / outputs:**
-- `interface_fractions.parquet` — (8, 14). Mouse-level fraction per category × 8 mice (2 mice × 4 timepoints).
-- `interface_fractions_normalization_sensitivity.parquet` — (16, 15). Same but under Sham-reference 75ᵗʰ threshold.
-- `interface_clr.parquet` — (8, 10). CLR-transformed composition (8 categories → 8 CLR components after Bayesian-multiplicative zero replacement).
-- `interface_clr_no_none.parquet` — (8, 9). CLR sensitivity: computed excluding the "none" category.
-- `family_a_endpoints_global_norm.parquet` — (48, 27). Sham-reference endpoints at 75ᵗʰ percentile (primary).
-- `family_a_endpoints_norm_sweep.parquet` — (144, 27). Sham-reference at {65, 75, 85}.
-- `family_a_global_thresholds.parquet` — (3, 4). The three Sham-reference percentile thresholds per lineage.
-- `family_a_sensitivity_endpoints.parquet` — (144, 26). Lineage-threshold sweep {0.2, 0.3, 0.4}.
-- `sensitivity_thresholds.parquet` — (24, 13). Per-sweep threshold values.
+- `interface_fractions.parquet` — Mouse-level fraction per category × 8 mice (2 mice × 4 timepoints).
+- `interface_fractions_normalization_sensitivity.parquet` — Same but under Sham-reference 75ᵗʰ threshold.
+- `interface_clr.parquet` — CLR-transformed composition (8 categories → 8 CLR components after Bayesian-multiplicative zero replacement).
+- `interface_clr_no_none.parquet` — CLR sensitivity: computed excluding the "none" category (Phase 1.5a).
+- `family_a_endpoints_global_norm.parquet` — Sham-reference endpoints at 75ᵗʰ percentile (primary).
+- `family_a_endpoints_norm_sweep.parquet` — Sham-reference at {65, 75, 85}.
+- `family_a_global_thresholds.parquet` — The three Sham-reference percentile thresholds per lineage.
+- `family_a_sensitivity_endpoints.parquet` — Lineage-threshold sweep {0.2, 0.3, 0.4}.
+- `family_a_continuous_sham_pct_sweep.parquet` — **Phase 1.5b**: continuous Sham-percentile sweep {50, 60, 70} for the sigmoid normalization (in-memory recompute; does not alter persistent annotation artifacts). Companion CSV `continuous_sham_pct_sweep.csv` carries per-endpoint stability (sign-mix + relative-range) summary.
+- `sensitivity_thresholds.parquet` — Per-sweep threshold values.
 
 **Family B:**
-- `continuous_neighborhood_temporal.parquet` — (107, 10). Per (composite_label, mouse, timepoint) neighbor-minus-self delta, plus vs-Sham delta columns.
-- `continuous_neighborhood_missingness.parquet` — (100, 6). (composite_label × timepoint) filter status: `absent_biology` vs `below_min_support` vs `sufficient`; `kept_in_trajectory` flag.
-- `family_b_sensitivity_endpoints.parquet` — (864, 27). Min-support sweep {10, 20, 40} across all composite labels × lineages × contrasts.
+- `continuous_neighborhood_temporal.parquet` — Per (composite_label, mouse, timepoint) neighbor-minus-self delta, plus vs-Sham delta columns.
+- `continuous_neighborhood_missingness.parquet` — (composite_label × timepoint) filter status: `absent_biology` vs `below_min_support` vs `sufficient`; `kept_in_trajectory` flag.
+- `family_b_sensitivity_endpoints.parquet` — Min-support sweep {10, 20, 40} across all composite labels × lineages × contrasts.
+- `family_b_raw_marker_audit.parquet` — **Phase 1.5c**: 540 rows = 270 sigmoid (`lineage_source=sham_reference_v2_continuous`) + 270 raw-marker (`lineage_source=raw_marker_arcsinh`). Companion CSV `family_b_raw_marker_comparison.csv` is the per-endpoint sign + magnitude flag table across the two lineage-source bases (Phase 5.2 specifies both bases as co-primary for follow-up cohorts).
 
 **Family C:**
-- `compartment_activation_temporal.parquet` — (8, 16). Per (mouse × timepoint) CD44⁺ rate within CD45⁺/CD31⁺/CD140b⁺/background compartments + triple overlap + n_rois.
-- `family_c_sensitivity_endpoints.parquet` — (90, 26). Sham-percentile sweep {65, 75, 85}.
-- `sham_reference_thresholds.parquet` — (1, 4). 75ᵗʰ-percentile thresholds for {CD45, CD31, CD140b, CD44} computed once on Sham ROIs.
+- `compartment_activation_temporal.parquet` — Per (mouse × timepoint) CD44⁺ rate within CD45⁺/CD31⁺/CD140b⁺/background compartments + triple overlap + n_rois.
+- `family_c_sensitivity_endpoints.parquet` — Sham-percentile sweep {65, 75, 85}.
+- `sham_reference_thresholds.parquet` — 75ᵗʰ-percentile thresholds for {CD45, CD31, CD140b, CD44} computed once on Sham ROIs.
 
 **Spatial coherence:**
-- `join_counts.parquet` — (192, 12). Per-ROI per-category: BB join count observed vs permutation null (1000 permutations, k=10 NN adjacency).
-- `lineage_morans_i.parquet` — (72, 5). Per (ROI × lineage) continuous Moran's I.
+- `join_counts.parquet` — Per-ROI per-category: BB join count observed vs permutation null (1000 permutations, k=10 NN adjacency).
+- `lineage_morans_i.parquet` — Per (ROI × lineage) continuous Moran's I.
+
+**Adjacent artifacts (sister directories):**
+- `results/biological_analysis/sham_reference_10.0um.json` — **Phase 1**: pinned Sham-reference threshold + scale per marker, with full provenance (`config_sha256`, `git_hash`, `marker_order`, `percentile`, `aggregation`). Consumed by `batch_annotate_all_rois.py`; verified against `run_provenance.json` for SHA + percentile + aggregation match.
+- `results/biological_analysis/tissue_area_audit.csv` — **Phase 5.1**: empirical-closure audit for area-based density. 24 ROI rows + trailing comment lines (`# CV_tissue_area_mm2,...`, `# pearson_abs_r_density_vs_proportion_dominant_celltype,...`, `# gate_*_passed,...`, `# closure_scope,...`) — gate verdicts + closure scope are stamped in the CSV itself so the artifact carries its own conclusion.
+- `results/biological_analysis/differential_abundance/temporal_top_ranked_by_effect.csv` — **Phase 2**: rank-based selection-free companion; sorted on `|g_shrunk_neutral|` with `g_pathological` rows quarantined.
 
 ### `run_provenance.json`
 

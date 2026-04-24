@@ -5,7 +5,7 @@
 ### Directory Structure (Current Implementation)
 ```
 src/
-├── analysis/                    # Core analysis modules (22 modules)
+├── analysis/                    # Core analysis modules (23 modules)
 │   ├── main_pipeline.py         # Production pipeline orchestrator
 │   ├── multiscale_analysis.py   # Multi-scale spatial analysis
 │   ├── ion_count_processing.py  # Ion count statistics & transformations
@@ -21,12 +21,13 @@ src/
 │   ├── memory_management.py     # Chunked processing for large data
 │   ├── parallel_processing.py   # Multi-ROI parallel processing
 │   ├── analysis_manifest.py     # Scientific objectives & manifest
-│   ├── cell_type_annotation.py  # Boolean gating + continuous membership annotation
+│   ├── cell_type_annotation.py  # Boolean gating + continuous membership annotation (consumes sham_reference)
+│   ├── sham_reference.py        # Phase 1: shared Sham-reference threshold + scale primitive (per-mouse aggregation default)
 │   ├── temporal_interface_analysis.py # Phase 2: Family A/B/C endpoints, Bayesian shrinkage, join counts
 │   ├── clustering_comparison.py # Graph vs spatial clustering comparison
 │   ├── graph_clustering.py      # Graph-based clustering baseline
 │   ├── grid_segmentation.py     # Grid-based segmentation alternative
-│   ├── watershed_segmentation.py # Watershed segmentation alternative
+│   ├── watershed_segmentation.py # Watershed segmentation alternative (NOT wired to production; flagged Phase 5.1 as untested per-nucleus density alternative)
 │   └── performance_profiling.py # Timing utilities
 ├── quality_control/             # QC framework
 │   ├── quality_gates.py         # Quality gate decisions
