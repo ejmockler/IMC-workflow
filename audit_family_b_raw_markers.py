@@ -201,16 +201,30 @@ def main() -> int:
     if len(only_raw):
         print(f'  Endpoints unique to raw-marker path: {len(only_raw)}')
 
-    # Top raw-marker headlines at Sham→D7 to see if the "no Family B
-    # headlines" null result replicates on the sigmoid-independent path.
-    d7 = raw[(raw['contrast'] == 'Sham_vs_D7')].copy()
+    # Sham→D7 headline counts on BOTH paths, raw |g| and shrunk neutral g.
+    # The earlier version printed only the raw-marker count; the sigmoid
+    # count was assumed (incorrectly) to be zero. Always print both so the
+    # claim-vs-data delta is visible at audit time.
+    sham_d7_raw = raw[raw['contrast'] == 'Sham_vs_D7']
+    sham_d7_sig = primary[primary['contrast'] == 'Sham_vs_D7']
+    print('\n  Sham→D7 headline counts on both bases (cross-check):')
+    for label, df in [('sigmoid (primary)', sham_d7_sig),
+                      ('raw-marker', sham_d7_raw)]:
+        n_raw = int((df['hedges_g'].abs() > 0.5).sum())
+        n_neut = int((df['g_shrunk_neutral'].abs() > 0.5).sum())
+        n_path = int(df['g_pathological'].sum()) if 'g_pathological' in df.columns else 0
+        print(f'    {label:<22s}  |g|>0.5: {n_raw:>2d}   '
+              f'|g_neut|>0.5: {n_neut:>2d}   pathological: {n_path}')
+
+    # Top raw-marker rows by raw |g| (kept from earlier output for spot-check).
+    d7 = raw[raw['contrast'] == 'Sham_vs_D7'].copy()
     d7 = d7.reindex(d7['hedges_g'].abs().sort_values(ascending=False).index)
     nontrivial_d7 = d7[d7['hedges_g'].abs() > 0.5]
-    print(f'\n  Raw-marker Family B Sham→D7 headlines at |g|>0.5: {len(nontrivial_d7)}')
+    print(f'\n  Top raw-marker Sham→D7 rows by |hedges_g|:')
     for _, r in nontrivial_d7.head(5).iterrows():
         print(
             f'    {r["endpoint"]:<40s} label={r["composite_label"]:<30s} '
-            f'g={r["hedges_g"]:+.2f}'
+            f'g={r["hedges_g"]:+.2f}  g_neut={r["g_shrunk_neutral"]:+.2f}'
         )
     return 0
 

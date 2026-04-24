@@ -6,16 +6,19 @@ Snapshot for external review. Every file referenced is pinned by SHA-256 + git c
 
 | Field | Value |
 |-------|-------|
-| Git commit | `6563e90f84ff84eb7183762c188bcbd7609b2429` |
+| Git commit | (pinned at Phase 5 commit; verify with `git rev-parse HEAD` after fetching) |
 | Branch | `main` |
 | `config.json` SHA-256 | `85c314245576f72b2f24e03240bc077e7608619d3627fb88de4d0101e6548170` |
 | `viz.json` SHA-256 | `422a14a03eff4cd7934ce1ec35138e1891d293b65e167dc8d4db498bfb6c0bd2` |
-| `analysis_plans/temporal_interfaces_plan.md` SHA-256 | `468d6c2c7da656e24f11b4ce73a4f8a87b3186824294ad574cc8530ba9fc375d` |
+| `analysis_plans/temporal_interfaces_plan.md` SHA-256 | `a446ab541c9e58b4ea2eff1fe7541babf90bf9412042f7cef7998e1af65c9d3d` (Phase 5 amendments + 1.5c correction) |
 | `results/biological_analysis/sham_reference_10.0um.json` SHA-256 | `35c3faed6d05d12597cbf545c5a9b4acd5557b8d026abc5ade119c1be824800b` |
-| Sham-ref artifact `_metadata.git_hash` | `6563e90f84ff84eb7183762c188bcbd7609b2429` (regenerated from the pinned commit; the earlier `cf0e337` / `git_dirty=True` build captured by any notebook pre-dating this manifest has been superseded) |
+| `audit_tissue_mask_density.py` SHA-256 | (computed at commit time, see `verify_frozen_prereg.py`) |
+| `audit_family_b_raw_markers.py` SHA-256 | (computed at commit time, see `verify_frozen_prereg.py`) |
+| Sham-ref artifact `_metadata.git_hash` | `6563e90f84ff84eb7183762c188bcbd7609b2429` (regenerated from a clean pre-Phase-5 commit; Phase 5 only edits docs and audit scripts, not the Sham-reference artifact, so re-regeneration is unnecessary — but the manifest SHA above will rotate with each plan amendment) |
 | Python | 3.12.10 |
 | Platform | Darwin 25.4.0 (macOS) |
 | Snapshot timestamp (UTC) | 2026-04-23 |
+| Manifest verification script | `verify_frozen_prereg.py` (recomputes every SHA above and fails if it diverges from this table) |
 
 ## Pre-registered endpoint families (summary; full spec in `analysis_plans/temporal_interfaces_plan.md`)
 
@@ -55,16 +58,26 @@ This rule is applied unchanged for any follow-up cohort; any relaxation in a fut
 - **n=2 per group**: hypothesis-generating only. No p-values or FDR significance.
 - **Three Bayesian priors**: transparency, not indecision. Neutral is the planning default; all three reported.
 - **Pan-compartment CD44 rise**: CD44 is a broadly-expressed injury/adhesion marker; Family C rises are explicitly pan-tissue activation claims, not lineage-specific.
-- **Bodenmiller scope**: the companion `run_bodenmiller_benchmark.py` validates the IMC data loader at the channel level (Spearman r=0.996) against published data. It is NOT a test of the Family A/B/C framework, which requires temporal sampling absent from the Bodenmiller Patient1 dataset. See archived `benchmarks/STATUS.archived.md`.
+- **Bodenmiller scope (closed-by-design, not deferred)**: the companion `run_bodenmiller_benchmark.py` validates the IMC data loader at the channel level (Spearman r=0.996) against published data. It is NOT a test of the Family A/B/C framework, and cannot become one — Bodenmiller Patient1 is single-patient, single-timepoint, different organ, different species, different panel; the framework requires temporal sampling that does not exist in that dataset. Permanent scope boundary, not a Phase-N follow-up. See archived `benchmarks/STATUS.archived.md`.
 - **Shared-reference tautology**: both Family A paths anchor on the same Sham baseline. Sign agreement is partly built-in. The symmetric magnitude-disagreement count (13/48 Family A endpoints in the current run) is the honest upper bound on independent measurement.
 - **CLR compositional coupling**: `stromal_clr↓` + `triple_clr↑` are one event in two coordinates. Family C is the only genuinely non-compositional corroboration surface in this cohort.
 
-## Known deferred follow-ups (non-blocking for this pilot's one-pager)
+## Closures and remaining open work (Phase 5 reconciliation, 2026-04-23)
 
+**Closed**:
 - ~~Continuous Sham-percentile sensitivity sweep at 50/60/70.~~ **Closed Phase 1.5b — `continuous_sham_pct_sweep.csv` + amendment in plan.**
-- ~~Parallel raw-marker Sham-reference path for Family B neighbor-minus-self.~~ **Closed Phase 1.5c — `family_b_raw_marker_comparison.csv` + amendment in plan.** Surfaced 18 post-hoc discovery endpoints at Sham→D7; reported as sensitivity analysis, not pre-registered.
+- ~~Parallel raw-marker Sham-reference path for Family B neighbor-minus-self.~~ **Closed Phase 1.5c — corrected Phase 5.5.** Both bases produce comparable headline counts (21 sigmoid, 18 raw at |g_neut|>0.5; 14 in common; Jaccard 0.58; 96% sign agreement). The Phase 1.5c "0 sigmoid headlines" claim was wrong (audit script printed only the raw count); audit script now prints both and the plan amendment is corrected. Phase 5.2 amends to a co-primary intersection-conservative rule for follow-up cohorts.
 - ~~Pre-reg compliance: Family B support-sensitivity demotion flag; Family A CLR-without-`none` sensitivity propagation.~~ **Closed Phase 1.5a — `support_sensitive` + `clr_none_sensitivity` columns now in `endpoint_summary.csv`.**
-- Tissue-mask-based non-compositional density (SLIC-constant surface retracted as algebraically equivalent to `2500 × proportion`) — remains open.
+- ~~Tissue-mask area-based non-compositional density.~~ **Closed Phase 5.1 — empirical-closure audit `audit_tissue_mask_density.py`.** Both pre-registered gates (CV(tissue_area_mm2) > 0.05 AND Pearson |r|(density, proportion) < 0.95) fail: CV = 0.012, |r| = 0.97 on the dominant cell type. Closure scope is **area-based denominators on this acquisition design**.
+
+**Untested alternatives (NOT closed by Phase 5.1; flagged for follow-up engineering)**:
+- Per-nucleus density via DNA watershed segmentation (`src/analysis/watershed_segmentation.py` exists but is not wired into the production pipeline).
+- DNA-intensity integral as denominator (cellularity-weighted volume).
+- Variable-extent re-acquisition cohorts (whole-section IMC, panoramic montage).
+- Spike-in absolute-quantification controls in a redesigned panel.
+
+**Co-primary Family B implementation** (Phase 5.2 amendment, partial implementation):
+- Audit script (`audit_family_b_raw_markers.py`) emits both bases and prints both headline counts. `endpoint_summary.csv` per-row dual-basis stamping and `family_b_basis_divergence.csv` are deferred to a future engineering cycle; until then the basis comparison is reachable via the existing `family_b_raw_marker_comparison.csv` and the audit script's stdout.
 
 ## Reviewer entry points
 

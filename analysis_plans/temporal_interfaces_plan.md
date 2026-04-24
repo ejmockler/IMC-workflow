@@ -147,7 +147,7 @@ Disagreement is reported per row via `normalization_sign_reverse` AND a NEW symm
 
 **CLR compositional coupling caveat.** Family A CLR endpoints operate on a closed simplex — a rise in any category mechanically forces other categories down. The Sham→D7 pattern of `stromal_clr↓` + `endothelial+immune+stromal_clr↑` is therefore **one event in two coordinates**, not independent observations. The only genuinely non-compositional corroboration source in this cohort is **Family C raw-marker CD44+ compartment rates** — different markers (CD140b not CD140a, CD31 not CD31+CD34), different threshold primitive (raw-marker Sham percentile, not sigmoid), different geometry (per-compartment rate, not simplex composition). Family B's neighbor-minus-self delta shares the Sham-reference sigmoid with Family A's continuous memberships at the input level, so it is a dependent check (different measurement geometry — graph-topological delta vs per-superpixel composition — but the same underlying normalized lineage scores).
 
-An earlier draft of this amendment also listed a `raw_density_per_mm2` column in `roi_abundances.csv` as non-compositional corroboration. Brutalist review verified that as implemented (`count / (n_total / 2500)`), the density column reduced algebraically to `2500 × proportion` — a rescaled closed simplex, not independent evidence, because `tissue_area_mm2` inherits the SLIC target-density constant and varies by only ~2% CV across ROIs. The column was removed. Rebuilding density from the actual DNA-segmentation-mask area (which does vary meaningfully across ROIs with tissue-coverage differences) is a Phase 1.5 follow-up. Until then, CLR findings are corroborated by Family C alone, and ranked DA endpoints are the per-cell-type abundance reference (on raw proportions, with the CLR-closure caveat explicit).
+An earlier draft of this amendment also listed a `raw_density_per_mm2` column in `roi_abundances.csv` as non-compositional corroboration. Brutalist review verified that as implemented (`count / (n_total / 2500)`), the density column reduced algebraically to `2500 × proportion` — a rescaled closed simplex, not independent evidence, because `tissue_area_mm2` inherits the SLIC target-density constant and varies by only ~2% CV across ROIs. The column was removed. Rebuilding density from the actual DNA-segmentation-mask area was deferred to Phase 1.5 follow-up; **Phase 5.1 (2026-04-23) audited that approach empirically and retracted it permanently** — the eroded DNA-mask area also has CV ≈ 0.012 across ROIs because every acquisition shares the same ~500×500 µm field-of-view. CLR findings are corroborated by Family C alone in this cohort.
 
 **Provenance augmentation**: `run_provenance.json` now records the continuous-Sham reference artifact path + SHA256 + percentile + aggregation + n_mice/rois. `endpoint_summary.csv` populates `sham_percentile` on every Family A per_roi_sigmoid row (previously blank); Family B rows stamped `normalization_mode='sham_reference_v2_continuous'`; Family C rows stamped `normalization_mode='sham_reference_raw_marker_per_mouse'` with `sham_percentile` per row. Audit now covers all 348 endpoints, not just 48 Family A rows.
 
@@ -161,33 +161,90 @@ A density-per-mm² column was drafted for `roi_abundances.csv` and removed after
 - **n=2 mice per timepoint**: hypothesis-generating pilot, not confirmatory. No p-values, no FDR significance. Hedges' g unshrunken values are not the reported magnitude — the shrinkage range under three priors is.
 - **Three Bayesian priors are transparency, not indecision**: neutral (N(0,1²)) is the planning default; skeptical/optimistic bound residual uncertainty. A reviewer preferring a single prior is invited to pick whichever — we report all three so no prior choice is implicit.
 - **Pan-compartment CD44 rise at D7**: CD44 is a broadly-expressed injury/adhesion marker. Its rise across multiple compartments is expected biology. Family C findings are explicitly pan-tissue activation claims, not lineage-specific.
-- **Bodenmiller scope**: `run_bodenmiller_benchmark.py` validates the IMC data loader against published channel-level data (Spearman r=0.996). It is NOT a test of Family A/B/C, which requires temporal sampling absent from the Bodenmiller Patient1 single-timepoint dataset. Pre-decided; disclosed in archived `benchmarks/STATUS.archived.md`.
+- **Bodenmiller scope (closed-by-design, not deferred)**: `run_bodenmiller_benchmark.py` validates the IMC data loader against published channel-level data (Spearman r=0.996). It is NOT a test of Family A/B/C, and **cannot become one** — the Bodenmiller Patient1 dataset is single-timepoint, single-patient, different organ (pancreas vs kidney), different species (human vs mouse), and uses a different antibody panel; the framework requires temporal sampling that does not exist in that dataset. This is a permanent scope boundary, not a Phase-N follow-up. Disclosed in archived `benchmarks/STATUS.archived.md`; `benchmarks/notebooks/CRITICAL_ANALYSIS.md` was retracted (`.retracted.md`) because the original superpixel-count premise was off by ~50–100×.
 - **Shared-reference tautology between Family A paths**: both paths anchor on the same Sham baseline. Sign agreement between them is partly built-in. The symmetric magnitude-disagreement count is the honest upper bound on independent measurement; it is not claimed as independent replication.
 
 **Deferred to Phase 1.5 (documented follow-up, not blocking current commit)**:
 - ~~Continuous Sham-percentile sensitivity sweep at 50/60/70 pct (companion to the existing raw-marker 65/75/85 sweep).~~ **Closed 2026-04-23 Phase 1.5b — see amendment below.**
 - ~~Parallel raw-marker Sham-reference path for Family B neighbor-minus-self (currently Family B inherits the Sham-reference sigmoid but has no independent audit path).~~ **Closed 2026-04-23 Phase 1.5c — see amendment below.**
 - ~~Pre-registration obligations §Family B support-sensitivity demotion flag + §Family A CLR-without-`none` sensitivity propagation (pre-existing gaps; unrelated to Seam 1 work).~~ **Closed 2026-04-23 Phase 1.5a — see amendment below.**
+- ~~Tissue-mask-based non-compositional density (rebuild `raw_density_per_mm2` from DNA-segmentation mask area rather than the SLIC target-density constant).~~ **Closed 2026-04-23 Phase 5 — investigated and retracted permanently by acquisition-design constraint; see amendment below.**
 
-### 2026-04-23 Phase 1.5c (Family B parallel raw-marker audit — DISCOVERY)
+### 2026-04-23 Phase 5.1 (tissue-mask area-based density — closed for this acquisition; alternatives flagged untested)
+
+Pre-registered non-degeneracy gate for an area-based density column: across ROIs, CV(tissue_area_mm2) must exceed 0.05, **and** for the candidate density column to be independent of proportion, Pearson |r| between `density_per_mm2` and `proportion` across ROIs (per cell type) must fall below 0.95.
+
+`audit_tissue_mask_density.py` recomputes tissue area per ROI from the persisted `superpixel_labels` array (count of pixels with label ≥ 0, times the resolution-squared — the eroded DNA-mask area as actually fed to SLIC). Across all 24 ROIs at 10 µm scale:
+
+**Algebraic reduction (lead finding).** `density_per_mm2 = count / tissue_area_mm2`. Because every ROI is acquired at the same ~500×500 µm field-of-view, `tissue_area_mm2 = 0.246 ± 0.003` (CV 0.012) is dataset-constant. Therefore `density = count / 0.246 ≈ 9857 × proportion ± 1.4%` — algebraically identical (within ~1% noise) to a rescaled proportion. This reduction does not depend on Pearson r; it follows from the constancy of the denominator.
+
+**CV diagnostic (supporting).** Mean tissue_area_mm2 = 0.246; std = 0.003; **CV = 0.012** — below the 0.05 bar by ~4×. The CV is necessary but not sufficient evidence of degeneracy; the algebraic reduction is what closes the door.
+
+**Root cause**: the acquisition design fixes the field-of-view at the calibration step. There are no spike-in normalization beads or panoramic acquisitions that would let tissue extent vary across ROIs. The limitation is the acquisition design, not the SLIC pipeline.
+
+**Closure scope (narrow)**: this finding closes the **area-based** density column on this acquisition design. It does NOT close every conceivable non-compositional corroboration surface. Untested alternatives that a future cohort or a re-segmentation effort could investigate:
+
+- **Per-nucleus density** from a DNA-channel watershed segmentation (`src/analysis/watershed_segmentation.py` exists but is not wired to the production pipeline; the denominator becomes `n_nuclei` per ROI, which would track tissue cellularity rather than tissue area and could vary meaningfully across timepoints).
+- **DNA-intensity integral** as the denominator (∑DNA over the eroded mask), which captures cellularity-weighted tissue volume rather than 2D area — varies with nuclear count even when area is fixed.
+- **Variable-extent re-acquisition** (whole-section IMC, panoramic montage) on a follow-up cohort, which restores meaningful CV(tissue_area_mm2).
+- **Spike-in absolute-quantification controls** in a redesigned panel — would let raw-count comparisons across ROIs be normalized to absolute concentration rather than relative composition.
+
+The Phase 5 scope did not test any of these because (a) per-nucleus density requires running the watershed pipeline end-to-end (not yet wired), (b) DNA-integral requires re-running ion-count aggregation with a new denominator definition, (c) variable-extent re-acquisition is a wet-lab change. The conservative claim is "area-based density on the present acquisition is closed; cellularity-based and absolute-quant alternatives remain open for a future engineering cycle."
+
+Family C (raw-marker CD44+ compartment activation) remains the only currently-implemented non-compositional corroboration for Family A CLR findings in this cohort. The closure is documented empirically — the audit CSV carries the CV, the algebraic reduction, the gate verdict, and the scope language in its trailing metadata so it cannot drift from the numbers.
+
+Output: `results/biological_analysis/tissue_area_audit.csv` (24 rows + gate-verdict footer + closure-scope footer).
+
+### 2026-04-23 Phase 1.5c (Family B parallel raw-marker audit — magnitude divergence, comparable headline yield) — corrected 2026-04-23 Phase 5.5
 
 `audit_family_b_raw_markers.py` runs Family B neighbor-minus-self with the sigmoid Sham-reference lineage scores replaced by raw arcsinh markers (`lineage_immune_raw = CD45`; `lineage_endothelial_raw = mean(CD31, CD34)`; `lineage_stromal_raw = CD140a`). The neighbor-minus-self operation is differential, so any Sham-reference additive offset cancels — the raw-marker path is genuinely sigmoid-independent.
 
-**Significant finding** that this audit surfaced and the sigmoid path missed:
+**Correction (Phase 5.5 brutalist gate)**: an earlier draft of this amendment claimed "**0** sigmoid Family B Sham→D7 endpoints clear `|g_shrunk_neutral| > 0.5`" against "18 raw-marker endpoints". The sigmoid count was assumed without verification; the audit script printed only the raw-marker count. Re-running with both counts surfaced **21 sigmoid endpoints** above the same floor (none pathological, none support-sensitive) — comparable to raw, not zero. The corrected picture:
 
-Under the raw-marker Family B, Sham→D7 has **18 endpoints** clearing `|g_shrunk_neutral| > 0.5` (none `g_pathological`); under the sigmoid Family B, **0 endpoints** cleared that threshold. The top raw-marker headlines concentrate on `vs_sham_mean_delta_lineage_immune` — neighbors of various composite-label superpixels acquire more immune-marker expression Sham→D7 than the center cell itself:
+| Path | Sham→D7 endpoints \|g_shrunk_neutral\|>0.5 | max raw \|hedges_g\| |
+|------|------:|------:|
+| sigmoid (primary, sham_reference_v2_continuous) | **21** | 13.73 |
+| raw-marker (sigmoid-independent) | **18** | 10.85 |
+| both above floor | 14 (Jaccard 0.58 over union) | — |
+| sigmoid sign-agreement with raw at \|g\|>0.5 | 96% (1 reversal in 25 nontrivial) | — |
+
+**Actual finding** (not "discovery raw missed by sigmoid"): the two bases yield comparable headline counts (21 vs 18) with high directional agreement (96%) and substantial overlap (14 shared headlines). The audit's pre-shrinkage magnitude-disagreement count (55/166 ≥2× divergence at |g|>0.5) is real and reflects raw arcsinh markers retaining wider dynamic range than sigmoid lineage scores; Bayesian shrinkage neutralizes most of that divergence in `g_shrunk_neutral`. Top raw-marker rows (raw |g|, then g_neut) sorted by |hedges_g|:
 
 | composite_label | endpoint | raw g | g_neut |
 |-----------------|----------|------:|-------:|
-| stromal | delta_lineage_immune | +3.98 | +1.000 |
-| activated_endothelial_cd44 | delta_lineage_immune | +4.11 | +0.999 |
-| activated_stromal_cd140b_cd44 | delta_lineage_endothelial | +4.45 | +0.994 |
-| activated_endothelial_cd44 | delta_lineage_endothelial | +3.33 | +0.983 |
-| activated_endothelial_cd140b | delta_lineage_immune | +3.08 | +0.967 |
+| stromal | delta_lineage_immune | +3.98 | +1.00 |
+| activated_endothelial_cd44 | delta_lineage_immune | +4.11 | +1.00 |
+| activated_stromal_cd140b_cd44 | delta_lineage_endothelial | +4.45 | +0.99 |
+| activated_endothelial_cd44 | delta_lineage_endothelial | +3.33 | +0.98 |
+| activated_endothelial_cd140b | delta_lineage_immune | +3.08 | +0.97 |
 
-**Interpretation caveat.** The sigmoid/raw disagreement (55/166 endpoints with ≥2× magnitude divergence, 8/166 sign reversals at |g|>0.5) is consistent with sigmoid saturation: most superpixels bimodalize to ~0 or ~1 on lineage scores, so neighbor-minus-self on sigmoid scores is near-zero for most superpixels and only fires at interfaces. Raw arcsinh markers vary continuously, giving neighbor-minus-self more dynamic range. The raw-marker finding is consistent with published UUO biology (immune infiltration into non-immune compartments) but these endpoints were **not pre-registered as a primary path** — the pre-reg pre-specified Family B on continuous memberships. The raw-marker audit is reported as a sensitivity-analysis discovery, not as a replacement for the primary pre-registered path.
+**Pre-registration status of the raw-marker path**: this lineage-source basis was not pre-registered as a primary path in the original plan — the pre-reg pre-specified Family B on continuous memberships. The raw-marker audit is a sensitivity-analysis check, not a replacement. Its substantive contribution is showing that raw effect-size estimates are larger pre-shrinkage but converge under Bayesian shrinkage to a comparable headline set.
 
-Output: `family_b_raw_marker_audit.parquet` (540 rows = 270 primary + 270 raw); `family_b_raw_marker_comparison.csv` (per-endpoint sign_reverse + magnitude_disagree flags across the two lineage sources).
+Output: `family_b_raw_marker_audit.parquet` (540 rows = 270 primary + 270 raw); `family_b_raw_marker_comparison.csv` (per-endpoint sign_reverse + magnitude_disagree flags across the two lineage sources). Audit script now prints both sigmoid and raw counts at run time so this kind of one-sided reporting cannot recur silently.
+
+### 2026-04-23 Phase 5.2 (Family B lineage-source basis — pre-reg amendment for follow-up cohorts)
+
+Phase 1.5c showed that the sigmoid and raw-marker bases produce comparable headline counts (21 vs 18 at |g_shrunk_neutral|>0.5, 14 shared, 96% sign agreement) but diverge substantially in pre-shrinkage magnitude (55/166 ≥2× divergence at |g|>0.5). For follow-up cohorts the open question is: when the two bases disagree on a specific endpoint or on overall headline yield, what does the cohort report?
+
+**Co-primary, intersection-conservative rule** (locked for follow-up cohorts):
+
+1. **Both lineage-source bases are co-primary.** Every Family B run emits per-basis endpoint tables and a basis-divergence CSV. Neither is demoted to a sidecar.
+2. **Lineage-source mapping is panel-defined, not marker-list-defined.** A cohort's `config.json` declares which raw-marker channels compose each lineage axis (current pilot: `immune = max(CD45)`; `endothelial = mean(CD31, CD34)`; `stromal = max(CD140a)`). The principle: each raw-lineage channel-set is the *minimal disjoint subset of panel markers that the same lineage's sigmoid score also draws from*. A panel substitution (e.g., adding CD11b to immune) updates the raw-mapping in `config.json` and the audit re-runs unchanged. **The rule is not the marker list; the rule is "raw-arcsinh composite over the same channel-set the sigmoid lineage draws from."**
+3. **Headline qualification is per-basis.** A Family B endpoint is a headline if it clears `|hedges_g_shrunk_neutral| > 0.5` AND is not `g_pathological` AND is not `support_sensitive`.
+4. **Cohort report names three sets explicitly.** (a) **Conservative-intersection headline set**: endpoints clearing the floor in *both* bases with same sign — the strongest claim. (b) **Sigmoid-only set** + (c) **Raw-only set**: endpoints that clear in one basis but not the other; reported but flagged as basis-dependent.
+5. **Opposite-sign-same-endpoint resolution.** If an endpoint clears |g_neut|>0.5 in both bases but the signs disagree, neither basis enters the headline set; the row is moved to a `family_b_basis_conflict.csv` table for inspection. Conflicting-sign headlines are evidence that the lineage-score primitive is doing different things in the two bases on that endpoint.
+6. **Both-zero outcome.** If both bases produce zero headlines, the cohort reports the null result for Family B alongside the basis-divergence summary; the rule does not invent a fallback.
+7. **Mandatory divergence summary.** Every run emits `family_b_basis_divergence.csv` with columns `endpoint, composite_label, contrast, hedges_g_sigmoid, g_shrunk_neutral_sigmoid, hedges_g_raw, g_shrunk_neutral_raw, sign_agree, headline_overlap_status` (one of: `both_above`, `sigmoid_only`, `raw_only`, `both_below`, `conflict`).
+
+**Why intersection-conservative not co-primary disjunction**: a brutalist critic correctly noted that reporting *every* headline from either basis as a co-primary claim is a disjunctive OR over correlated tests, inflating effective multiplicity. Naming the intersection set as the strongest claim and the basis-only sets as basis-dependent (not refuting, but qualifying) preserves transparency without overclaiming.
+
+**Why panel-defined mapping not marker list**: the current rule's hard-coded `[CD45]/[CD31, CD34]/[CD140a]` would not survive a panel that includes CD11b, F4/80, or Ly6G (myeloid) alongside CD45. Specifying the raw-mapping at the same level the sigmoid lineage is defined (`config.json` lineage definitions) makes the audit panel-portable.
+
+**Why headline-count disparity is *not* the gating signal**: an earlier draft of this amendment used "0-vs-18 headlines" as the motivating disparity. Phase 5.5 brutalist correction surfaced that the actual counts were 21-vs-18, comparable. The intersection-conservative rule does not depend on a headline-count disparity to justify itself; it is the right discipline for any cohort where two correlated bases co-exist, including the present cohort.
+
+**Implementation status**: the rule above is pre-registered for any follow-up cohort and is partially implemented in the current pilot artifacts. `audit_family_b_raw_markers.py` already prints both sigmoid and raw headline counts at run time. The `family_b_basis_divergence.csv` and `family_b_basis_conflict.csv` outputs and the per-basis row in `endpoint_summary.csv` are pipeline-integration work for Phase 5.6 and beyond; until then the basis comparison is reachable via the existing `family_b_raw_marker_comparison.csv` and the audit script's stdout.
+
+This rule was defined after observing Phase 1.5c (post-hoc for the present pilot, pre-registered for any follow-up cohort). Applied unchanged in any future cohort; any relaxation is a filter-sensitivity result, not evidence.
 
 ### 2026-04-23 Phase 1.5b (continuous Sham-percentile sensitivity sweep)
 

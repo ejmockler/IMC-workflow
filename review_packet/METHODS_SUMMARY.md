@@ -108,11 +108,11 @@ print(co.to_string(index=False))
 
 Expected output matches the co-headline rows in `ONE_PAGER.md`.
 
-## Family B result (two paths; primary = pre-registered sigmoid)
+## Family B result (two co-primary bases per Phase 5.2 amendment)
 
-**Primary (pre-registered) — sigmoid Sham-ref continuous lineage scores.** Family B produced 0 endpoints passing |g_shrunk_neutral| > 0.5 at Sham→D7 under primary `min_support=20`. The full Family B table is at `family_b_endpoints.parquet`; sensitivity across `min_support` ∈ {10, 20, 40} at `family_b_sensitivity_endpoints.parquet` with per-row `support_sensitive` flag (90/270 rows filter-fragile).
+**Primary (pre-registered) — sigmoid Sham-ref continuous lineage scores.** Family B produces **21 endpoints** at |g_shrunk_neutral| > 0.5 at Sham→D7 under primary `min_support=20` (none pathological, none `support_sensitive`), concentrated on `vs_sham_mean_delta_lineage_immune` and `..._endothelial` around composite labels including `activated_endothelial_cd44`, `activated_stromal_cd140b_cd44`, `mixed`, `non_myeloid_immune`, `stromal`, `unassigned`. An earlier draft of this section claimed "0 endpoints" — that was wrong; the audit script printed only the raw-marker count and the sigmoid count was assumed. Corrected 2026-04-23 Phase 5.5. Full Family B table at `family_b_endpoints.parquet`; sensitivity across `min_support` ∈ {10, 20, 40} at `family_b_sensitivity_endpoints.parquet` with per-row `support_sensitive` flag (90/270 rows filter-fragile).
 
-**Sensitivity check (Phase 1.5c, post-hoc) — raw arcsinh markers.** `audit_family_b_raw_markers.py` replaces the sigmoid lineage columns with raw-marker composites (`lineage_immune_raw = CD45`; `lineage_endothelial_raw = mean(CD31, CD34)`; `lineage_stromal_raw = CD140a`) and reruns the same neighbor-minus-self pipeline. Neighbor-minus-self is differential, so any Sham-ref additive offset cancels — the raw-marker path is genuinely sigmoid-independent. Surfaces **18 Sham→D7 endpoints** at |g_shrunk_neutral| > 0.5 (none pathological), dominated by `vs_sham_mean_delta_lineage_immune` on various composite labels. These are consistent with immune infiltration into non-immune compartments. **They are not pre-registered and should not replace the primary Family B result**; they are a documented sensitivity-analysis discovery with an explicit caveat. Output: `family_b_raw_marker_audit.parquet` + `family_b_raw_marker_comparison.csv`. Sigmoid/raw disagreement: 55/166 ≥2× magnitude disagree, 8/166 sign reverse at |g|>0.5 — the sigmoid path compresses neighbor-minus-self via saturation (most superpixels bimodalize on lineage scores).
+**Co-primary sensitivity check (Phase 1.5c, raw arcsinh markers).** `audit_family_b_raw_markers.py` replaces the sigmoid lineage columns with raw-marker composites (`lineage_immune_raw = CD45`; `lineage_endothelial_raw = mean(CD31, CD34)`; `lineage_stromal_raw = CD140a`) and reruns the same neighbor-minus-self pipeline. Neighbor-minus-self is differential, so any Sham-ref additive offset cancels — the raw-marker path is genuinely sigmoid-independent. Produces **18 Sham→D7 endpoints** at |g_shrunk_neutral| > 0.5 (none pathological). **14 endpoints clear in BOTH bases** (Jaccard 0.58 over the union of 21 sigmoid + 18 raw); **96% sign agreement** on overlapping endpoints. Pre-shrinkage magnitude divergence is real (55/166 ≥2× magnitude disagree) but Bayesian shrinkage to neutral converges the headline counts. Output: `family_b_raw_marker_audit.parquet` + `family_b_raw_marker_comparison.csv`. Phase 5.2 plan amendment names the **intersection of both bases as the conservative headline set**; sigmoid-only and raw-only sets are reported but flagged as basis-dependent. Audit script prints both counts at run time so one-sided reporting cannot recur silently.
 
 ## Continuous Sham-percentile sensitivity (Phase 1.5b)
 
@@ -123,13 +123,21 @@ Expected output matches the co-headline rows in `ONE_PAGER.md`.
 - **Phase 1** (seam-1 closure): replaced per-ROI sigmoid with Sham-reference-centered sigmoid; unified 3 drifting Sham-threshold primitives; added provenance artifact + hard validation gates at every boundary; fixed a latent preprocessing-drift bug (annotation engine was reading raw coabundance features instead of arcsinh per-marker arrays).
 - **Phase 2** (seams 2+3): pre-reg amendment locking the post-hoc headline filter; rank-based selection-free companion table (shrunk-g, pathology-gated); explicit CLR compositional coupling caveat with corroboration independence ranking.
 - **Phase 3** (engineering): extended VizConfig drift guards (colormap + validation-plots invariants); lazy-loaded viz_utils; repaired 5 pre-existing test failures (ROI count 25→24, ablation-module path move, arcsinh monotonicity test logic, bead-normalization QC fixture, spatial_weight dead-field skip).
+- **Phase 5** (deferred-item closures + brutalist-cycle correctness fix): Phase 5.1 closes area-based tissue-mask density empirically (CV 0.012, |r| 0.97 on dominant cell type — both pre-registered gates fail, demonstrating algebraic equivalence to rescaled proportion); 5.2 amends Family B to a co-primary intersection-conservative rule with config-driven raw-marker mapping for panel portability; 5.3 closes Bodenmiller permanently (closed-by-design wording); 5.5 brutalist multi-critic surfaced an uncaught Phase 1.5c factual error — "0 sigmoid Family B Sham→D7 headlines" was wrong (actual: 21 sigmoid, 18 raw-marker, 14 in common); audit script now prints both counts so one-sided reporting cannot recur silently. `verify_frozen_prereg.py` recomputes pinned SHAs and fails loudly on drift.
 
-## Known deferred follow-ups (Phase 1.5)
+## Closures and remaining open work (Phase 5 reconciliation, 2026-04-23)
 
-- **Continuous Sham-percentile sensitivity sweep** at 50/60/70 (companion to the existing raw-marker 65/75/85). Current run pins the continuous path at a single operating point.
-- **Family B parallel raw-marker audit path** (currently Family B inherits the Sham-reference sigmoid with no independent path).
-- **Pre-registration compliance**: Family B support-sensitivity demotion flag, Family A CLR-without-`none` sensitivity propagation into `endpoint_summary.csv`.
-- **Tissue-mask-based density**: rebuild `raw_density_per_mm2` from DNA-segmentation mask area (not the SLIC target-density constant) so it is genuinely non-compositional. The earlier attempt using the SLIC constant was verified mathematically equivalent to `2500 × proportion` and retracted.
+**Closed (Phase 1.5 / 5)**:
+- Continuous Sham-percentile sensitivity sweep at 50/60/70 — closed Phase 1.5b.
+- Family B parallel raw-marker audit path — closed Phase 1.5c (corrected counts in Phase 5.5).
+- Pre-registration compliance: Family B `support_sensitive` flag + Family A `clr_none_sensitivity` propagation — closed Phase 1.5a.
+- **Tissue-mask area-based density** — closed empirically Phase 5.1: `audit_tissue_mask_density.py` shows CV(tissue_area_mm2) = 0.012 across 24 ROIs (every ROI acquired at the same ~500×500 µm field-of-view), so `density = count / tissue_area_mm2 ≈ 9857 × proportion ± 1.4%` — same algebraic tautology as the retracted SLIC-constant version. Pearson |r|(density, proportion) on dominant cell type = 0.97 confirms degeneracy. Closure is for **area-based** denominators on this acquisition design only.
+
+**Untested alternatives flagged for follow-up engineering** (NOT closed by Phase 5.1):
+- Per-nucleus density via DNA watershed segmentation (`src/analysis/watershed_segmentation.py` not currently wired into production pipeline).
+- DNA-intensity integral as denominator (cellularity-weighted volume, varies with nuclear count even when 2D area is fixed).
+- Variable-extent re-acquisition cohorts (whole-section IMC, panoramic montage).
+- Spike-in absolute-quantification controls in a redesigned panel.
 
 ## Entry points
 
