@@ -31,8 +31,14 @@ data/
 # IDE and OS files
 .DS_Store
 .vscode/
+.claude/
 *.swp
 *.swo
+
+# Local archive directory: rollover backups produced by --archive-prior flags;
+# not under version control (each archive snapshot is megabytes of pre-refactor
+# state that's already represented by the corresponding commit)
+results/archive/
 
 # Project-specific generated files
 quality_history.json
