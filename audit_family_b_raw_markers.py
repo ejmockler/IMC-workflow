@@ -40,38 +40,74 @@ from src.utils.paths import get_paths
 REPO_ROOT = Path(__file__).resolve().parent
 SCALE_UM = 10.0
 
-# Raw-marker analogs of the sigmoid lineage columns. These columns are
-# already present on the merged annotation DataFrame returned by
-# ``load_annotations_with_markers`` because the canonical superpixel
-# dataframe carries the arcsinh markers, which we stack here into
-# lineage-level composites.
-RAW_LINEAGE_DEFINITIONS = {
-    'lineage_immune': ['CD45'],
-    'lineage_endothelial': ['CD31', 'CD34'],
-    'lineage_stromal': ['CD140a'],
-}
 
+def load_lineage_definitions_from_config(config: 'Config') -> Dict[str, Dict[str, object]]:
+    """Pull raw-marker lineage definitions from config so the panel-portability
+    promise of Phase 5.2 is concrete: a different cohort with a different
+    panel updates `config.cell_type_annotation.membership_axes.lineages` and
+    the raw-marker basis re-runs unchanged.
 
-def _build_raw_lineage_columns(annotations: pd.DataFrame) -> pd.DataFrame:
-    """Replace the sigmoid lineage_* columns with raw arcsinh composites.
-
-    Creates a copy so the primary sigmoid scoring remains intact.
-    Endpoint tables emit the same schema — only the values differ.
+    Returns a dict {lineage_name: {'markers': [...], 'aggregation': 'max'|'mean'}}.
+    Raises if the config is missing the section. Reads from `config.raw`
+    because `Config` doesn't expose `cell_type_annotation` as a typed
+    attribute.
     """
-    out = annotations.copy()
-    for col, markers in RAW_LINEAGE_DEFINITIONS.items():
-        missing = [m for m in markers if m not in out.columns]
-        if missing:
+    annotation_cfg = config.raw.get('cell_type_annotation', {}) if hasattr(config, 'raw') else {}
+    membership = annotation_cfg.get('membership_axes', {})
+    lineages = membership.get('lineages')
+    if not lineages:
+        raise ValueError(
+            'config.cell_type_annotation.membership_axes.lineages is missing; '
+            'Phase 5.2 raw-marker basis cannot be built without it.'
+        )
+    out: Dict[str, Dict[str, object]] = {}
+    for name, spec in lineages.items():
+        if name.startswith('_'):  # skip _comment keys
+            continue
+        markers = spec.get('markers')
+        agg = spec.get('aggregation', 'mean')
+        if not markers:
             raise ValueError(
-                f'audit_family_b_raw_markers: raw markers {missing} missing '
-                f'from annotations; cannot build {col}'
+                f'lineage {name!r} in config has no markers; cannot build raw composite'
             )
-        vals = out[markers].values
-        out[col] = vals.mean(axis=1) if vals.shape[1] > 1 else vals[:, 0]
+        if agg not in ('max', 'mean'):
+            raise ValueError(
+                f'lineage {name!r} aggregation={agg!r} not supported '
+                '(must be max or mean)'
+            )
+        out[f'lineage_{name}'] = {'markers': list(markers), 'aggregation': agg}
     return out
 
 
-def _run_family_b_on(
+def build_raw_lineage_columns(
+    annotations: pd.DataFrame,
+    lineage_definitions: Dict[str, Dict[str, object]],
+) -> pd.DataFrame:
+    """Replace sigmoid lineage_* columns with raw arcsinh composites built
+    from config-defined markers + aggregation per lineage.
+
+    Creates a copy so the primary sigmoid scoring remains intact. Endpoint
+    tables emit the same schema — only the values differ.
+    """
+    out = annotations.copy()
+    for col, spec in lineage_definitions.items():
+        markers = spec['markers']
+        agg = spec['aggregation']
+        missing = [m for m in markers if m not in out.columns]
+        if missing:
+            raise ValueError(
+                f'raw markers {missing} missing from annotations; '
+                f'cannot build {col}'
+            )
+        vals = out[markers].values
+        if agg == 'max':
+            out[col] = vals.max(axis=1)
+        else:  # mean
+            out[col] = vals.mean(axis=1)
+    return out
+
+
+def run_family_b_on_basis(
     annotations: pd.DataFrame, min_support: int,
 ) -> pd.DataFrame:
     """Compute Family B endpoints on whatever ``lineage_*`` columns are in
@@ -106,6 +142,97 @@ def _run_family_b_on(
         extra_index_cols=['composite_label'],
     )
     return endpoints
+
+
+HEADLINE_GATE_G = 0.5
+
+
+def compute_basis_divergence(
+    sigmoid_endpoints: pd.DataFrame,
+    raw_endpoints: pd.DataFrame,
+) -> pd.DataFrame:
+    """Phase 5.2 amendment: classify every (endpoint × composite_label ×
+    contrast) by headline-overlap status across the two lineage-source bases.
+
+    `headline_overlap_status` ∈ {both_above, sigmoid_only, raw_only, both_below}.
+    Headlines clear |g_shrunk_neutral| > 0.5 AND not g_pathological AND
+    not support_sensitive.
+    """
+    keys = ['endpoint', 'composite_label', 'contrast']
+    cols_to_pull = [
+        'hedges_g', 'g_shrunk_neutral', 'g_pathological', 'support_sensitive',
+    ]
+    sig = sigmoid_endpoints[keys + [c for c in cols_to_pull if c in sigmoid_endpoints.columns]].copy()
+    raw = raw_endpoints[keys + [c for c in cols_to_pull if c in raw_endpoints.columns]].copy()
+    merged = sig.merge(
+        raw, on=keys, suffixes=('_sigmoid', '_raw'), how='outer', indicator=True,
+    )
+
+    def _is_headline_on(suffix: str):
+        def _check(row: pd.Series) -> bool:
+            g = row.get(f'g_shrunk_neutral{suffix}')
+            if pd.isna(g):
+                return False
+            if abs(g) <= HEADLINE_GATE_G:
+                return False
+            if bool(row.get(f'g_pathological{suffix}', False)):
+                return False
+            # support_sensitive may not be present on the raw-marker basis
+            # (it is only computed in the sigmoid path's sweep); treat
+            # missing as False.
+            if bool(row.get(f'support_sensitive{suffix}', False)):
+                return False
+            return True
+        return _check
+
+    merged['sigmoid_above'] = merged.apply(_is_headline_on('_sigmoid'), axis=1)
+    merged['raw_above'] = merged.apply(_is_headline_on('_raw'), axis=1)
+
+    def _status(row: pd.Series) -> str:
+        sa, ra = bool(row['sigmoid_above']), bool(row['raw_above'])
+        if sa and ra:
+            return 'both_above'
+        if sa:
+            return 'sigmoid_only'
+        if ra:
+            return 'raw_only'
+        return 'both_below'
+
+    merged['headline_overlap_status'] = merged.apply(_status, axis=1)
+
+    # Sign-agreement on the shrunk g values where both bases finite
+    def _sign_agree(row: pd.Series) -> bool:
+        gs = row.get('g_shrunk_neutral_sigmoid')
+        gr = row.get('g_shrunk_neutral_raw')
+        if pd.isna(gs) or pd.isna(gr) or gs == 0 or gr == 0:
+            return True  # vacuously; conflict only meaningful at non-zero magnitude
+        return (gs > 0) == (gr > 0)
+
+    merged['sign_agree'] = merged.apply(_sign_agree, axis=1)
+    return merged.drop(columns=['_merge'])
+
+
+def compute_basis_conflict(divergence: pd.DataFrame) -> pd.DataFrame:
+    """Phase 5.2 amendment: opposite-sign-same-endpoint subset. If both
+    bases clear |g_neut|>0.5 but signs disagree, neither basis enters the
+    headline set; the row is moved to this conflict table for inspection."""
+    if divergence.empty:
+        return divergence
+    mask = (
+        divergence['headline_overlap_status'].eq('both_above')
+        & ~divergence['sign_agree']
+    )
+    return divergence[mask].copy()
+
+
+# Backward-compat aliases for older callers
+_build_raw_lineage_columns = build_raw_lineage_columns  # noqa: E305
+_run_family_b_on = run_family_b_on_basis  # noqa: E305
+RAW_LINEAGE_DEFINITIONS = {
+    'lineage_immune': ['CD45'],
+    'lineage_endothelial': ['CD31', 'CD34'],
+    'lineage_stromal': ['CD140a'],
+}
 
 
 def main() -> int:
@@ -174,10 +301,20 @@ def main() -> int:
         out_dir / 'family_b_raw_marker_comparison.csv', index=False,
     )
 
+    # Phase 5.2 amendment: divergence + conflict tables
+    divergence = compute_basis_divergence(primary, raw)
+    divergence.to_csv(out_dir / 'family_b_basis_divergence.csv', index=False)
+    conflict = compute_basis_conflict(divergence)
+    conflict.to_csv(out_dir / 'family_b_basis_conflict.csv', index=False)
+
     print(f'\n✓ Wrote {out_dir}/family_b_raw_marker_audit.parquet '
           f'({len(combined)} rows, primary + raw)')
     print(f'✓ Wrote {out_dir}/family_b_raw_marker_comparison.csv '
           f'({len(both)} comparable endpoints)')
+    print(f'✓ Wrote {out_dir}/family_b_basis_divergence.csv '
+          f'({len(divergence)} rows, headline-overlap status per endpoint)')
+    print(f'✓ Wrote {out_dir}/family_b_basis_conflict.csv '
+          f'({len(conflict)} opposite-sign-same-endpoint rows)')
 
     n_sr = int(sign_reverse.sum())
     n_md = int(magnitude_disagree.sum())

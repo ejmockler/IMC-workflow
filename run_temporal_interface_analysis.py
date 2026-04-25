@@ -513,6 +513,33 @@ def run_family_b(annotations: pd.DataFrame) -> Dict[str, pd.DataFrame]:
             _support_sensitive, axis=1,
         )
     out['family_b_endpoints'] = primary_endpoints
+
+    # Phase 5.2 amendment: co-primary raw-marker basis. Build raw-arcsinh
+    # composites for each lineage from the config-defined channel-set, run
+    # the same neighbor-minus-self pipeline, stamp the rows so they ride
+    # alongside sigmoid in endpoint_summary.csv. Emits the basis-divergence
+    # CSV (per-endpoint headline-overlap status) and basis-conflict CSV
+    # (opposite-sign-same-endpoint subset). Audit script remains runnable
+    # standalone; this duplicates the work so a normal pipeline run produces
+    # the artifacts without the user having to remember the audit script.
+    sys.path.insert(0, str(REPO_ROOT))
+    from audit_family_b_raw_markers import (  # noqa: E402
+        load_lineage_definitions_from_config,
+        build_raw_lineage_columns,
+        run_family_b_on_basis,
+    )
+    from src.config import Config  # noqa: E402
+
+    config = Config(str(CONFIG_PATH))
+    lineage_defs = load_lineage_definitions_from_config(config)
+    raw_annotations = build_raw_lineage_columns(annotations, lineage_defs)
+    raw_endpoints = run_family_b_on_basis(
+        raw_annotations, min_support=tia.DEFAULT_MIN_SUPPORT,
+    )
+    if not raw_endpoints.empty:
+        raw_endpoints = raw_endpoints.copy()
+        raw_endpoints['normalization_mode'] = 'sham_reference_raw_marker_per_mouse'
+    out['family_b_endpoints_raw_marker'] = raw_endpoints
     return out
 
 
@@ -687,6 +714,7 @@ def main(scale_um: float = 10.0) -> None:
     family_endpoints = [
         fa.get('family_a_endpoints'),
         fb.get('family_b_endpoints'),
+        fb.get('family_b_endpoints_raw_marker'),  # Phase 5.2: co-primary basis
         fc.get('family_c_endpoints'),
     ]
     sensitivity_outputs = {
@@ -725,6 +753,43 @@ def main(scale_um: float = 10.0) -> None:
         print(f"  Pathological-flag rows: {flagged} (NaN shrunk values)")
         print(f"  Insufficient-support rows: {insufficient} (NaN derived stats)")
         print(f"  Threshold-sensitive rows (sign reversal in sweep): {thr_sens}")
+
+    # Phase 5.2 amendment artifacts: family_b_basis_divergence + conflict.
+    # Computed against the two Family B basis tables we already produced; the
+    # standalone audit script duplicates this for users who only run that
+    # script, but the orchestrator emits them on every pipeline run so the
+    # rule is "happens automatically" rather than "remember to invoke."
+    sigmoid_eps = fb.get('family_b_endpoints', pd.DataFrame())
+    raw_eps = fb.get('family_b_endpoints_raw_marker', pd.DataFrame())
+    if not sigmoid_eps.empty and not raw_eps.empty:
+        sys.path.insert(0, str(REPO_ROOT))
+        from audit_family_b_raw_markers import (  # noqa: E402
+            compute_basis_divergence, compute_basis_conflict,
+        )
+        divergence = compute_basis_divergence(sigmoid_eps, raw_eps)
+        divergence.to_csv(OUTPUT_DIR / 'family_b_basis_divergence.csv', index=False)
+        conflict = compute_basis_conflict(divergence)
+        conflict.to_csv(OUTPUT_DIR / 'family_b_basis_conflict.csv', index=False)
+        # Headline-overlap counts for terminal output
+        if 'headline_overlap_status' in divergence.columns:
+            counts = divergence['headline_overlap_status'].value_counts().to_dict()
+            print(f"  Family B basis-divergence: {counts} ({len(conflict)} conflict rows)")
+
+    # Combined Family B parquet across both bases (mirrors what the audit
+    # script produces; useful for downstream consumers that prefer parquet
+    # over CSV).
+    if not sigmoid_eps.empty or not raw_eps.empty:
+        sigmoid_tagged = sigmoid_eps.copy()
+        raw_tagged = raw_eps.copy()
+        if not sigmoid_tagged.empty:
+            sigmoid_tagged['lineage_source'] = 'sham_reference_v2_continuous'
+        if not raw_tagged.empty:
+            raw_tagged['lineage_source'] = 'raw_marker_arcsinh'
+        combined = pd.concat(
+            [df for df in (sigmoid_tagged, raw_tagged) if not df.empty],
+            ignore_index=True,
+        )
+        combined.to_parquet(OUTPUT_DIR / 'family_b_raw_marker_audit.parquet')
 
     print(f"\n✓ Outputs at {OUTPUT_DIR}")
 

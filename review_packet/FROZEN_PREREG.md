@@ -10,7 +10,7 @@ Snapshot for external review. Every file referenced is pinned by SHA-256 + git c
 | Branch | `main` |
 | `config.json` SHA-256 | `85c314245576f72b2f24e03240bc077e7608619d3627fb88de4d0101e6548170` |
 | `viz.json` SHA-256 | `422a14a03eff4cd7934ce1ec35138e1891d293b65e167dc8d4db498bfb6c0bd2` |
-| `analysis_plans/temporal_interfaces_plan.md` SHA-256 | `a446ab541c9e58b4ea2eff1fe7541babf90bf9412042f7cef7998e1af65c9d3d` (Phase 5 amendments + 1.5c correction) |
+| `analysis_plans/temporal_interfaces_plan.md` SHA-256 | `721684d488442de60b6f04e7117ebdf197666a970c6bbb772f9a77a97b0d2f47` (Phase 5 + 1.5c correction + Phase 6 implementation closure) |
 | `results/biological_analysis/sham_reference_10.0um.json` SHA-256 | `35c3faed6d05d12597cbf545c5a9b4acd5557b8d026abc5ade119c1be824800b` |
 | `audit_tissue_mask_density.py` SHA-256 | (computed at commit time, see `verify_frozen_prereg.py`) |
 | `audit_family_b_raw_markers.py` SHA-256 | (computed at commit time, see `verify_frozen_prereg.py`) |
@@ -76,8 +76,11 @@ This rule is applied unchanged for any follow-up cohort; any relaxation in a fut
 - Variable-extent re-acquisition cohorts (whole-section IMC, panoramic montage).
 - Spike-in absolute-quantification controls in a redesigned panel.
 
-**Co-primary Family B implementation** (Phase 5.2 amendment, partial implementation):
-- Audit script (`audit_family_b_raw_markers.py`) emits both bases and prints both headline counts. `endpoint_summary.csv` per-row dual-basis stamping and `family_b_basis_divergence.csv` are deferred to a future engineering cycle; until then the basis comparison is reachable via the existing `family_b_raw_marker_comparison.csv` and the audit script's stdout.
+**Co-primary Family B implementation (Phase 6 closure, 2026-04-24)**:
+- Fully implemented in `run_temporal_interface_analysis.py`. Every pipeline run computes the raw-marker basis alongside the sigmoid basis using config-defined lineage definitions (panel-portable via `config.cell_type_annotation.membership_axes.lineages`).
+- `endpoint_summary.csv` carries both bases as Family B rows (270 sigmoid + 270 raw); distinguished by `normalization_mode` ∈ {`sham_reference_v2_continuous`, `sham_reference_raw_marker_per_mouse`}. Total endpoint rows: **618** (was 348 pre-Phase 6).
+- New always-emitted artifacts: `family_b_basis_divergence.csv` (per-endpoint headline-overlap status: `both_above` / `sigmoid_only` / `raw_only` / `both_below`); `family_b_basis_conflict.csv` (opposite-sign-same-endpoint subset; empty in current pilot); `family_b_raw_marker_audit.parquet` (combined basis table with `lineage_source` column).
+- Pilot Sham→D7 basis-divergence breakdown: **14 both_above** (conservative-intersection headline set), 7 sigmoid_only, 4 raw_only, 20 both_below, 0 conflict.
 
 ## Reviewer entry points
 
