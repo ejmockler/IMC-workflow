@@ -1,20 +1,30 @@
 {
-  "run_datetime_utc": "2026-04-25T04:33:16.129169Z",
-  "git_commit": "8147ae4a8b776599cac28da20a2b3e04b80bfd65",
+  "run_datetime_utc": "2026-04-28T08:06:35.601277Z",
+  "git_commit": "3ca121036d815cef8d9a4c6e8fc5d8fb2651ab60",
   "git_dirty": true,
-  "git_untracked_critical_files": [],
+  "git_untracked_critical_files": [
+    "analysis_plans/phase_7_celltype_endpoint_spec.md"
+  ],
   "git_modified_critical_files": [
-    "nalysis_plans/temporal_interfaces_plan.md",
+    "results/biological_analysis/temporal_interfaces/compartment_activation_temporal.parquet",
+    "results/biological_analysis/temporal_interfaces/continuous_neighborhood_missingness.parquet",
+    "results/biological_analysis/temporal_interfaces/continuous_neighborhood_temporal.parquet",
+    "results/biological_analysis/temporal_interfaces/endpoint_summary.csv",
+    "results/biological_analysis/temporal_interfaces/family_b_basis_divergence.csv",
+    "results/biological_analysis/temporal_interfaces/family_b_raw_marker_audit.parquet",
+    "results/biological_analysis/temporal_interfaces/family_b_sensitivity_endpoints.parquet",
+    "results/biological_analysis/temporal_interfaces/family_c_sensitivity_endpoints.parquet",
     "results/biological_analysis/temporal_interfaces/run_provenance.json",
-    "run_temporal_interface_analysis.py"
+    "run_temporal_interface_analysis.py",
+    "src/analysis/temporal_interface_analysis.py"
   ],
   "analysis_file_sha256": {
-    "src/analysis/temporal_interface_analysis.py": "ba50d5f8a1844385eb31ab480aad8de821817273f42de7715a74278a7507fb56",
-    "run_temporal_interface_analysis.py": "99519cb8e333f6e6b14a2b79732bebf540cd39b951bd787bb7b5be5c54152990",
+    "src/analysis/temporal_interface_analysis.py": "dac4beb5e953bb9208b59adbb7c6b4a2766ea8ddef94238d861c4cd8f0703f67",
+    "run_temporal_interface_analysis.py": "033cf71385d9571acdfef01e473d2f9829c3fcffd4a8d5933458b955c8044176",
     "analysis_plans/temporal_interfaces_plan.md": "721684d488442de60b6f04e7117ebdf197666a970c6bbb772f9a77a97b0d2f47",
     "analysis_plans/deprecation_manifest.md": "f3bcbec5181a265fb3b6508df77f52f421743a1190eaf99934f3edba8c7bb401"
   },
-  "config_hash_sha256": "85c314245576f72b2f24e03240bc077e7608619d3627fb88de4d0101e6548170",
+  "config_hash_sha256": "adf88d48897988f21fde0910a5a0d927e7fe9e8b56f07dbbe9b42fda32829d61",
   "python_version": "3.12.10",
   "platform": "macOS-26.4-arm64-arm-64bit",
   "package_versions": {
@@ -44,7 +54,7 @@
     ],
     "continuous_sham_reference": {
       "artifact_path": "results/biological_analysis/sham_reference_10.0um.json",
-      "artifact_sha256": "35c3faed6d05d12597cbf545c5a9b4acd5557b8d026abc5ade119c1be824800b",
+      "artifact_sha256": "6f05d449f60af735e3e5c8442aa206f633eb480aa288b33de6cbbdb2699383e7",
       "percentile": 60.0,
       "aggregation": "per_mouse",
       "n_sham_mice": 2,
