@@ -23,7 +23,7 @@ src/
 │   ├── analysis_manifest.py     # Scientific objectives & manifest
 │   ├── cell_type_annotation.py  # Boolean gating + continuous membership annotation (consumes sham_reference)
 │   ├── sham_reference.py        # Phase 1: shared Sham-reference threshold + scale primitive (per-mouse aggregation default)
-│   ├── temporal_interface_analysis.py # Phase 2: Family A/B/C endpoints, Bayesian shrinkage, join counts
+│   ├── temporal_interface_analysis.py # Phase 2 + Phase 7: Family A/B/C v1+v2 endpoints, Bayesian shrinkage, join counts, discrete-celltype CLR (16-cat with unassigned), per-celltype kNN, neutrophil v2 compartment activation
 │   ├── clustering_comparison.py # Graph vs spatial clustering comparison
 │   ├── graph_clustering.py      # Graph-based clustering baseline
 │   ├── grid_segmentation.py     # Grid-based segmentation alternative

@@ -92,7 +92,7 @@ results/
 │   ├── cell_type_annotations/      # 24 parquet + metadata (12-col schema)
 │   ├── differential_abundance/     # Phase 1: temporal + regional CSVs + temporal_top_ranked_by_effect.csv (Bayesian-shrunk rank companion, Phase 2)
 │   ├── spatial_neighborhoods/      # Phase 1: cell-type-pair enrichment CSVs
-│   ├── temporal_interfaces/        # Phase 2: 19 parquets + endpoint_summary.csv (348 rows × 37 cols) + run_provenance.json + Phase 1.5 sensitivity outputs (continuous_sham_pct_sweep.csv + family_b_raw_marker_audit.parquet + family_b_raw_marker_comparison.csv)
+│   ├── temporal_interfaces/        # Phase 2 + Phase 7: 22 parquets + endpoint_summary.csv (1134 rows × 46 cols) + run_provenance.json + Phase 1.5 sensitivity outputs (continuous_sham_pct_sweep.csv + family_b_raw_marker_audit.parquet + family_b_raw_marker_comparison.csv) + Phase 7 v2 outputs (celltype_fractions.parquet + celltype_clr.parquet + celltype_min_prevalence_sweep.parquet)
 │   ├── tissue_area_audit.csv       # Phase 5.1: empirical-closure audit for area-based density (CV / Pearson gates + closure scope)
 │   ├── sham_reference_10.0um.json  # Phase 1: pinned Sham-reference threshold + scale per marker (consumed by batch_annotate_all_rois.py)
 │   ├── indra_panel_context.json

@@ -6,7 +6,7 @@
 
 **Scope (v2.1)**: This document covers two families of outputs and two configuration files.
 - **Phase 1 per-ROI pipeline** (§1-§5): `results/roi_results/roi_*_results.json.gz`.
-- **Phase 2 biological analysis** (§6-§7): `results/biological_analysis/cell_type_annotations/` (12-column parquet per ROI) and `results/biological_analysis/temporal_interfaces/` (19 parquets + `endpoint_summary.csv` + Phase 1.5 sensitivity CSVs + `run_provenance.json`).
+- **Phase 2 + Phase 7 biological analysis** (§6-§7): `results/biological_analysis/cell_type_annotations/` (13-column parquet per ROI; `composite_label` values now `c:`-prefixed) and `results/biological_analysis/temporal_interfaces/` (22 parquets + `endpoint_summary.csv` 1134×46 + Phase 1.5 sensitivity CSVs + `run_provenance.json`).
 - **Configuration** (§8): `config.json` (analysis knobs) + `viz.json` (display knobs).
 
 ---
@@ -211,7 +211,18 @@ ROI-specific metadata extracted from filename or config:
 
 ### `endpoint_summary.csv` — primary table
 
-348 rows × 37 columns. Contents: Family A (48) + Family B (270) + Family C (30) endpoint rows, one per (family × endpoint × contrast). Row growth from the prior 330 reflects Phase 1.5a additions (`support_sensitive` + `clr_none_sensitivity`-bearing rows) and Phase 1.5c per-Family-A-row corroboration columns.
+**1134 rows × 46 columns** (post-Phase-7, 2026-04-28). Contents: Family A v1 (48) + Family A v2 (78) + Family B v1 (540, dual-basis) + Family B v2 (432, dual-basis) + Family C (36, includes neutrophil v2). Phase 7 added 8 new schema columns and 516 new rows over Phase 6 baseline (618 rows × 37 columns).
+
+**Phase 7 schema additions**:
+| Column | Type | Description |
+|---|---|---|
+| `endpoint_axis` | str | Family A only: `composite_label_8cat` (v1) \| `discrete_celltype_16cat` (v2). NaN for Family B/C. |
+| `stratifier_basis` | str | Family B only: `composite_label` (v1) \| `discrete_celltype` (v2). NaN for Family A/C. |
+| `min_prevalence_sweep_value` | float | Family A_v2 only: 0.01 default; sensitivity sweep at {0.005, 0.01, 0.02}. NaN for other rows. |
+| `headline_rule_version` | str | Family A only: `v1_dual_normalization_intersection` \| `v2_pathology_only`. Tags which rule a flagged row passed. NaN for Family B/C. |
+| `headline_demoted_reason` | str | Closed enum {null, `cross_axis_co_headline_forbidden`, `family_b_basis_conflict`}. Null = candidate headline; non-null = demoted with the recorded reason. |
+| `is_headline` | bool | Canonical headline-status column on every row, computed as `(passes_family_specific_rule) AND (headline_demoted_reason is null)`. Downstream consumers query this. |
+| `unassigned_rate_mouse_mean_1`, `unassigned_rate_mouse_mean_2` | float | Family A only: per-mouse-mean unassigned rate in each contrast side. Provenance for the gmean-drag from `unassigned` IN the simplex. NaN for other rows. |
 
 **Key columns:**
 

@@ -81,7 +81,7 @@ analysis_plans/temporal_interfaces_plan.md   # pre-registration + amendment log 
 - Pathology gate (`g_pathological = |g|>3 AND pooled_std<0.01`) quarantines variance-collapse artifacts
 - Per-row sensitivity flags: `support_sensitive` (Family B), `clr_none_sensitivity` (Family A), `normalization_sign_reverse` + `normalization_magnitude_disagree` (Family A)
 - Join-count statistics for categorical spatial coherence; continuous Moran's I for lineage scores
-- Consumes per-ROI annotation parquets; emits **19 parquets** + `endpoint_summary.csv` (348 rows × 37 cols) + `continuous_sham_pct_sweep.csv` + `family_b_raw_marker_comparison.csv` + `run_provenance.json`
+- Consumes per-ROI annotation parquets; emits **22 parquets** + `endpoint_summary.csv` (**1134 rows × 46 cols** post-Phase-7) + `continuous_sham_pct_sweep.csv` + `family_b_raw_marker_comparison.csv` + `run_provenance.json`
 - No FDR at n=2 by construction; family-arbitrage audit by `|g_shrunk_neutral|` rank in `temporal_top_ranked_by_effect.csv`
 
 ### Phase 1.5 / 5 sensitivity audits (root-level scripts)
