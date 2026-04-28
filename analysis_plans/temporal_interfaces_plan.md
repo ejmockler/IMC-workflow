@@ -303,3 +303,48 @@ Incorporated 11 critical/high findings from multi-critic Gate 0 review:
 - M3: Scale rationale stated explicitly (10 µm a priori, 20/40 archived unanalyzed)
 - M4: Test ROI exclusion criterion stated explicitly with pre-analysis timing claim
 - Reproducibility freeze: git/config hash + provenance JSON specified
+
+### 2026-04-28 (Phase 7 — discrete cell-type-resolved endpoint extensions; locked after three brutalist rounds)
+
+**Spec**: `analysis_plans/phase_7_celltype_endpoint_spec.md` (390 lines, locked under "defer nothing" directive). Locked dispositions in §1.1; full process history (rounds 1+2+3 findings + dropped designs) in Appendix A.
+
+**Endpoint additions**:
+- **Family A_v2** — discrete cell-type CLR over 16 categories (15 typed from `config.cell_type_annotation.cell_types` + literal `unassigned`). `unassigned` IN the simplex as 16th coordinate; geometric-mean drag accepted as feature (round-2 found dropping `unassigned` changed the estimand). Single-path (no v2-internal corroborator); rule `|g| > 0.5 AND not g_pathological`. `min_prevalence` sweep at {0.005, 0.01, 0.02} replaces the round-1-dropped confidence sweep. Tagged `endpoint_axis = 'discrete_celltype_16cat'` and `headline_rule_version = 'v2_pathology_only'`.
+- **Family B_v2** — per-discrete-cell-type neighbor-minus-self. Same kNN gradient operator as v1; stratifier_col swapped from `composite_label` to `cell_type`. Dual-basis (sigmoid + raw-marker per Phase 6) under existing `normalization_mode` column. Tagged `stratifier_basis = 'discrete_celltype'`.
+- **Family C v2** — single-row neutrophil extension. New per-ROI compute path (`cell_type == 'neutrophil'` is categorical, not threshold-based); per-mouse aggregation reuses Family C v1 contract. The 14/15 other discrete cell types pin CD44 status by gate construction (rate forced 0 or 1); `neutrophil` is the only non-tautological measurement. Same shrinkage + headline rule as Family C v1.
+
+**Schema migration (single-commit)**:
+- `c:` prefix on every `composite_label` value (e.g., `c:endothelial`, `c:activated_endothelial_cd44`, `c:mixed`, `c:unassigned`); `cell_type` column unchanged. Resolves the value-space collision that existed pre-Phase-7 (same string `activated_endothelial_cd44` could mean different entities under the two columns). No `composite_label_v1` deprecation column (round-1 dropped: no release process to amortize against).
+- 8 new endpoint_summary columns: `endpoint_axis`, `stratifier_basis`, `min_prevalence_sweep_value`, `headline_rule_version`, `headline_demoted_reason`, `is_headline`, `unassigned_rate_mouse_mean_1`, `unassigned_rate_mouse_mean_2`.
+- v1 statistical content bit-stable through the rename; only `composite_label` value strings change.
+
+**v1/v2 cross-rule (runtime architecture, not prose)**:
+- `headline_demoted_reason = 'cross_axis_co_headline_forbidden'` is set on a v2 row when a corresponding v1 row passes the v1 rule on the same biological event. Join-key table maps v2 cell-type values to v1 INTERFACE_CATEGORIES analogs (`endothelial`/`activated_endothelial_*` → `endothelial`; `immune_cells`/`activated_immune` → `immune`; `fibroblast`/`activated_fibroblast_*` → `stromal`; m2_macrophage/myeloid/neutrophil/activated_m2_*/activated_myeloid_*/unassigned have no v1 analog). Effective reach acknowledged as small (~6 endpoints; round-3 F1).
+- `is_headline` boolean is the canonical headline-status column on every row, computed AFTER demotion. Downstream consumers query `is_headline == True`.
+
+**MH-1 permutation null (revised post-round-3 F5)**:
+- Original "95th percentile of headline-count == 0 across 1000 shuffles" was mathematically untenable at n=2. Verified empirically: P(|g|>0.5 | H0) ≈ 0.62 → ~800 expected false headlines per shuffle for ~1296 endpoints. Revised criterion: observed (real-label) headline count must exceed `median(null_distribution) + 2 * MAD(null_distribution)` under a null-mode evaluator (skip bootstrap + spatial perms; just compute Hedges' g per shuffle).
+- Test scaffolded at `tests/test_phase7_permutation_null.py`; smoke runs every CI; full 1000-shuffle gate runs under `PHASE7_RUN_FULL_NULL=1` env.
+
+**Prerequisites merged ahead of Phase 7**:
+- **P1 (MH-2)**: priority order moved from `annotate_cell_types()` dict-iteration order into explicit `config.cell_type_annotation.priority_order` (15 entries; schema validator enforces exact match with cell_types keys). `config_sha256` rotated `85c31424…` → `adf88d48…`. Sham-reference regenerated with new SHA `6f05d449…`.
+- **P2**: `apply_min_prevalence_filter` parameterized to accept arbitrary category set (was hard-coded to `INTERFACE_CATEGORIES`). Family A v1 row counts and effect-size values bit-identical post-refactor.
+- **P3 (MH-3)**: resolved `DISCRETE_CELL_TYPES` SHA `6a2ba83c…` pinned in FROZEN_PREREG.md as a 5th gating anchor; `verify_frozen_prereg.py` extended with `RESOLVED_DISCRETE_CELL_TYPES_SENTINEL` mechanism so config-vocabulary drift is caught even when `config.json` byte-level SHA is updated in-step.
+
+**Cohort run (2026-04-28)**:
+- `endpoint_summary.csv`: **1134 rows × 46 columns** (was 618×37 pre-Phase-7). Family A: 48 v1 + 78 v2 = 126; Family B: 540 v1 + 432 v2 = 972; Family C: 36.
+- `is_headline=True`: 333 rows. Cross-rule demotions: 54 v2 rows.
+- Annotation parquets regenerated with `c:` prefix; 24/24 ROIs.
+- Pipeline outputs gain 3 new parquets: `celltype_fractions.parquet`, `celltype_clr.parquet`, `celltype_min_prevalence_sweep.parquet`. Total parquets in `temporal_interfaces/`: 22 (was 19).
+
+**Forbidden language additions (Phase 7-specific, on top of pre-Phase-5 list)**:
+- "Cross-axis co-headline" — the cross-rule prevents this by demotion; a flagged co-headline indicates a missed demotion bug, not a cross-cohort finding.
+- "Reference category" / "ALR" framing for Family A v2 — the round-1 ALR/CLR confusion was patched; revised CLR has no reference. Use "no reference; geometric-mean denominator" if the reader asks.
+
+**Dropped designs (machine-checkable invariants in `tests/test_phase7_dropped_designs.py`)**:
+- `composite_label_v1` deprecation column (no release process to amortize against; round 1)
+- ALR-style CLR with chosen reference category (math error confused with CLR; round 1)
+- Confidence sweep `{0.5, 0.7, 0.9}` (empirically meaningless: actual values are `{0.0, 0.333, 0.5, 1.0}`; round 1)
+- Raw-marker corroborating path for Family A_v2 (`classify_celltype_per_superpixel_global_markers`; would not be corroboration because it shares the entire taxonomy with the primary path; round 1)
+
+**Phase 7 closes amendment cycle for the kidney pilot.** Amendment #7+ should be gated on a second cohort or external validation, not on internal iteration (round-3 §7 residual risk #6).

@@ -140,8 +140,23 @@
 
 ## What is explicitly NOT deprecated
 
-- The discrete boolean gating engine (`cell_type_annotation.py`) — still used; produces inputs for the new module.
-- The continuous membership engine — still used; produces inputs.
+- The discrete boolean gating engine (`cell_type_annotation.py`) — still used; produces inputs for the new module. Phase 7 P1 promoted the implicit dict-iteration priority order to an explicit `config.cell_type_annotation.priority_order` list.
+- The continuous membership engine — still used; produces inputs. Phase 7 P1 (`_derive_composite_labels`) now emits a `c:` prefix on every value to disambiguate from discrete `cell_type` values.
 - The existing `temporal_differential_abundance.csv` — fixed (D5) and `g_pathological` flagged but kept; the new effort adds parallel CLR-corrected interface analyses, doesn't replace the cell-type DA.
 - The Steinbock benchmark, gradient_discretization, INDRA notebooks — no defects identified.
 - The discrete neighborhood enrichment in `spatial_neighborhood_analysis.py` (the cell-type-pair mouse-level path) — operates correctly at mouse level; only the continuous self-stratified path (D4) is removed.
+
+## Phase 7 deprecations (2026-04-28; locked after three brutalist rounds)
+
+Phase 7 introduced four families of dropped designs. Each is encoded as a machine-checkable invariant in `tests/test_phase7_dropped_designs.py` so it cannot silently return.
+
+| ID | Dropped | Reason | Round | Guard test |
+|----|---------|--------|-------|------------|
+| D17 | `composite_label_v1` deprecation column | No release process to amortize against; single-commit migration with notebook regen + runtime assertion is the operationally honest replacement | Round 1 (Codex High; Claude Architect) | `test_no_composite_label_v1_column_in_endpoint_summary` + `test_no_composite_label_v1_in_annotation_parquets` |
+| D18 | ALR-style CLR with chosen reference category | Math error confused with CLR; revised CLR has no reference (geometric-mean denominator, all N coordinates) | Round 1 (Codex Critical #1) | `test_no_clr_reference_category_column` |
+| D19 | Confidence sweep `{0.5, 0.7, 0.9}` for Family A_v2 | Empirically meaningless — actual confidence values are exactly `{0.0, 0.333, 0.5, 1.0}` (per `cell_type_annotation.py::annotate_cell_types` confidence = 1/n_assignments); floors of 0.7 and 0.9 partition identically | Round 1 (Codex Critical #5; verified 58,137 superpixels) | `test_no_confidence_floor_sweep_column_in_endpoint_summary` |
+| D20 | Raw-marker corroborating path for Family A_v2 (`classify_celltype_per_superpixel_global_markers`) | Would not be corroboration: shares the entire taxonomy (panel + 15 cell types + priority resolution + lineage groupings + activation suffix logic) with the primary path; only thresholds differ. The conservative-intersection rule does no real multiple-comparison work in this geometry — it filters threshold-edge cases | Round 1 (Codex Critical #1; Claude Finding B) | `test_no_raw_marker_corroborating_path_function_in_temporal_interface_module` |
+
+**Two further round-2 designs were considered and revised, not dropped**:
+- "Drop `unassigned` from CLR simplex" — round-1 patch; round-2 found this changed the estimand from "do cell-type proportions shift?" to "do typed proportions shift among assigned superpixels?". Revised: `unassigned` is the 16th coordinate; gmean-drag accepted as feature. Documented in Phase 7 spec §4.1.
+- "Never co-headlined" cross-rule as prose — round-2 found prose conventions don't bind readers. Revised: runtime demotion column `headline_demoted_reason = 'cross_axis_co_headline_forbidden'`; small structural reach (~6/1296 endpoints) acknowledged.
