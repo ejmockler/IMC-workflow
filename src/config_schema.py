@@ -512,7 +512,11 @@ class CellTypeAnnotationConfig(BaseModel):
 
     @model_validator(mode='after')
     def validate_only_known_or_comment_extras(self):
-        known = {'enabled', 'method', 'positivity_threshold', 'cell_types', 'membership_axes'}
+        known = {
+            'enabled', 'method', 'positivity_threshold',
+            'cell_types', 'membership_axes',
+            'priority_order',  # Phase 7 P1: explicit gate priority order
+        }
         extras = set(self.model_extra or {}) - known
         bad = [k for k in extras if not k.startswith('_')]
         if bad:
@@ -520,6 +524,32 @@ class CellTypeAnnotationConfig(BaseModel):
                 f"cell_type_annotation has unexpected keys: {sorted(bad)}. "
                 f"Valid: {sorted(known)}. Use '_comment' prefix for annotations."
             )
+        return self
+
+    @model_validator(mode='after')
+    def validate_priority_order_consistent(self):
+        """Phase 7 P1: if priority_order is given, every entry must match a
+        cell_types key, and every cell_types key must appear exactly once.
+        This makes the gate priority load-bearing-explicit instead of
+        load-bearing-implicit (dict insertion order)."""
+        priority = (self.model_extra or {}).get('priority_order')
+        if priority is None:
+            return self
+        if not isinstance(priority, list):
+            raise ValueError("cell_type_annotation.priority_order must be a list of cell_type names")
+        ct_keys = set(self.cell_types.keys())
+        priority_set = set(priority)
+        missing = ct_keys - priority_set
+        extra = priority_set - ct_keys
+        if missing or extra:
+            raise ValueError(
+                f"cell_type_annotation.priority_order must list every cell_type exactly once. "
+                f"Missing from priority_order: {sorted(missing)}. "
+                f"Extra in priority_order: {sorted(extra)}."
+            )
+        if len(priority) != len(priority_set):
+            dupes = [p for p in priority if priority.count(p) > 1]
+            raise ValueError(f"cell_type_annotation.priority_order has duplicate entries: {sorted(set(dupes))}")
         return self
 
     @model_validator(mode='after')

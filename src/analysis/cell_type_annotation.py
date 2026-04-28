@@ -121,7 +121,8 @@ def annotate_cell_types(
     expression_matrix: np.ndarray,
     marker_names: List[str],
     cell_type_definitions: Dict[str, Dict[str, Any]],
-    threshold_config: Dict[str, Any]
+    threshold_config: Dict[str, Any],
+    priority_order: List[str] = None,
 ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
     """
     Annotate superpixels with cell types using boolean gating strategy.
@@ -131,6 +132,10 @@ def annotate_cell_types(
         marker_names: List of marker names
         cell_type_definitions: Cell type gating definitions from config
         threshold_config: Positivity threshold configuration
+        priority_order: Phase 7 P1: explicit priority list. If None, falls back
+            to cell_type_definitions insertion order (Python 3.7+ dict ordering).
+            When provided, must contain every cell_type_definitions key exactly
+            once; the schema validator enforces this invariant on the config side.
 
     Returns:
         Tuple of:
@@ -139,6 +144,18 @@ def annotate_cell_types(
         - annotation_metadata: Dictionary with QC metrics and threshold info
     """
     n_superpixels = expression_matrix.shape[0]
+
+    # Phase 7 P1: priority order is now load-bearing-explicit.
+    if priority_order is None:
+        priority_order = list(cell_type_definitions.keys())
+    else:
+        ct_keys = set(cell_type_definitions.keys())
+        if set(priority_order) != ct_keys:
+            raise ValueError(
+                f"priority_order must contain every cell_type_definitions key. "
+                f"Missing: {sorted(ct_keys - set(priority_order))}. "
+                f"Extra: {sorted(set(priority_order) - ct_keys)}."
+            )
 
     # Compute marker positivity
     positivity_matrix, thresholds_used = compute_marker_positivity(
@@ -151,14 +168,15 @@ def annotate_cell_types(
     # Initialize outputs
     cell_type_labels = np.array(['unassigned'] * n_superpixels, dtype=object)
     confidence_scores = np.zeros(n_superpixels, dtype=float)
-    assignment_counts = {cell_type: 0 for cell_type in cell_type_definitions.keys()}
+    assignment_counts = {cell_type: 0 for cell_type in priority_order}
     assignment_counts['unassigned'] = n_superpixels
 
     # Track multi-assignments for ambiguity detection
-    assignment_matrix = np.zeros((n_superpixels, len(cell_type_definitions)), dtype=bool)
+    assignment_matrix = np.zeros((n_superpixels, len(priority_order)), dtype=bool)
 
-    # Apply each cell type gate
-    for cell_type_idx, (cell_type_name, cell_type_def) in enumerate(cell_type_definitions.items()):
+    # Apply each cell type gate (in priority order)
+    for cell_type_idx, cell_type_name in enumerate(priority_order):
+        cell_type_def = cell_type_definitions[cell_type_name]
         positive_markers = cell_type_def.get('positive_markers', [])
         negative_markers = cell_type_def.get('negative_markers', [])
 
@@ -172,8 +190,8 @@ def annotate_cell_types(
 
         assignment_matrix[:, cell_type_idx] = gate_mask
 
-    # Resolve assignments (priority: first defined cell type wins if multiple match)
-    for cell_type_idx, (cell_type_name, _) in enumerate(cell_type_definitions.items()):
+    # Resolve assignments (priority: first cell_type in priority_order wins if multiple match)
+    for cell_type_idx, cell_type_name in enumerate(priority_order):
         gate_mask = assignment_matrix[:, cell_type_idx]
 
         # Only assign if not already assigned (priority order)
@@ -475,13 +493,19 @@ def _derive_composite_labels(
     Derive discrete composite labels from continuous membership axes.
 
     Rules:
-    - 'unassigned': no lineage scores above lineage_threshold
-    - 'mixed': multiple lineages above threshold with no single dominant
+    - 'c:unassigned': no lineage scores above lineage_threshold
+    - 'c:mixed': multiple lineages above threshold with no single dominant
       (dominant = highest score >= dominance_ratio * second highest)
-    - Otherwise: lineage + subtype + activation → composite name
+    - Otherwise: 'c:' + lineage + subtype + activation → composite name
+
+    Phase 7 P1: every composite_label value carries a `c:` prefix to disambiguate
+    composite-label-column values from discrete `cell_type` values (boolean-gated;
+    no prefix). Round-1 brutalist finding: the same string `activated_endothelial_cd44`
+    used to mean different entities in the two columns; the prefix makes the
+    column-of-origin self-documenting.
     """
     n = len(subtype_labels)
-    labels = np.array(['unassigned'] * n, dtype=object)
+    labels = np.array(['c:unassigned'] * n, dtype=object)
 
     if not lineage_scores:
         return labels
@@ -498,10 +522,10 @@ def _derive_composite_labels(
     for i in range(n):
         if top_score[i] < lineage_threshold:
             # No lineage signal
-            labels[i] = 'unassigned'
+            labels[i] = 'c:unassigned'
         elif second_score[i] >= lineage_threshold and top_score[i] < dominance_ratio * second_score[i]:
             # Multiple lineages, no dominant
-            labels[i] = 'mixed'
+            labels[i] = 'c:mixed'
         else:
             # Single dominant lineage
             lineage = lineage_names[dominant_idx[i]]
@@ -519,9 +543,9 @@ def _derive_composite_labels(
                 base = lineage
 
             if active:
-                labels[i] = f"activated_{base}_{'_'.join(sorted(active))}"
+                labels[i] = f"c:activated_{base}_{'_'.join(sorted(active))}"
             else:
-                labels[i] = base
+                labels[i] = f"c:{base}"
 
     return labels
 
@@ -698,6 +722,9 @@ def annotate_roi_from_results(
     # Get cell type definitions
     cell_type_definitions = annotation_config.get('cell_types', {})
     threshold_config = annotation_config.get('positivity_threshold', {})
+    # Phase 7 P1: explicit priority order from config; falls back to dict
+    # insertion order if absent (backwards-compat with pre-Phase-7 configs).
+    priority_order = annotation_config.get('priority_order')
 
     # Perform main annotation (on arcsinh expression — percentile gating is
     # scale-invariant so this matches the legacy boolean assignments exactly).
@@ -705,7 +732,8 @@ def annotate_roi_from_results(
         expression_matrix,
         marker_names,
         cell_type_definitions,
-        threshold_config
+        threshold_config,
+        priority_order=priority_order,
     )
 
     results = {

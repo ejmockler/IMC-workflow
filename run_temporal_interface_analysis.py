@@ -230,6 +230,70 @@ def _load_continuous_sham_percentile(scale_um: float) -> float:
     return float(pct) if pct is not None else float('nan')
 
 
+def run_family_a_v2(
+    annotations: pd.DataFrame,
+    config_dict: Dict[str, object],
+) -> Dict[str, pd.DataFrame]:
+    """Phase 7 §4.1: discrete-celltype CLR (16 categories incl. unassigned).
+
+    Single-path (no v2-internal corroborator per round 3 Decision 5/H1).
+    Sweep over min_prevalence ∈ {0.005, 0.01, 0.02}; default 0.01. Headline
+    rule: |g| > 0.5 AND not g_pathological (no normalization_magnitude_disagree
+    because there's no second normalization path). Tagged with
+    endpoint_axis='discrete_celltype_16cat' and
+    headline_rule_version='v2_pathology_only'.
+    """
+    out: Dict[str, pd.DataFrame] = {}
+    cell_types = tia.get_discrete_cell_types(config_dict)
+
+    per_roi = tia.compute_celltype_fractions_per_roi(annotations, cell_types)
+    mouse = tia.aggregate_celltype_fractions_to_mouse_level(per_roi, cell_types)
+
+    # Default min_prevalence pass at 0.01
+    filtered, collapsed = tia.apply_min_prevalence_filter(
+        mouse, threshold=0.01, categories=cell_types,
+    )
+    out['celltype_fractions'] = filtered
+
+    clr_table = tia.compute_celltype_clr_table(filtered, cell_types)
+    out['celltype_clr'] = clr_table
+
+    # min_prevalence sweep — for sensitivity reporting
+    sweep_endpoint_frames = []
+    for prev in (0.005, 0.01, 0.02):
+        f_sweep, _ = tia.apply_min_prevalence_filter(
+            mouse, threshold=prev, categories=cell_types,
+        )
+        clr_sweep = tia.compute_celltype_clr_table(f_sweep, cell_types)
+        clr_value_cols = [c for c in clr_sweep.columns if c.endswith('_clr')]
+        endpoints_sweep = tia.pairwise_endpoint_table(
+            clr_sweep, value_cols=clr_value_cols, family='A_interface_clr',
+        )
+        endpoints_sweep['min_prevalence_sweep_value'] = prev
+        sweep_endpoint_frames.append(endpoints_sweep)
+    out['celltype_min_prevalence_sweep'] = pd.concat(sweep_endpoint_frames, ignore_index=True)
+
+    # Primary endpoints (default min_prevalence=0.01) — these go into endpoint_summary
+    clr_value_cols = [c for c in clr_table.columns if c.endswith('_clr')]
+    endpoints = tia.pairwise_endpoint_table(
+        clr_table, value_cols=clr_value_cols, family='A_interface_clr',
+    )
+    endpoints['endpoint_axis'] = 'discrete_celltype_16cat'
+    endpoints['min_prevalence_sweep_value'] = 0.01
+    endpoints['headline_rule_version'] = 'v2_pathology_only'
+
+    # Carry unassigned_rate_mouse_mean_1/2 onto every endpoint row by joining
+    # on contrast tp1/tp2. Provenance for the gmean-drag (round 3 §1.1).
+    if 'unassigned_rate' in mouse.columns:
+        # Per-timepoint mean unassigned rate (averaged over the n=2 mice)
+        per_tp_unassigned = mouse.groupby('timepoint')['unassigned_rate'].mean()
+        endpoints['unassigned_rate_mouse_mean_1'] = endpoints['tp1'].map(per_tp_unassigned)
+        endpoints['unassigned_rate_mouse_mean_2'] = endpoints['tp2'].map(per_tp_unassigned)
+
+    out['family_a_v2_endpoints'] = endpoints
+    return out
+
+
 def run_family_a(
     annotations: pd.DataFrame,
     continuous_sham_percentile: float = float('nan'),
@@ -437,12 +501,17 @@ def run_spatial_coherence(annotations: pd.DataFrame) -> Dict[str, pd.DataFrame]:
 
 def _run_family_b_at_support(
     annotations: pd.DataFrame, min_support: int,
+    stratifier_col: str = 'composite_label',
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Returns (delta_vs_sham filtered, missingness, family_b_endpoints) for a given min_support."""
+    """Returns (delta_vs_sham filtered, missingness, family_b_endpoints) for
+    a given min_support and stratifier_col. Phase 7 P3 added stratifier_col
+    so the same machinery handles Family B v1 (composite_label) and v2 (cell_type).
+    """
     per_roi_frames: List[pd.DataFrame] = []
     for roi_id, group in annotations.groupby('roi_id'):
         per_roi = tia.compute_neighbor_minus_self_per_roi(
-            group, roi_id=roi_id, k=tia.DEFAULT_K_NEIGHBORS, min_support=min_support,
+            group, roi_id=roi_id, k=tia.DEFAULT_K_NEIGHBORS,
+            min_support=min_support, stratifier_col=stratifier_col,
         )
         if not per_roi.empty:
             per_roi_frames.append(per_roi)
@@ -451,24 +520,89 @@ def _run_family_b_at_support(
     per_roi_all = pd.concat(per_roi_frames, ignore_index=True)
     # Aggregate uses only sufficient (non-below-min-support) rows for delta means
     sufficient = per_roi_all[~per_roi_all['below_min_support']]
-    mouse = tia.aggregate_neighbor_delta_to_mouse(sufficient) if not sufficient.empty else pd.DataFrame()
-    filtered, missingness = tia.apply_trajectory_filter(mouse, per_roi_raw=per_roi_all)
+    mouse = (
+        tia.aggregate_neighbor_delta_to_mouse(sufficient, stratifier_col=stratifier_col)
+        if not sufficient.empty else pd.DataFrame()
+    )
+    filtered, missingness = tia.apply_trajectory_filter(
+        mouse, label_col=stratifier_col, per_roi_raw=per_roi_all,
+    )
     if filtered.empty:
         return filtered, missingness, pd.DataFrame()
-    delta_vs_sham = tia.compute_delta_vs_sham(filtered)
+    delta_vs_sham = tia.compute_delta_vs_sham(filtered, stratifier_col=stratifier_col)
     delta_cols = [c for c in delta_vs_sham.columns if c.startswith('vs_sham_mean_delta_')]
     family_b_endpoints = tia.pairwise_endpoint_table(
         delta_vs_sham, value_cols=delta_cols,
-        family='B_continuous_neighborhood', extra_index_cols=['composite_label'],
+        family='B_continuous_neighborhood', extra_index_cols=[stratifier_col],
     )
-    # Family B neighbor-minus-self is computed on the Sham-referenced
-    # continuous lineage scores (lineage_immune/endothelial/stromal cols in
-    # the parquet), so it inherits the Seam-1 Sham-reference sigmoid. Stamp
-    # so every row carries its normalization provenance; downstream
-    # reviewers no longer need to chase Family A to infer it.
     if not family_b_endpoints.empty:
         family_b_endpoints['normalization_mode'] = 'sham_reference_v2_continuous'
     return delta_vs_sham, missingness, family_b_endpoints
+
+
+def run_family_b_v2(annotations: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    """Phase 7 §4.2: per-discrete-cell-type neighbor-minus-self.
+
+    Same kNN-gradient pipeline as v1; stratifier_col='cell_type' instead of
+    'composite_label'. Same min_support sweep ({10, 20, 40}) and dual-basis
+    productization (sigmoid + raw-marker per Phase 6) applied at this v2
+    layer too. Output rows tagged stratifier_basis='discrete_celltype'.
+    """
+    out: Dict[str, pd.DataFrame] = {}
+    primary_dvs, primary_miss, primary_endpoints = _run_family_b_at_support(
+        annotations, min_support=tia.DEFAULT_MIN_SUPPORT, stratifier_col='cell_type',
+    )
+
+    sensitivity_rows: List[pd.DataFrame] = []
+    presence_by_ms: Dict[int, set] = {}
+    for ms in (10, 20, 40):
+        _, _, ep = _run_family_b_at_support(
+            annotations, min_support=ms, stratifier_col='cell_type',
+        )
+        if not ep.empty:
+            ep['min_support'] = ms
+            sensitivity_rows.append(ep)
+            presence_by_ms[ms] = set(zip(ep['endpoint'], ep['contrast'], ep['cell_type']))
+        else:
+            presence_by_ms[ms] = set()
+    out['family_b_v2_sensitivity'] = (
+        pd.concat(sensitivity_rows, ignore_index=True) if sensitivity_rows else pd.DataFrame()
+    )
+
+    if not primary_endpoints.empty:
+        all_ms = set(presence_by_ms.keys())
+
+        def _support_sensitive(row: pd.Series) -> bool:
+            key = (row['endpoint'], row['contrast'], row['cell_type'])
+            return any(key not in presence_by_ms[ms] for ms in all_ms)
+
+        primary_endpoints = primary_endpoints.copy()
+        primary_endpoints['support_sensitive'] = primary_endpoints.apply(_support_sensitive, axis=1)
+        primary_endpoints['stratifier_basis'] = 'discrete_celltype'
+
+    out['family_b_v2_endpoints'] = primary_endpoints
+
+    # Phase 7 §4.2: dual-basis productization. Build raw-marker basis using
+    # the same audit-script helpers Phase 6 v1 uses, but stratify by cell_type.
+    sys.path.insert(0, str(REPO_ROOT))
+    from audit_family_b_raw_markers import (  # noqa: E402
+        load_lineage_definitions_from_config,
+        build_raw_lineage_columns,
+    )
+    from src.config import Config as _Config  # noqa: E402
+
+    config = _Config(str(CONFIG_PATH))
+    lineage_defs = load_lineage_definitions_from_config(config)
+    raw_annotations = build_raw_lineage_columns(annotations, lineage_defs)
+    _, _, raw_endpoints = _run_family_b_at_support(
+        raw_annotations, min_support=tia.DEFAULT_MIN_SUPPORT, stratifier_col='cell_type',
+    )
+    if not raw_endpoints.empty:
+        raw_endpoints = raw_endpoints.copy()
+        raw_endpoints['normalization_mode'] = 'sham_reference_raw_marker_per_mouse'
+        raw_endpoints['stratifier_basis'] = 'discrete_celltype'
+    out['family_b_v2_endpoints_raw_marker'] = raw_endpoints
+    return out
 
 
 def run_family_b(annotations: pd.DataFrame) -> Dict[str, pd.DataFrame]:
@@ -559,6 +693,19 @@ def _run_family_c_at_percentile(
         annotations, sham_thresholds=sham_thresholds,
         compartment_markers=compartment_markers, activation_marker=activation_marker,
     )
+    # Phase 7 §4.6 — Family C v2 single-row neutrophil extension. Append the
+    # neutrophil-categorical compartment as a per-ROI column; per-mouse
+    # aggregation reuses Family C v1's contract (collects *_cd44_rate columns
+    # generically). Same shrinkage + headline rule, no carve-out (round-3 F4).
+    if 'cell_type' in annotations.columns:
+        neutro_per_roi = tia.compute_neutrophil_compartment_activation_per_roi(
+            annotations, sham_thresholds=sham_thresholds,
+            activation_marker=activation_marker,
+        )
+        per_roi = per_roi.merge(
+            neutro_per_roi[['roi_id', 'neutrophil_compartment_n', 'neutrophil_compartment_cd44_rate']],
+            on='roi_id', how='left',
+        )
     mouse = tia.aggregate_compartment_activation_to_mouse(per_roi)
     rate_cols = [c for c in mouse.columns if c.endswith('_cd44_rate') or c == 'triple_overlap_fraction']
     endpoints = tia.pairwise_endpoint_table(
@@ -639,6 +786,157 @@ def assemble_endpoint_summary(
     # anchoring risk regardless of disclaimers. The audit they supported
     # (within-family vs pooled rank comparison) can be recovered by sorting
     # endpoint_summary by |hedges_g| directly.
+
+    # Phase 7 I1 — schema migration: ensure every new column exists, and
+    # backfill v1-default values where v2 producers haven't tagged. This runs
+    # after pd.concat so the column exists if any v2 row tagged it; the
+    # backfill catches v1 rows that come through with NaN.
+    if 'endpoint_axis' not in summary.columns:
+        summary['endpoint_axis'] = pd.NA
+    fa_mask = summary['family'] == 'A_interface_clr'
+    summary.loc[fa_mask & summary['endpoint_axis'].isna(), 'endpoint_axis'] = 'composite_label_8cat'
+
+    if 'stratifier_basis' not in summary.columns:
+        summary['stratifier_basis'] = pd.NA
+    fb_mask = summary['family'] == 'B_continuous_neighborhood'
+    summary.loc[fb_mask & summary['stratifier_basis'].isna(), 'stratifier_basis'] = 'composite_label'
+
+    if 'min_prevalence_sweep_value' not in summary.columns:
+        summary['min_prevalence_sweep_value'] = pd.NA
+
+    if 'headline_rule_version' not in summary.columns:
+        summary['headline_rule_version'] = pd.NA
+    # v1 Family A rows: dual-normalization-intersection rule. Tag any v1
+    # Family A rows that are still missing headline_rule_version.
+    summary.loc[
+        fa_mask & (summary['endpoint_axis'] == 'composite_label_8cat')
+        & summary['headline_rule_version'].isna(),
+        'headline_rule_version'
+    ] = 'v1_dual_normalization_intersection'
+
+    if 'headline_demoted_reason' not in summary.columns:
+        summary['headline_demoted_reason'] = pd.NA
+    if 'unassigned_rate_mouse_mean_1' not in summary.columns:
+        summary['unassigned_rate_mouse_mean_1'] = pd.NA
+    if 'unassigned_rate_mouse_mean_2' not in summary.columns:
+        summary['unassigned_rate_mouse_mean_2'] = pd.NA
+
+    # Family-specific rule pass (before demotion).
+    fam_rule_pass = pd.Series(False, index=summary.index)
+    fam_a_mask = summary['family'] == 'A_interface_clr'
+    fam_b_mask = summary['family'] == 'B_continuous_neighborhood'
+    fam_c_mask = summary['family'] == 'C_compartment_activation'
+    fam_rule_pass.loc[fam_a_mask] = (
+        (summary.loc[fam_a_mask, 'hedges_g'].abs() > 0.5)
+        & (summary.loc[fam_a_mask, 'g_pathological'] != True)
+        & (summary.loc[fam_a_mask, 'normalization_magnitude_disagree'] != True)
+    )
+    fam_rule_pass.loc[fam_b_mask] = (
+        (summary.loc[fam_b_mask, 'g_shrunk_neutral'].abs() > 0.5)
+        & (summary.loc[fam_b_mask, 'g_pathological'] != True)
+        & (summary.loc[fam_b_mask, 'support_sensitive'] != True)
+    )
+    fam_rule_pass.loc[fam_c_mask] = (
+        (summary.loc[fam_c_mask, 'g_shrunk_neutral'].abs() > 0.5)
+        & (summary.loc[fam_c_mask, 'g_pathological'] != True)
+    )
+
+    # Phase 7 §4.4 — runtime cross-rule demotion. Spec table maps v2
+    # cell_type values onto their v1 INTERFACE_CATEGORIES analog (or none).
+    # A v2 row gets demoted iff a v1 row at the same (endpoint_root, contrast)
+    # passes the v1 rule. Round-3 F1 acknowledges small reach (~6 endpoints
+    # of ~1296); the architecture is correct for the events that exist.
+    v2_to_v1_lineage = {
+        'endothelial': 'endothelial',
+        'activated_endothelial_cd44': 'endothelial',
+        'activated_endothelial_cd140b': 'endothelial',
+        'immune_cells': 'immune',
+        'activated_immune': 'immune',
+        'fibroblast': 'stromal',
+        'activated_fibroblast_cd44': 'stromal',
+        'activated_fibroblast_cd140b': 'stromal',
+        # m2_macrophage, myeloid, neutrophil, activated_*_*, unassigned: no v1 analog
+    }
+    summary = _apply_cross_rule_demotion(summary, fam_rule_pass, v2_to_v1_lineage)
+    summary['is_headline'] = fam_rule_pass & summary['headline_demoted_reason'].isna()
+
+    return summary
+
+
+def _apply_cross_rule_demotion(
+    summary: pd.DataFrame,
+    fam_rule_pass: pd.Series,
+    v2_to_v1_map: Dict[str, str],
+) -> pd.DataFrame:
+    """Apply Phase 7 §4.4 cross-rule: demote v2 rows that clash with passing
+    v1 rows on the same biological event, per the join-key table.
+    """
+    # Family A cross-rule
+    fa_v1 = summary[
+        (summary['family'] == 'A_interface_clr')
+        & (summary['endpoint_axis'] == 'composite_label_8cat')
+    ].copy()
+    fa_v2 = summary[
+        (summary['family'] == 'A_interface_clr')
+        & (summary['endpoint_axis'] == 'discrete_celltype_16cat')
+    ].copy()
+    if not fa_v1.empty and not fa_v2.empty:
+        # v1 endpoints look like 'endothelial_clr', 'immune_clr', 'stromal_clr', etc.
+        v1_passing = set()
+        for idx, row in fa_v1.iterrows():
+            if not fam_rule_pass.loc[idx]:
+                continue
+            ep = row['endpoint']
+            if ep.endswith('_clr'):
+                lineage = ep[:-len('_clr')]
+                v1_passing.add((lineage, row['contrast']))
+
+        for idx, row in fa_v2.iterrows():
+            if not fam_rule_pass.loc[idx]:
+                continue
+            # v2 endpoint format is 'cell_type_clr' e.g. 'activated_endothelial_cd44_clr'
+            ep = row['endpoint']
+            if not ep.endswith('_clr'):
+                continue
+            cell_type = ep[:-len('_clr')]
+            v1_lineage = v2_to_v1_map.get(cell_type)
+            if v1_lineage and (v1_lineage, row['contrast']) in v1_passing:
+                summary.at[idx, 'headline_demoted_reason'] = 'cross_axis_co_headline_forbidden'
+                fam_rule_pass.at[idx] = False  # so is_headline reflects demotion
+
+    # Family B cross-rule
+    fb_v1 = summary[
+        (summary['family'] == 'B_continuous_neighborhood')
+        & (summary['stratifier_basis'] == 'composite_label')
+    ].copy()
+    fb_v2 = summary[
+        (summary['family'] == 'B_continuous_neighborhood')
+        & (summary['stratifier_basis'] == 'discrete_celltype')
+    ].copy()
+    if not fb_v1.empty and not fb_v2.empty:
+        v1_passing = set()
+        for idx, row in fb_v1.iterrows():
+            if not fam_rule_pass.loc[idx]:
+                continue
+            cl = row.get('composite_label', '')
+            # Strip 'c:' prefix if present (Phase 7 rename)
+            cl_stripped = cl[2:] if isinstance(cl, str) and cl.startswith('c:') else cl
+            v1_passing.add((row['endpoint'], row['contrast'], row.get('normalization_mode'), cl_stripped))
+
+        for idx, row in fb_v2.iterrows():
+            if not fam_rule_pass.loc[idx]:
+                continue
+            ct = row.get('cell_type', '')
+            # Direct match on stripped composite_label, OR map through v2_to_v1_lineage
+            keys_to_check = [(row['endpoint'], row['contrast'], row.get('normalization_mode'), ct)]
+            if ct in v2_to_v1_map:
+                keys_to_check.append(
+                    (row['endpoint'], row['contrast'], row.get('normalization_mode'), v2_to_v1_map[ct])
+                )
+            if any(k in v1_passing for k in keys_to_check):
+                summary.at[idx, 'headline_demoted_reason'] = 'cross_axis_co_headline_forbidden'
+                fam_rule_pass.at[idx] = False
+
     return summary
 
 
@@ -689,6 +987,16 @@ def main(scale_um: float = 10.0) -> None:
     if not fa['family_a_collapsed_categories'].empty:
         print(f"  Collapsed rare categories: {fa['family_a_collapsed_categories']['collapsed'].tolist()}")
 
+    # Phase 7 §4.1 — Family A_v2: discrete cell-type CLR (16-cat, unassigned IN)
+    print("\n[Family A_v2] Discrete cell-type CLR (Phase 7)")
+    from src.config import Config as _Config  # noqa: E402
+    config_obj = _Config(str(CONFIG_PATH))
+    fa_v2 = run_family_a_v2(annotations, config_obj.raw)
+    fa_v2['celltype_fractions'].to_parquet(OUTPUT_DIR / 'celltype_fractions.parquet')
+    fa_v2['celltype_clr'].to_parquet(OUTPUT_DIR / 'celltype_clr.parquet')
+    fa_v2['celltype_min_prevalence_sweep'].to_parquet(OUTPUT_DIR / 'celltype_min_prevalence_sweep.parquet')
+    print(f"  Discrete cell-type CLR endpoints: {len(fa_v2['family_a_v2_endpoints'])} rows")
+
     print("\n[Spatial] Join-count statistics + Moran's I")
     sc = run_spatial_coherence(annotations)
     sc['join_counts'].to_parquet(OUTPUT_DIR / 'join_counts.parquet')
@@ -704,6 +1012,14 @@ def main(scale_um: float = 10.0) -> None:
         fb['continuous_neighborhood_missingness'].to_parquet(OUTPUT_DIR / 'continuous_neighborhood_missingness.parquet')
     print(f"  Mouse-level delta rows: {len(fb.get('continuous_neighborhood_temporal', []))}")
 
+    # Phase 7 §4.2 — Family B_v2: per-discrete-cell-type neighbor-minus-self
+    print("\n[Family B_v2] Per-discrete-cell-type neighbor-minus-self (Phase 7)")
+    fb_v2 = run_family_b_v2(annotations)
+    if 'family_b_v2_endpoints' in fb_v2 and not fb_v2['family_b_v2_endpoints'].empty:
+        print(f"  v2 endpoint rows (sigmoid basis): {len(fb_v2['family_b_v2_endpoints'])}")
+    if 'family_b_v2_endpoints_raw_marker' in fb_v2 and not fb_v2['family_b_v2_endpoints_raw_marker'].empty:
+        print(f"  v2 endpoint rows (raw-marker basis): {len(fb_v2['family_b_v2_endpoints_raw_marker'])}")
+
     print("\n[Family C] Cross-compartment activation (Sham-reference threshold)")
     fc = run_family_c(annotations)
     fc['compartment_activation_temporal'].to_parquet(OUTPUT_DIR / 'compartment_activation_temporal.parquet')
@@ -713,8 +1029,11 @@ def main(scale_um: float = 10.0) -> None:
     print("\n[Summary] Endpoint summary across families")
     family_endpoints = [
         fa.get('family_a_endpoints'),
+        fa_v2.get('family_a_v2_endpoints'),  # Phase 7 §4.1
         fb.get('family_b_endpoints'),
         fb.get('family_b_endpoints_raw_marker'),  # Phase 5.2: co-primary basis
+        fb_v2.get('family_b_v2_endpoints'),  # Phase 7 §4.2 (sigmoid basis)
+        fb_v2.get('family_b_v2_endpoints_raw_marker'),  # Phase 7 §4.2 (raw-marker basis)
         fc.get('family_c_endpoints'),
     ]
     sensitivity_outputs = {

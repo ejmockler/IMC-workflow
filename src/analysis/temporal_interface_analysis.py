@@ -329,12 +329,20 @@ def clr_transform(proportions: np.ndarray) -> np.ndarray:
 def apply_min_prevalence_filter(
     mouse_fractions: pd.DataFrame,
     threshold: float = DEFAULT_MIN_PREVALENCE,
+    categories: Sequence[str] = None,
 ) -> Tuple[pd.DataFrame, List[str]]:
     """Categories below `threshold` in *all* timepoints are merged into 'other_rare'.
 
+    Phase 7 P2: `categories` parameter accepts an arbitrary candidate set.
+    Defaults to INTERFACE_CATEGORIES for v1 compatibility; Phase 7 v2 passes
+    DISCRETE_CELL_TYPES (15 typed + 'unassigned') so the filter generalizes
+    beyond the 8-category interface schema.
+
     Returns (filtered_df, list_of_collapsed_categories).
     """
-    fraction_cols = [c for c in INTERFACE_CATEGORIES if c in mouse_fractions.columns]
+    if categories is None:
+        categories = INTERFACE_CATEGORIES
+    fraction_cols = [c for c in categories if c in mouse_fractions.columns]
     timepoint_means = mouse_fractions.groupby('timepoint')[fraction_cols].mean()
     rare = [
         c for c in fraction_cols
@@ -383,6 +391,117 @@ def compute_interface_clr_table(
 
 
 # ---------------------------------------------------------------------------
+# Family A_v2 — discrete cell-type CLR (Phase 7)
+# ---------------------------------------------------------------------------
+
+def get_discrete_cell_types(config_dict: Dict[str, object]) -> Tuple[str, ...]:
+    """Resolve the 16-element DISCRETE_CELL_TYPES vocabulary from config.
+
+    Phase 7 §4.1: 15 typed categories (config.cell_type_annotation.cell_types
+    keys) plus the literal 'unassigned'. Pinned in FROZEN_PREREG.md (P3) so
+    config drift is caught at the resolved-vocabulary level.
+    """
+    ct_block = config_dict.get('cell_type_annotation', {})
+    types = list(ct_block.get('cell_types', {}).keys())
+    return tuple(types) + ('unassigned',)
+
+
+def compute_celltype_fractions_per_roi(
+    annotations: pd.DataFrame,
+    cell_types: Sequence[str],
+    roi_id_col: str = 'roi_id',
+) -> pd.DataFrame:
+    """ROI x discrete-celltype fraction table for Family A_v2.
+
+    Parallel to compute_interface_fractions_per_roi but stratifies by the
+    discrete cell_type column (boolean-gated; 16 categories including
+    'unassigned') instead of derived interface categories. Includes
+    unassigned_rate per ROI as a provenance column for the gmean-drag
+    documentation requirement (round-3 §1.1).
+    """
+    if 'cell_type' not in annotations.columns:
+        raise ValueError("annotations must include 'cell_type' column for Family A_v2")
+    df = annotations[[roi_id_col, 'cell_type']].copy()
+    counts = (
+        df.groupby([roi_id_col, 'cell_type'])
+        .size()
+        .unstack(fill_value=0)
+        .reindex(columns=list(cell_types), fill_value=0)
+    )
+    totals = counts.sum(axis=1)
+    fractions = counts.div(totals, axis=0)
+    fractions['n_total'] = totals
+    fractions['unassigned_rate'] = fractions['unassigned'] if 'unassigned' in fractions.columns else 0.0
+    fractions = fractions.reset_index()
+    return fractions
+
+
+def aggregate_celltype_fractions_to_mouse_level(
+    roi_fractions: pd.DataFrame,
+    cell_types: Sequence[str],
+) -> pd.DataFrame:
+    """Mouse-level mean of cell-type fractions; sums for count columns.
+
+    Parallel to aggregate_fractions_to_mouse_level. unassigned_rate is mean'd
+    to the mouse level so it can be carried onto endpoint rows as
+    unassigned_rate_mouse_mean_1/2 per spec §6.3.
+    """
+    fraction_cols = [c for c in cell_types if c in roi_fractions.columns]
+    count_cols = [c for c in ('n_total',) if c in roi_fractions.columns]
+
+    agg_map = {c: 'mean' for c in fraction_cols}
+    agg_map.update({c: 'sum' for c in count_cols})
+    if 'unassigned_rate' in roi_fractions.columns:
+        agg_map['unassigned_rate'] = 'mean'
+
+    annotated = attach_roi_metadata(roi_fractions)
+    mouse_df = (
+        annotated.groupby(['timepoint', 'mouse'], dropna=False)
+        .agg(agg_map)
+        .reset_index()
+    )
+    return mouse_df
+
+
+def compute_celltype_clr_table(
+    mouse_fractions: pd.DataFrame,
+    cell_types: Sequence[str],
+) -> pd.DataFrame:
+    """CLR-transformed discrete-celltype composition table.
+
+    Parallel to compute_interface_clr_table. `unassigned` is INCLUDED in the
+    simplex (round-3 §1.1 lock: dropping it changes the estimand). All N
+    coordinates produced; geometric-mean denominator; rowsums to 0 in CLR
+    space. The gmean-drag toward `unassigned`'s log-fraction is documented;
+    `unassigned_rate_mouse_mean_*` columns let readers see the denominator
+    dynamic alongside the CLR coordinates.
+    """
+    fraction_cols = [
+        c for c in mouse_fractions.columns
+        if c in cell_types or c == 'other_rare'
+    ]
+    props = mouse_fractions[fraction_cols].values
+    n_per_row = mouse_fractions['n_total'].values if 'n_total' in mouse_fractions.columns else None
+    replaced = bayesian_multiplicative_zero_replacement(props, n_samples=n_per_row)
+    clr_vals = clr_transform(replaced)
+
+    clr_df = pd.DataFrame(
+        clr_vals,
+        columns=[f'{c}_clr' for c in fraction_cols],
+        index=mouse_fractions.index,
+    )
+    keep_cols = ['timepoint', 'mouse']
+    if 'unassigned_rate' in mouse_fractions.columns:
+        keep_cols.append('unassigned_rate')
+    out = pd.concat(
+        [mouse_fractions[keep_cols].reset_index(drop=True),
+         clr_df.reset_index(drop=True)],
+        axis=1,
+    )
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Family B — Continuous neighborhood (neighbor-minus-self)
 # ---------------------------------------------------------------------------
 
@@ -419,29 +538,30 @@ def compute_neighbor_minus_self_per_roi(
     roi_id: str,
     k: int = DEFAULT_K_NEIGHBORS,
     min_support: int = DEFAULT_MIN_SUPPORT,
+    stratifier_col: str = 'composite_label',
 ) -> pd.DataFrame:
-    """Per (composite_label x neighbor_lineage), mean delta within ROI.
+    """Per (stratifier x neighbor_lineage), mean delta within ROI.
 
-    Emits ALL composite labels present in the ROI (not just those above
-    min_support) with a `below_min_support` flag. This preserves the
-    distinction between "absent biology" (label never appeared) and
-    "present but below support threshold" (label existed but had too few
-    superpixels for stable mean).
+    Emits ALL stratifier values present in the ROI (not just those above
+    min_support) with a `below_min_support` flag. Phase 7 P3: `stratifier_col`
+    parameter accepts 'composite_label' (Family B v1) or 'cell_type'
+    (Family B v2). Output column name matches the stratifier_col, so v1
+    rows still carry `composite_label` and v2 rows carry `cell_type`.
     """
-    if 'composite_label' not in annotations.columns:
+    if stratifier_col not in annotations.columns:
         return pd.DataFrame()
     deltas = compute_knn_neighbor_lineage_scores(annotations, k=k)
     if deltas.empty:
         return pd.DataFrame()
-    deltas['composite_label'] = annotations['composite_label'].values
+    deltas[stratifier_col] = annotations[stratifier_col].values
 
     rows = []
-    for label, group in deltas.groupby('composite_label'):
+    for label, group in deltas.groupby(stratifier_col):
         n = len(group)
         below_min = n < min_support
         row: Dict[str, object] = {
             'roi_id': roi_id,
-            'composite_label': label,
+            stratifier_col: label,
             'n_superpixels': n,
             'below_min_support': bool(below_min),
         }
@@ -454,7 +574,10 @@ def compute_neighbor_minus_self_per_roi(
     return pd.DataFrame(rows)
 
 
-def aggregate_neighbor_delta_to_mouse(per_roi: pd.DataFrame) -> pd.DataFrame:
+def aggregate_neighbor_delta_to_mouse(
+    per_roi: pd.DataFrame,
+    stratifier_col: str = 'composite_label',
+) -> pd.DataFrame:
     """Mouse-level mean of per-ROI neighbor-minus-self deltas."""
     if per_roi.empty:
         return per_roi
@@ -463,7 +586,7 @@ def aggregate_neighbor_delta_to_mouse(per_roi: pd.DataFrame) -> pd.DataFrame:
     agg_map = {c: 'mean' for c in delta_cols}
     agg_map['n_superpixels'] = 'sum'
     return (
-        annotated.groupby(['composite_label', 'timepoint', 'mouse'], dropna=False)
+        annotated.groupby([stratifier_col, 'timepoint', 'mouse'], dropna=False)
         .agg(agg_map)
         .reset_index()
     )
@@ -530,21 +653,24 @@ def apply_trajectory_filter(
     return filtered, missingness
 
 
-def compute_delta_vs_sham(mouse_deltas: pd.DataFrame) -> pd.DataFrame:
+def compute_delta_vs_sham(
+    mouse_deltas: pd.DataFrame,
+    stratifier_col: str = 'composite_label',
+) -> pd.DataFrame:
     """Subtract Sham-mean delta from each timepoint's delta, per (label x lineage)."""
     if mouse_deltas.empty:
         return mouse_deltas
     delta_cols = [c for c in mouse_deltas.columns if c.startswith('mean_delta_')]
     sham = (
         mouse_deltas[mouse_deltas['timepoint'] == 'Sham']
-        .groupby('composite_label')[delta_cols]
+        .groupby(stratifier_col)[delta_cols]
         .mean()
     )
     out = mouse_deltas.copy()
     for col in delta_cols:
         sham_lookup = sham[col].to_dict()
         out[f'vs_sham_{col}'] = out.apply(
-            lambda r: r[col] - sham_lookup.get(r['composite_label'], np.nan),
+            lambda r: r[col] - sham_lookup.get(r[stratifier_col], np.nan),
             axis=1,
         )
     # Note: Sham vs_sham residuals are individual mouse deviations from the
@@ -611,6 +737,48 @@ def compute_compartment_activation_per_roi(
         triple_mask = group[[f'{m}_pos' for m in compartment_markers]].all(axis=1)
         row['triple_overlap_fraction'] = float(triple_mask.mean()) if n_total > 0 else np.nan
         rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def compute_neutrophil_compartment_activation_per_roi(
+    annotations: pd.DataFrame,
+    sham_thresholds: Dict[str, float],
+    activation_marker: str = 'CD44',
+    cell_type_col: str = 'cell_type',
+    neutrophil_label: str = 'neutrophil',
+    roi_id_col: str = 'roi_id',
+) -> pd.DataFrame:
+    """Phase 7 §4.6: per-ROI CD44+ rate within neutrophil-typed superpixels.
+
+    Parallel to compute_compartment_activation_per_roi but uses a categorical
+    compartment definition (cell_type == 'neutrophil') rather than a
+    threshold-based one. Round-3 F4 + Codex Family-C check: this needs its
+    own per-ROI compute path because Family C v1 hard-codes
+    `df[m] > sham_thresholds[m]` for compartment membership; per-mouse
+    aggregation is reused via the column-name convention. Emits
+    `neutrophil_compartment_n` (count) and `neutrophil_compartment_cd44_rate`
+    so `aggregate_compartment_activation_to_mouse` picks them up generically.
+    """
+    if cell_type_col not in annotations.columns:
+        raise ValueError(f"annotations must contain '{cell_type_col}' for Family C v2")
+    df = annotations.copy()
+    df[f'{activation_marker}_pos'] = df[activation_marker] > sham_thresholds[activation_marker]
+
+    rows: List[Dict[str, object]] = []
+    for roi, group in df.groupby(roi_id_col):
+        n_total = len(group)
+        neutro_mask = group[cell_type_col] == neutrophil_label
+        n_neutro = int(neutro_mask.sum())
+        rate = (
+            float(group.loc[neutro_mask, f'{activation_marker}_pos'].mean())
+            if n_neutro > 0 else np.nan
+        )
+        rows.append({
+            roi_id_col: roi,
+            'n_total': n_total,
+            'neutrophil_compartment_n': n_neutro,
+            'neutrophil_compartment_cd44_rate': rate,
+        })
     return pd.DataFrame(rows)
 
 

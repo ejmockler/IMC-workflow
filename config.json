@@ -170,6 +170,24 @@
       }
     },
     "_comment_priority": "Definition order = gating priority (first match wins). Most-specific gates listed first within each lineage to prevent greedy capture by broader gates.",
+    "priority_order": [
+      "neutrophil",
+      "activated_m2_cd44",
+      "activated_m2_cd140b",
+      "m2_macrophage",
+      "activated_myeloid_cd44",
+      "activated_myeloid_cd140b",
+      "myeloid",
+      "activated_immune",
+      "immune_cells",
+      "activated_endothelial_cd44",
+      "activated_endothelial_cd140b",
+      "endothelial",
+      "activated_fibroblast_cd44",
+      "activated_fibroblast_cd140b",
+      "fibroblast"
+    ],
+    "_comment_priority_order": "Phase 7 P1: explicit gate priority. Most-specific first (Ly6G+ neutrophil), then activated subtypes by lineage, then base subtypes, then base lineages. Replaces pre-Phase-7 implicit reliance on JSON dict insertion order. Schema validator (src/config_schema.py) rejects priority_order entries that don't match cell_types keys.",
     "cell_types": {
       "neutrophil": {
         "positive_markers": ["CD45", "Ly6G"],
