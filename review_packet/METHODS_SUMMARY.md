@@ -70,7 +70,7 @@ Every run emits a `run_provenance.json` alongside the endpoint tables:
 
 ## Audit surfaces beyond headlines
 
-- `endpoint_summary.csv` (348 rows × 33+ cols): every endpoint with shrunken g columns, pathology flag, insufficient-support flag, threshold-sensitive flag, normalization flags (Family A), `sham_percentile` (Family A per-roi 60; Family C 65/75/85).
+- `endpoint_summary.csv` (**1134 rows × 46 cols** post-Phase-7): every endpoint with shrunken g columns, pathology flag, insufficient-support flag, threshold-sensitive flag, normalization flags (Family A), `sham_percentile` (Family A per-roi 60; Family C 65/75/85), Phase 7 v2 schema columns (`endpoint_axis`, `stratifier_basis`, `headline_rule_version`, `headline_demoted_reason`, `is_headline`, `unassigned_rate_mouse_mean_1/2`, `min_prevalence_sweep_value`).
 - `temporal_top_ranked_by_effect.csv`: selection-free top-5 per contrast, sorted on |g_shrunk_neutral|, pathological rows quarantined.
 - `interface_fractions_normalization_sensitivity.parquet`: both normalization paths side-by-side for Family A.
 - `family_a_endpoints_norm_sweep.parquet`: raw-marker Sham-reference at {65, 75, 85}ᵗʰ percentiles.

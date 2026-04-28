@@ -6,13 +6,13 @@
 
 **Question.** Does tissue-patch-resolution spatial proteomics at this scale surface candidate findings worth powering in a larger cohort?
 
-**Methods (at a glance).** Each 10 μm superpixel is annotated two ways: (i) discrete cell-type labels via boolean positive/negative gating rules (15 config-defined types); (ii) continuous lineage memberships on three non-exclusive axes (immune, endothelial, stromal) via Sham-reference sigmoid (center = Sham pooled per-mouse 60th percentile; scale = experiment-wide IQR). Three pre-registered endpoint families compare timepoints:
+**Methods (at a glance).** Each 10 μm superpixel is annotated two ways: (i) discrete cell-type labels via boolean positive/negative gating rules (15 config-defined types + `unassigned`); (ii) continuous lineage memberships on three non-exclusive axes (immune, endothelial, stromal) via Sham-reference sigmoid (center = Sham pooled per-mouse 60th percentile; scale = experiment-wide IQR). Phase 7 (2026-04-28) extends each endpoint family with a discrete-cell-type counterpart; v1 and v2 surfaces are reported in parallel under a runtime cross-rule that prevents v2 from co-headlining with v1 on the same biological event.
 
-| Family | Unit | Metric |
-|--------|------|--------|
-| A | Mouse-level interface composition | Centered log-ratio (CLR) of 8 interface categories |
-| B | Mouse-level neighbor-minus-self | Continuous lineage delta around each composite label |
-| C | Mouse-level compartment activation | Raw-marker CD44⁺ rate within each Sham-referenced compartment |
+| Family | Unit | v1 metric | v2 metric (Phase 7) |
+|--------|------|-----------|---------------------|
+| A | Mouse-level interface composition | CLR of 8 interface categories | CLR of 16 discrete cell types (incl. `unassigned`) |
+| B | Mouse-level neighbor-minus-self | Continuous lineage delta around each `c:`-prefixed composite label | Continuous lineage delta around each discrete `cell_type` |
+| C | Mouse-level compartment activation | Raw-marker CD44⁺ rate within each Sham-referenced compartment | Single-row CD44⁺ rate within `cell_type == 'neutrophil'` (the only non-tautological discrete-celltype compartment) |
 
 Sample-size constraint at n=2 vs n=2 sets a hard floor on Mann-Whitney p (0.333) — no FDR-significant findings are possible by construction. Reported magnitudes are Hedges' g under three Bayesian shrinkage priors (skeptical N(0, 0.5²) / neutral N(0, 1.0²) / optimistic N(0, 2.0²)).
 
