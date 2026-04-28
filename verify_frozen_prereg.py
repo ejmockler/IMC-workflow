@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import subprocess
 import sys
@@ -25,10 +26,17 @@ from typing import Dict, Tuple
 REPO_ROOT = Path(__file__).resolve().parent
 MANIFEST_PATH = REPO_ROOT / 'review_packet' / 'FROZEN_PREREG.md'
 
+# Sentinel used in ANCHORS to indicate a resolved-vocabulary entry whose SHA
+# is computed by reading the config and hashing a derived list, not by
+# hashing a file. Phase 7 P3 added this so config drift is caught at the
+# resolved-vocabulary level (e.g., adding a cell_type to config rotates the
+# SHA even if the file SHA also rotates and is updated in the same PR).
+RESOLVED_DISCRETE_CELL_TYPES_SENTINEL = '<RESOLVED:DISCRETE_CELL_TYPES>'
+
 # Anchors the manifest *should* claim. Each entry maps a manifest cell-label
 # (the left column of the reproducibility table) to either a path under
-# REPO_ROOT (resolved + sha256) or the literal string 'GIT_HEAD' for the
-# current git commit. Adding a new pinned artifact = add one row here.
+# REPO_ROOT (resolved + sha256) or one of the resolved-vocabulary sentinels
+# defined above. Adding a new pinned artifact = add one row here.
 ANCHORS: Dict[str, str] = {
     '`config.json` SHA-256': 'config.json',
     '`viz.json` SHA-256': 'viz.json',
@@ -36,6 +44,8 @@ ANCHORS: Dict[str, str] = {
         'analysis_plans/temporal_interfaces_plan.md',
     '`results/biological_analysis/sham_reference_10.0um.json` SHA-256':
         'results/biological_analysis/sham_reference_10.0um.json',
+    'Resolved `DISCRETE_CELL_TYPES` SHA-256':
+        RESOLVED_DISCRETE_CELL_TYPES_SENTINEL,
 }
 
 # Anchors that are *informational* (not gating): files we recompute and
@@ -56,6 +66,26 @@ def sha256_of(path: Path) -> str:
         for chunk in iter(lambda: fh.read(1 << 16), b''):
             h.update(chunk)
     return h.hexdigest()
+
+
+def resolved_discrete_cell_types_sha() -> str:
+    """SHA-256 of the resolved Phase 7 DISCRETE_CELL_TYPES vocabulary.
+
+    Reads `config.json`, extracts `cell_type_annotation.cell_types` keys,
+    appends the literal `'unassigned'`, sorts, and hashes the newline-joined
+    string. Phase 7 P3: pins the resolved vocabulary rather than the source
+    file so adding/removing/renaming a cell_type rotates the manifest SHA
+    even when wrapped in a config-SHA recompute. Returns 'MISSING' if
+    config.json is absent.
+    """
+    config_path = REPO_ROOT / 'config.json'
+    if not config_path.exists():
+        return 'MISSING'
+    cfg = json.loads(config_path.read_text())
+    cell_types = list(cfg.get('cell_type_annotation', {}).get('cell_types', {}).keys())
+    resolved = sorted(cell_types + ['unassigned'])
+    payload = '\n'.join(resolved).encode('utf-8')
+    return hashlib.sha256(payload).hexdigest()
 
 
 def current_git_commit() -> str:
@@ -126,9 +156,12 @@ def main() -> int:
 
     SHA_RE = re.compile(r'[0-9a-f]{64}')
     mismatches = 0
-    for label, rel_path in ANCHORS.items():
+    for label, target in ANCHORS.items():
         claimed = manifest_rows.get(label, '<NOT FOUND IN MANIFEST>')
-        actual = sha256_of(REPO_ROOT / rel_path)
+        if target == RESOLVED_DISCRETE_CELL_TYPES_SENTINEL:
+            actual = resolved_discrete_cell_types_sha()
+        else:
+            actual = sha256_of(REPO_ROOT / target)
         # Extract the first 64-hex-char token; tolerates surrounding
         # backticks, trailing parenthetical notes, etc.
         sha_match = SHA_RE.search(claimed)
