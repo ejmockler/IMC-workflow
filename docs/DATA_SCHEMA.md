@@ -1,7 +1,7 @@
 # IMC Analysis Data Schema
 
 **Version**: 2.1
-**Last Updated**: 2026-04-21
+**Last Updated**: 2026-05-05
 **Purpose**: Document the structure of analysis results for loading, validation, and downstream use
 
 **Scope (v2.1)**: This document covers two families of outputs and two configuration files.
@@ -174,7 +174,7 @@ ROI-specific metadata extracted from filename or config:
 **Generator**: `batch_annotate_all_rois.py` → `src/analysis/cell_type_annotation.py::annotate_roi_from_results`
 **One file per ROI** (24 files). Companion: `roi_<roi_id>_annotation_metadata.json` with gating thresholds + per-type counts.
 
-### Schema (12 columns)
+### Schema (13 columns)
 
 | Column | Type | Description |
 |---|---|---|
@@ -189,7 +189,8 @@ ROI-specific metadata extracted from filename or config:
 | `subtype` | object (str) | Within-lineage subtype (neutrophil, m2_macrophage, myeloid, non_myeloid_immune; geometric-mean scored) |
 | `activation_cd44` | float64 | Continuous [0, 1] CD44 activation overlay |
 | `activation_cd140b` | float64 | Continuous [0, 1] CD140b activation overlay |
-| `composite_label` | object (str) | Concatenated lineage-string label used as Family B stratifier (e.g., `"immune+endothelial"`) |
+| `composite_label` | object (str) | `c:`-prefixed lineage-string label used as Family B v1 stratifier (e.g., `"c:immune+endothelial"`); the prefix disambiguates from `cell_type` values |
+| `normalization_mode` | object (str) | Continuous-membership normalization regime emitted by the annotation engine (e.g., `"sham_reference_v2_continuous"`); validated against `run_provenance.json` at downstream load |
 
 ### Scale
 10 µm only (Phase 2 pre-registration §2 pins 10 µm a priori).
@@ -207,7 +208,7 @@ ROI-specific metadata extracted from filename or config:
 
 ### Directory contents
 
-19 parquet files + `endpoint_summary.csv` (primary reviewer-facing) + `continuous_sham_pct_sweep.csv` (Phase 1.5b) + `family_b_raw_marker_comparison.csv` (Phase 1.5c) + `run_provenance.json`. Sister artifact at `results/biological_analysis/sham_reference_10.0um.json` is the Sham-reference normalization input (consumed by `batch_annotate_all_rois.py`); sister artifact at `results/biological_analysis/tissue_area_audit.csv` is the Phase 5.1 closure audit.
+22 parquet files + `endpoint_summary.csv` (primary reviewer-facing) + `continuous_sham_pct_sweep.csv` (Phase 1.5b) + `family_b_raw_marker_comparison.csv` (Phase 1.5c) + `family_b_basis_divergence.csv` + `family_b_basis_conflict.csv` (Phase 6 always-emitted basis bookkeeping) + `run_provenance.json`. Sister artifact at `results/biological_analysis/sham_reference_10.0um.json` is the Sham-reference normalization input (consumed by `batch_annotate_all_rois.py`); sister artifact at `results/biological_analysis/tissue_area_audit.csv` is the Phase 5.1 closure audit.
 
 ### `endpoint_summary.csv` — primary table
 
@@ -259,7 +260,7 @@ ROI-specific metadata extracted from filename or config:
 | `observed_range` | float | Mouse-level max - min (context) |
 | `threshold_sensitive` | bool | Family B: endpoint sign-flips across min-support sweep {10, 20, 40} (independent of the presence-based `support_sensitive`) |
 
-### Parquet schemas (19 files)
+### Parquet schemas (22 files)
 
 Row/column counts below were verified against the current run; small drift is possible after re-runs since some sensitivity outputs are subject to filter changes. Authoritative source is the actual file.
 
@@ -273,6 +274,9 @@ Row/column counts below were verified against the current run; small drift is po
 - `family_a_global_thresholds.parquet` — The three Sham-reference percentile thresholds per lineage.
 - `family_a_sensitivity_endpoints.parquet` — Lineage-threshold sweep {0.2, 0.3, 0.4}.
 - `family_a_continuous_sham_pct_sweep.parquet` — **Phase 1.5b**: continuous Sham-percentile sweep {50, 60, 70} for the sigmoid normalization (in-memory recompute; does not alter persistent annotation artifacts). Companion CSV `continuous_sham_pct_sweep.csv` carries per-endpoint stability (sign-mix + relative-range) summary.
+- `celltype_fractions.parquet` — **Phase 7 v2**: mouse-level fraction per discrete `cell_type` (16 categories: 15 typed + `unassigned`). Family A v2 input.
+- `celltype_clr.parquet` — **Phase 7 v2**: CLR-transformed discrete-cell-type composition (16 coordinates including `unassigned`); Bayesian-multiplicative zero replacement.
+- `celltype_min_prevalence_sweep.parquet` — **Phase 7 v2**: minimum-prevalence sweep at {0.005, 0.01, 0.02}; flags rows whose presence is sweep-fragile.
 - `sensitivity_thresholds.parquet` — Per-sweep threshold values.
 
 **Family B:**

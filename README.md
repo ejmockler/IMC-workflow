@@ -89,7 +89,7 @@ All parameters live in `config.json`. The `Config` class (`src/config.py`) is th
 results/
 ├── roi_results/                    # Per-ROI analysis (24 x JSON.gz)
 ├── biological_analysis/
-│   ├── cell_type_annotations/      # 24 parquet + metadata (12-col schema)
+│   ├── cell_type_annotations/      # 24 parquet + metadata (13-col schema)
 │   ├── differential_abundance/     # Phase 1: temporal + regional CSVs + temporal_top_ranked_by_effect.csv (Bayesian-shrunk rank companion, Phase 2)
 │   ├── spatial_neighborhoods/      # Phase 1: cell-type-pair enrichment CSVs
 │   ├── temporal_interfaces/        # Phase 2 + Phase 7: 22 parquets + endpoint_summary.csv (1134 rows × 46 cols) + run_provenance.json + Phase 1.5 sensitivity outputs (continuous_sham_pct_sweep.csv + family_b_raw_marker_audit.parquet + family_b_raw_marker_comparison.csv) + Phase 7 v2 outputs (celltype_fractions.parquet + celltype_clr.parquet + celltype_min_prevalence_sweep.parquet)

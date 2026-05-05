@@ -224,7 +224,7 @@ results/
     │   ├── temporal_neighborhood_enrichments.csv
     │   └── regional_neighborhood_enrichments.csv
     │
-    ├── temporal_interfaces/       # Module 4 (Phase 2 pre-registered) + Phase 1.5 sensitivity outputs
+    ├── temporal_interfaces/       # Module 4 (Phase 2 pre-registered) + Phase 1.5 sensitivity outputs + Phase 6/7 basis bookkeeping + v2 surfaces
     │   ├── endpoint_summary.csv           # primary reviewer-facing table (1134 rows × 46 cols post-Phase-7)
     │   ├── run_provenance.json            # git hash, config hash, file sha256, seeds, parameters, continuous Sham-reference artifact path/SHA/percentile/aggregation
     │   ├── interface_fractions.parquet
@@ -237,11 +237,16 @@ results/
     │   ├── family_a_sensitivity_endpoints.parquet
     │   ├── family_a_continuous_sham_pct_sweep.parquet  # Phase 1.5b
     │   ├── continuous_sham_pct_sweep.csv               # Phase 1.5b (per-endpoint stability summary)
+    │   ├── celltype_fractions.parquet                  # Phase 7 v2 (Family A v2 input: 16 discrete-cell-type categories)
+    │   ├── celltype_clr.parquet                        # Phase 7 v2 (Family A v2 CLR)
+    │   ├── celltype_min_prevalence_sweep.parquet       # Phase 7 v2 (min-prevalence sweep {0.005, 0.01, 0.02})
     │   ├── continuous_neighborhood_temporal.parquet
     │   ├── continuous_neighborhood_missingness.parquet
     │   ├── family_b_sensitivity_endpoints.parquet
     │   ├── family_b_raw_marker_audit.parquet           # Phase 1.5c (sigmoid + raw-marker bases, 540 rows)
     │   ├── family_b_raw_marker_comparison.csv          # Phase 1.5c (per-endpoint sign + magnitude flags)
+    │   ├── family_b_basis_divergence.csv               # Phase 6 (per-endpoint headline-overlap status across bases)
+    │   ├── family_b_basis_conflict.csv                 # Phase 6 (opposite-sign-same-endpoint subset; empty in current pilot)
     │   ├── compartment_activation_temporal.parquet
     │   ├── family_c_sensitivity_endpoints.parquet
     │   ├── sham_reference_thresholds.parquet

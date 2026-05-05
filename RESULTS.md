@@ -472,7 +472,7 @@ Four notebooks present the analysis in a pedagogical arc:
 
 ---
 
-*Experiment: kidney_healing_2024. Config: `config.json`. Methods: `METHODS.md`. Last Phase 1 pipeline run: 2026-03-31 (24 ROIs × 3 scales). Last temporal-interface run: 2026-04-28 (**1134 endpoint rows × 46 columns** post-Phase-7 in `endpoint_summary.csv`; 333 `is_headline=True`, 54 v2 rows demoted via cross-rule). Phase 7 spec at `analysis_plans/phase_7_celltype_endpoint_spec.md` — locked after three brutalist rounds; see `review_packet/FROZEN_PREREG.md` for pinned reproducibility anchors (5 gating + 2 informational) and `analysis_plans/temporal_interfaces_plan.md` for the full amendment log.*
+*Experiment: kidney_healing_2024. Config: `config.json`. Methods: `METHODS.md`. Last Phase 1 pipeline run: 2026-03-31 (24 ROIs × 3 scales). Last temporal-interface run: 2026-05-03 (**1134 endpoint rows × 46 columns** post-Phase-7 in `endpoint_summary.csv`; 333 `is_headline=True`, 54 v2 rows demoted via cross-rule). Phase 7 spec at `analysis_plans/phase_7_celltype_endpoint_spec.md` — locked after three brutalist rounds; see `review_packet/FROZEN_PREREG.md` for pinned reproducibility anchors (5 gating + 2 informational) and `analysis_plans/temporal_interfaces_plan.md` for the full amendment log.*
 
 
 ---
