@@ -221,7 +221,7 @@ ROI-specific metadata extracted from filename or config:
 | `stratifier_basis` | str | Family B only: `composite_label` (v1) \| `discrete_celltype` (v2). NaN for Family A/C. |
 | `min_prevalence_sweep_value` | float | Family A_v2 only: 0.01 default; sensitivity sweep at {0.005, 0.01, 0.02}. NaN for other rows. |
 | `headline_rule_version` | str | Family A only: `v1_dual_normalization_intersection` \| `v2_pathology_only`. Tags which rule a flagged row passed. NaN for Family B/C. |
-| `headline_demoted_reason` | str | Closed enum {null, `cross_axis_co_headline_forbidden`, `family_b_basis_conflict`}. Null = candidate headline; non-null = demoted with the recorded reason. |
+| `headline_demoted_reason` | str | Closed enum {null, `cross_axis_co_headline_forbidden`, `family_b_basis_conflict`}. Null = no demotion reason (does NOT mean "headline" — use `is_headline` for canonical headline status; null rows can still fail family-specific rules). Non-null = demoted with the recorded reason. The pre-registered plan `analysis_plans/temporal_interfaces_plan.md` describes "effective reach ~6 distinct v2 endpoint events" while the runtime row count is **54 demotions** in the current cohort: the plan refers to the *unique endpoint set* (~6 biological events × ~9 contrast/basis row instances each = ~54 row-level demotions). The plan is SHA-anchored; this row is the canonical reconciliation. |
 | `is_headline` | bool | Canonical headline-status column on every row, computed as `(passes_family_specific_rule) AND (headline_demoted_reason is null)`. Downstream consumers query this. |
 | `unassigned_rate_mouse_mean_1`, `unassigned_rate_mouse_mean_2` | float | Family A only: per-mouse-mean unassigned rate in each contrast side. Provenance for the gmean-drag from `unassigned` IN the simplex. NaN for other rows. |
 
@@ -255,7 +255,7 @@ ROI-specific metadata extracted from filename or config:
 | `hedges_g_sham_ref` | float | Family A: raw-marker Sham-ref regime g for comparison against the sigmoid path |
 | `hedges_g_no_none` | float | Family A only: g under the 7-category CLR (excluding the `none` category) — Phase 1.5a |
 | `clr_none_sensitivity` | bool | Family A only: True if `hedges_g` sign reverses when `none` is excluded from the CLR (Phase 1.5a; 0/48 flips in pilot) |
-| `support_sensitive` | bool | Family B only: True if the (endpoint, contrast, composite_label) row is missing at any of `min_support` ∈ {10, 20, 40} (Phase 1.5a; 90/270 flagged in pilot) |
+| `support_sensitive` | bool | Family B only: True if the (endpoint, contrast, stratifier) row is missing at any of `min_support` ∈ {10, 20, 40} (Phase 1.5a; current cohort: 126/972 Family B rows flagged = 90/540 v1 composite_label + 36/432 v2 discrete_celltype) |
 | `composite_label` | str | Family B only: the (post-hoc descriptive) stratifier |
 | `observed_range` | float | Mouse-level max - min (context) |
 | `threshold_sensitive` | bool | Family B: endpoint sign-flips across min-support sweep {10, 20, 40} (independent of the presence-based `support_sensitive`) |
@@ -303,14 +303,21 @@ Row/column counts below were verified against the current run; small drift is po
 
 | Key | Description |
 |---|---|
+| `run_datetime_utc` | ISO 8601 UTC timestamp at run time |
 | `git_commit` | Commit hash at run time |
 | `git_dirty` | True if working tree had uncommitted changes |
-| `config_sha256` | Hash of the frozen `config.json` |
-| `input_file_sha256` | Per-annotation-parquet SHA256 (24 entries) |
-| `package_versions` | numpy/pandas/scipy/sklearn versions |
-| `seeds` | RNG seeds used (permutations, bootstrap) |
-| `parameters` | Filter values, threshold sweeps, min-support settings |
-| `run_datetime` | ISO timestamp |
+| `git_untracked_critical_files` | List of untracked files matching the critical-file pattern |
+| `git_modified_critical_files` | List of modified critical files (e.g., `temporal_interface_analysis.py`) |
+| `config_hash_sha256` | SHA-256 of the frozen `config.json` |
+| `analysis_file_sha256` | Per-analysis-file SHA-256 (e.g., `temporal_interface_analysis.py`, `run_temporal_interface_analysis.py`, `analysis_plans/temporal_interfaces_plan.md`, `analysis_plans/deprecation_manifest.md`) |
+| `python_version` | Interpreter version |
+| `platform` | Host platform string |
+| `package_versions` | numpy / pandas / scipy versions |
+| `random_seeds` | RNG seeds (`bootstrap_seed`, `join_count_seed`) |
+| `pipeline_parameters` | Filter values, threshold sweeps, min-support settings, continuous Sham-reference artifact path/SHA/percentile/aggregation |
+| `scale_um` | Pinned scale (10.0) |
+| `n_rois_analyzed`, `rois_analyzed`, `n_total_superpixels` | Cohort cardinality at run time |
+| `roi_to_mouse_mapping` | Mouse assignment per ROI |
 | `excluded_rois` | List of excluded ROI IDs with rationale |
 
 Regenerate-if-changed: any modification of inputs, config, or module code invalidates the output directory per the plan's reproducibility-freeze rule.

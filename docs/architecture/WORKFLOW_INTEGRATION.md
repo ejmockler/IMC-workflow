@@ -29,20 +29,23 @@
 │              (Post-processing scripts)                          │
 └─────────────────────────────────────────────────────────────────┘
                               │
-              ┌───────────────┴───────────────┐
-              │                               │
-              ▼                               ▼
-┌─────────────────────────┐     ┌─────────────────────────┐
-│  Module 1: Cell Type    │     │  (Optional: run per-ROI │
-│  Annotation             │     │   during main pipeline) │
-│                         │     │                         │
-│  batch_annotate_all_    │     │  src/analysis/          │
-│  rois.py                │     │  cell_type_annotation.py│
-│                         │     │                         │
-│  Input: roi_results/    │     │  Called by: analyze_    │
-│  Output: cell_type_     │     │  single_roi() if enabled│
-│  annotations/           │     │                         │
-└─────────────────────────┘     └─────────────────────────┘
+                              ▼
+                ┌─────────────────────────┐
+                │  Module 1: Cell Type    │
+                │  Annotation             │
+                │                         │
+                │  batch_annotate_all_    │
+                │  rois.py                │
+                │                         │
+                │  Input: roi_results/    │
+                │  Output: cell_type_     │
+                │  annotations/           │
+                │                         │
+                │  (Annotation runs       │
+                │   exclusively as post-  │
+                │   processing — no in-   │
+                │   pipeline hook.)       │
+                └─────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -135,7 +138,7 @@
 ```json
 {
   "cell_type_annotation": {
-    "enabled": false,  // Set to true to run during main pipeline
+    "enabled": false,  // Legacy field; the in-pipeline hook described by older docs is not implemented. Annotation runs exclusively via batch_annotate_all_rois.py.
     "positivity_threshold": {"method": "percentile", "percentile": 60},
     "cell_types": { ... }
   }
@@ -202,7 +205,9 @@ If a per-ROI integration is desired in a future cycle, it would require adding a
 results/
 ├── roi_results/                    # Main pipeline output
 │   ├── roi_*_results.json.gz      # Per-ROI clustering results
-│   └── provenance.json            # Config tracking
+│   └── <roi_id>/                  # Per-ROI subdirectory
+│       ├── provenance.json        # Per-ROI provenance (git-hash, config-hash, package versions)
+│       └── config_snapshot_*.json # Config snapshot at run time
 │
 └── biological_analysis/            # Biological modules output
     ├── cell_type_annotations/     # Module 1

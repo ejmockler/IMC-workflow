@@ -126,7 +126,7 @@ def add_clr_columns(df: pd.DataFrame, cell_types: List[str]) -> pd.DataFrame:
     Add centered log-ratio (CLR) transformed columns for compositional awareness.
 
     Cell type proportions are compositional data (they share the denominator,
-    and ~79% is unassigned). CLR transforms break the spurious negative
+    and ~66% is unassigned). CLR transforms break the spurious negative
     correlation induced by the shared denominator.
 
     CLR(x_i) = log(x_i / geometric_mean(x))

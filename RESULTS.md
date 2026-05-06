@@ -124,7 +124,7 @@ The CD11b-CD140b correlation (r=0.755) is notable — it suggests superpixels wh
 
 ## 3. Temporal Dynamics
 
-> **Scope of §3-§4.** These sections describe Phase 1 differential-abundance and spatial-neighborhood-enrichment baselines (`temporal_differential_abundance.csv`, `temporal_neighborhood_enrichments.csv`). Some cell-type labels below (e.g., "Resting Endothelial", "Activated Immune CD44+") reflect a **legacy ontology** that was active when those CSVs were generated; the current 15-type ontology (see §1 table) does not contain those names. The reviewer-facing analysis is the pre-registered Phase 2 / Phase 7 temporal-interface family at the bottom of this document, sourced from `endpoint_summary.csv`. §3-§4 are retained as descriptive context.
+> **Scope of §3-§4.** These sections describe Phase 1 differential-abundance and spatial-neighborhood-enrichment baselines (`temporal_differential_abundance.csv`, `temporal_neighborhood_enrichments.csv`). Several cell-type labels below — "Resting Endothelial", "Activated Immune CD44+", "Activated Immune CD140b+", "Activated Fibroblast" without the CD44/CD140b suffix, "Activated Endo CD140b+", "Activ. Immune CD140b+" — reflect a **legacy ontology** that was active when those CSVs were generated; the current 15-type ontology (see §1 table) does not contain those names. Numerical values in the §3 differential-abundance table and §4 spatial enrichment tables are likewise from the legacy run and have not been regenerated under the current ontology. The reviewer-facing analysis is the pre-registered Phase 2 / Phase 7 temporal-interface family at the bottom of this document, sourced from `endpoint_summary.csv`. §3-§4 are retained as descriptive context only.
 
 ### Marker Trajectories (D1 to D7)
 
@@ -510,23 +510,24 @@ A separate pre-registered analysis (`analysis_plans/temporal_interfaces_plan.md`
 
 **Current selection rule** (locked unchanged for any follow-up cohort): a Family A CLR endpoint is retained as a Sham→D7 co-headline iff (1) **direction-consistent** between the Sham-reference-centered sigmoid path (primary) and the raw-marker Sham-reference percentile path (corroboration), (2) `|hedges_g| > 0.5` in the primary path, (3) **symmetric magnitude agreement** — not flagged as `normalization_magnitude_disagree` (≥2× divergence in either direction). The earlier "Sham-ref magnitude ≥ 20% of per-ROI" rule was an asymmetric one-sided check; it has been replaced by the symmetric flag (the older `normalization_g_collapse` column is retained alongside for backward compatibility, but the headline filter no longer uses it). Phase 1 (Sham-reference sigmoid for continuous memberships) replaced the earlier per-ROI sigmoid as the primary normalization, removing the temporal-compression confound; the comparison reported below is between the two **Sham-anchored** paths (sigmoid vs raw-marker percentile), not per-ROI vs Sham-ref. Effect sizes from `endpoint_summary.csv` reported as observed Hedges' g + per-endpoint Bayesian shrinkage range under three priors on the true effect δ (skeptical N(0, 0.5²), neutral N(0, 1.0²) — **planning default**, optimistic N(0, 2.0²)) with Hedges & Olkin (1985) sampling variance v = 2/n + g²/(4n).
 
-**Pilot Sham→D7 co-headline table** (verbatim from `review_packet/ONE_PAGER.md` candidate-findings table; reproducible via the pandas query in `review_packet/FROZEN_PREREG.md`):
+**Pilot Sham→D7 co-headline table** (verbatim from `review_packet/ONE_PAGER.md` candidate-findings v1+C table; reproducible via the pandas query in `review_packet/FROZEN_PREREG.md`. Phase 7 v2 candidate findings appear in a separate sub-table in ONE_PAGER):
 
 | Endpoint | Family | g_skep | g_neut | g_opt | Corroboration |
 |---|---|---:|---:|---:|---|
-| endothelial+immune+stromal_clr | A | 0.32 | +0.99 | 2.11 | Sham-ref sigmoid |
-| triple_overlap_fraction | C | 0.32 | +0.98 | 2.08 | Raw markers, Sham-ref pct — independent of CLR closure |
-| background_compartment_cd44_rate | C | 0.31 | +0.95 | 1.91 | Raw markers — independent of CLR closure |
-| CD140b_compartment_cd44_rate | C | 0.24 | +0.64 | 1.11 | Raw markers — independent of CLR closure |
-| endothelial+immune_clr | A | 0.21 | +0.54 | 0.90 | Sham-ref sigmoid |
-| immune+stromal_clr | A | 0.19 | +0.50 | 0.83 | Sham-ref sigmoid |
-| immune_clr | A | -0.15 | -0.39 | -0.63 | Sham-ref sigmoid |
+| neutrophil_compartment_cd44_rate | C v2 | 0.30 | +1.00 | 2.34 | Phase 7 neutrophil-gated compartment — non-tautological because `cell_type=='neutrophil'` is the only discrete celltype not pinned by gate construction |
+| endothelial+immune+stromal_clr | A v1 | 0.32 | +0.99 | 2.11 | Sham-ref sigmoid |
+| triple_overlap_fraction | C v1 | 0.32 | +0.98 | 2.08 | Raw markers, Sham-ref pct — independent of CLR closure |
+| background_compartment_cd44_rate | C v1 | 0.31 | +0.95 | 1.91 | Raw markers — independent of CLR closure |
+| CD140b_compartment_cd44_rate | C v1 | 0.24 | +0.64 | 1.11 | Raw markers — independent of CLR closure |
+| endothelial+immune_clr | A v1 | 0.21 | +0.54 | 0.90 | Sham-ref sigmoid |
+| immune+stromal_clr | A v1 | 0.19 | +0.50 | 0.83 | Sham-ref sigmoid |
+| immune_clr | A v1 | -0.15 | -0.39 | -0.63 | Sham-ref sigmoid |
 
 The triple-positive CLR rise (Family A) and the raw-marker triple-overlap fraction rise (Family C) are *compatible with* a redistribution-at-D7 reading. **Independence ranking**: all three reported analytical paths (Family A sigmoid, Family A raw-marker Sham-ref, Family C Sham-ref compartments) anchor on the same Sham baseline, so "independent" above means *independent of CLR closure*, not statistically independent of Sham. The symmetric magnitude-disagreement count (13/48 Family A endpoints in the current run) is the honest upper bound on how much the two Family A paths measure differently.
 
 **Family A endpoints filtered out by the rule** (full disclosure in `review_packet/ONE_PAGER.md`): `stromal_clr` and `none_clr` (`normalization_magnitude_disagree`), `endothelial_clr` (`normalization_sign_reverse`, both near zero), `endothelial+stromal_clr` (|g| ≤ 0.5).
 
-**Threshold sensitivity**: Family A findings largely robust to lineage threshold sweep {0.2, 0.3, 0.4} (3/48 sign-reverse) and to continuous Sham-percentile sweep {50, 60, 70} (closed Phase 1.5b: triple-interface neutral g 1.000 / 0.987 / 0.965, Sham-pct-invariant under shrinkage). Family C robust to Sham-percentile sweep {65, 75, 85}. Family B carries `support_sensitive=True` on rows that change presence across `min_support` ∈ {10, 20, 40} (closed Phase 1.5a: 90/270 rows flagged); Family A carries `clr_none_sensitivity` on rows whose sign flips when the `none` category is excluded (closed Phase 1.5a: 0/48 flips). Phase 5.5 brutalist correction: Family B sigmoid-basis Sham→D7 produces 21 endpoints clearing `|g_shrunk_neutral|>0.5` (not 0 as a prior draft mis-stated); raw-marker basis (closed Phase 1.5c) produces 18; 14 in common.
+**Threshold sensitivity**: Family A findings largely robust to lineage threshold sweep {0.2, 0.3, 0.4} (3/48 sign-reverse) and to continuous Sham-percentile sweep {50, 60, 70} (closed Phase 1.5b: triple-interface neutral g 1.000 / 0.987 / 0.965, Sham-pct-invariant under shrinkage). Family C robust to Sham-percentile sweep {65, 75, 85}. Family B carries `support_sensitive=True` on rows that change presence across `min_support` ∈ {10, 20, 40} — current cohort: **126/972 Family B rows flagged (90/540 v1 composite_label + 36/432 v2 discrete_celltype)**; Family A carries `clr_none_sensitivity` on rows whose sign flips when the `none` category is excluded (closed Phase 1.5a: 0/48 flips). Phase 5.5 brutalist correction: Family B sigmoid-basis Sham→D7 produces 21 endpoints clearing `|g_shrunk_neutral|>0.5` (not 0 as a prior draft mis-stated); raw-marker basis (closed Phase 1.5c) produces 18; 14 in common.
 
 **Pathology and missingness**: At n=2 per group no real p-value exists, so no BH-FDR is computed (earlier drafts used a normal-CDF-from-|g| proxy that Gate 6 removed as cognitive-anchoring risk). Endpoint rows with `|g|>3 AND pooled_std<0.01` (variance-collapse artifacts) are flagged `g_pathological=True` with NaN shrunk values; rows with `insufficient_support=True` (n<2 mice in one group) are preserved as NaN-with-flag rather than silently dropped. The selection-free rank companion is `temporal_top_ranked_by_effect.csv` (sorted on `|g_shrunk_neutral|`, pathology-quarantined). Reviewer-checkable in `endpoint_summary.csv`.
 

@@ -15,7 +15,7 @@ Snapshot for external review. Every file referenced is pinned by SHA-256 + git c
 | Resolved `DISCRETE_CELL_TYPES` SHA-256 | `6a2ba83c9b99f25b368fb7de89311b42a8fc601623dd202738bd6bf127de52ff` (Phase 7 P3: SHA-256 of newline-joined sorted list of 15 cell_types from `config.cell_type_annotation.cell_types` + literal `unassigned`. Catches config-vocabulary drift independent of `config.json` byte-level SHA. Computed by `verify_frozen_prereg.py::resolved_discrete_cell_types_sha`.) |
 | `audit_tissue_mask_density.py` SHA-256 | (computed at commit time, see `verify_frozen_prereg.py`) |
 | `audit_family_b_raw_markers.py` SHA-256 | (computed at commit time, see `verify_frozen_prereg.py`) |
-| Sham-ref artifact `_metadata.git_hash` | `6563e90f84ff84eb7183762c188bcbd7609b2429` (regenerated from a clean pre-Phase-5 commit; Phase 5 only edits docs and audit scripts, not the Sham-reference artifact, so re-regeneration is unnecessary — but the manifest SHA above will rotate with each plan amendment) |
+| Sham-ref artifact `_metadata.git_hash` | `3ca121036d815cef8d9a4c6e8fc5d8fb2651ab60` with `_metadata.git_dirty=true` (regenerated 2026-04-28 during the Phase 7 P1 priority_order rotation; numerical thresholds bit-identical because priority_order does not affect Sham-reference computation, but the artifact was nevertheless re-emitted under the new config_sha256). The artifact's `git_dirty=true` flag is preserved as-is — the regenerator script ran with uncommitted local changes that did not affect the threshold computation. The artifact-level SHA-256 above (`6f05d449…`) is the authoritative integrity check. |
 | Python | 3.12.10 |
 | Platform | Darwin 25.4.0 (macOS) |
 | Snapshot timestamp (UTC) | 2026-04-23 |
