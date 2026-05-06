@@ -108,9 +108,9 @@
 ## Integration Points
 
 ### Current Integration
-1. **Main pipeline** calls `annotate_roi_from_results()` IF cell_type_annotation is enabled in config
-2. **Batch scripts** (batch_annotate_all_rois.py, etc.) are standalone post-processing
-3. **No automatic chaining** - user runs each module manually
+1. **Main pipeline** (`src/analysis/main_pipeline.py`) does **NOT** call cell-type annotation — annotation is exclusively a post-processing step via `batch_annotate_all_rois.py`. (Earlier docs described an in-pipeline `analyze_single_roi()` annotation hook gated by `config.cell_type_annotation.enabled`; that hook is not implemented in the current code.)
+2. **Batch scripts** (`batch_annotate_all_rois.py`, `run_temporal_interface_analysis.py`, etc.) are standalone post-processing — each consumes the upstream artifact and writes its own outputs.
+3. **No automatic chaining** — user runs each module manually (see Recommended Usage Pattern below).
 
 ### Files and Locations
 
@@ -191,15 +191,10 @@ def run_biological_workflow():
     temporal_main()
 ```
 
-### Option C: Per-ROI Integration (Advanced)
-Enable cell type annotation in `config.json`:
-```json
-{"cell_type_annotation": {"enabled": true}}
-```
+### Option C: Per-ROI Integration (Advanced) — NOT IMPLEMENTED
+Earlier drafts of this document described enabling cell-type annotation inside `analyze_single_roi()` via `config.cell_type_annotation.enabled = true`. **The hook is not present in the current `src/analysis/main_pipeline.py`.** Annotation runs exclusively via the post-processing script `batch_annotate_all_rois.py`, which validates the Sham-reference artifact provenance at load time.
 
-This runs annotation during `analyze_single_roi()`, but:
-- **Not recommended** for batch processing (inefficient)
-- Differential abundance and spatial neighborhoods still require batch context
+If a per-ROI integration is desired in a future cycle, it would require adding an `annotate_roi_from_results()` call inside the per-ROI loop in `main_pipeline.py` AND a separate batch step for cohort-wide outputs (Sham-reference artifact, temporal-interface analysis) that cannot be ROI-local. Differential abundance and spatial neighborhoods still require batch context.
 
 ## Output Directory Structure
 

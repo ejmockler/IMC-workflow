@@ -25,7 +25,7 @@ Snapshot for external review. Every file referenced is pinned by SHA-256 + git c
 
 - **Family A — interface composition CLR** on 8 categories (`immune`, `endothelial`, `stromal`, `endothelial+immune`, `immune+stromal`, `endothelial+stromal`, `endothelial+immune+stromal`, `none`). Two normalization paths side-by-side: Sham-reference-centered sigmoid (primary); raw-marker Sham-reference percentile (independent corroboration). Sensitivity sweeps: lineage threshold {0.2, 0.3, 0.4}; raw-marker Sham percentile {65, 75, 85}.
 - **Family B — neighbor-minus-self delta** on continuous lineage scores, per composite-label × neighbor-lineage. k=10 neighbors. Sensitivity: `min_support` {10, 20, 40}. Trajectory filter applied.
-- **Family C — cross-compartment CD44⁺ activation** within (CD45⁺, CD31⁺, CD140b⁺, triple-overlap, background) compartments; Sham-referenced percentile threshold. Sensitivity: Sham percentile {65, 75, 85}.
+- **Family C — cross-compartment CD44⁺ activation** within (CD45⁺, CD31⁺, CD140b⁺, triple-overlap, background) compartments; Sham-referenced percentile threshold. Sensitivity: Sham percentile {65, 75, 85}. Phase 7 v2 adds a single-row neutrophil-gated compartment (`neutrophil_compartment_cd44_rate`) using the discrete `cell_type=='neutrophil'` annotation; the other 14 discrete cell types pin CD44 status by gate construction (would yield a tautological measurement).
 
 ## Shrinkage priors (pre-registered)
 
@@ -139,9 +139,12 @@ fa = sham_d7.query(
 fc = sham_d7.query(
     "family == 'C_compartment_activation' and abs(hedges_g) > 0.5"
 )
+# fc returns Family C v1 (CD45/CD31/CD140b/background/triple_overlap) AND v2 (neutrophil-gated, Phase 7)
 co = pd.concat([fa, fc])[['family','endpoint','hedges_g',
                           'g_shrunk_skeptical','g_shrunk_neutral','g_shrunk_optimistic']]
 print(co.sort_values('g_shrunk_neutral', key=abs, ascending=False).to_string(index=False))
 ```
 
 Family A endpoints filtered out by the rule (reported in the one-pager "Filtered out" table) are `stromal_clr` and `none_clr` (magnitude disagree), `endothelial_clr` (sign reverse, both near zero), `endothelial+stromal_clr` (|g| ≤ 0.5).
+
+Phase 7 v2 candidate findings (`endpoint_axis='discrete_celltype_16cat'` for Family A; `endpoint=='neutrophil_compartment_cd44_rate'` for Family C) are reported separately in `ONE_PAGER.md`'s v2 sub-table; v2 rows are gated by `is_headline=True` after the runtime cross-rule (`headline_demoted_reason='cross_axis_co_headline_forbidden'`) prevents v2 co-headlining a v1 lineage analog on the same biological event.

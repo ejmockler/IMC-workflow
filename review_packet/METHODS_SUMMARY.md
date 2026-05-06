@@ -46,7 +46,7 @@ Disagreement per endpoint is surfaced by two flags:
 
 **Family B — continuous neighborhood shifts.** Per composite label × neighbor lineage, k-NN (k=10) neighbor-minus-self delta at the mouse level. Trajectory filter: composite-label × lineage combinations absent at one or more timepoints are excluded. Sensitivity sweep across `min_support` = {10, 20, 40}.
 
-**Family C — cross-compartment CD44⁺ activation.** Raw-marker compartments (CD45⁺, CD31⁺, CD140b⁺, triple-overlap, background) gated at a Sham-referenced percentile; per-ROI CD44⁺ rate within each compartment; mouse-level mean. Sensitivity sweep across Sham percentile = {65, 75, 85}.
+**Family C — cross-compartment CD44⁺ activation.** *v1:* Raw-marker compartments (CD45⁺, CD31⁺, CD140b⁺, triple-overlap, background) gated at a Sham-referenced percentile; per-ROI CD44⁺ rate within each compartment; mouse-level mean. Sensitivity sweep across Sham percentile = {65, 75, 85}. *v2 (Phase 7):* single-row neutrophil compartment extension (`neutrophil_compartment_cd44_rate`) gating CD44 on `cell_type=='neutrophil'` from the discrete annotation; the other 14 discrete cell types pin CD44 status by gate construction and would yield a tautological measurement.
 
 ## Statistics
 
@@ -96,6 +96,7 @@ fa = sham_d7.query(
 )
 
 # Family C: single-path by design; any |g| > 0.5
+# Returns both v1 (CD45/CD31/CD140b/background/triple_overlap) and v2 (neutrophil-gated, Phase 7)
 fc = sham_d7.query(
     "family == 'C_compartment_activation' and abs(hedges_g) > 0.5"
 )
@@ -110,7 +111,7 @@ Expected output matches the co-headline rows in `ONE_PAGER.md`.
 
 ## Family B result (two co-primary bases per Phase 5.2 amendment)
 
-**Primary (pre-registered) — sigmoid Sham-ref continuous lineage scores.** Family B produces **21 endpoints** at |g_shrunk_neutral| > 0.5 at Sham→D7 under primary `min_support=20` (none pathological, none `support_sensitive`), concentrated on `vs_sham_mean_delta_lineage_immune` and `..._endothelial` around composite labels including `activated_endothelial_cd44`, `activated_stromal_cd140b_cd44`, `mixed`, `non_myeloid_immune`, `stromal`, `unassigned`. An earlier draft of this section claimed "0 endpoints" — that was wrong; the audit script printed only the raw-marker count and the sigmoid count was assumed. Corrected 2026-04-23 Phase 5.5. Full Family B table at `family_b_endpoints.parquet`; sensitivity across `min_support` ∈ {10, 20, 40} at `family_b_sensitivity_endpoints.parquet` with per-row `support_sensitive` flag (90/270 rows filter-fragile).
+**Primary (pre-registered) — sigmoid Sham-ref continuous lineage scores.** Family B v1 (composite_label stratifier) produces **21 endpoints** at |g_shrunk_neutral| > 0.5 at Sham→D7 under primary `min_support=20` (none pathological, none `support_sensitive`), concentrated on `vs_sham_mean_delta_lineage_immune` and `..._endothelial` around composite labels including `activated_endothelial_cd44`, `activated_stromal_cd140b_cd44`, `mixed`, `non_myeloid_immune`, `stromal`, `unassigned`. An earlier draft of this section claimed "0 endpoints" — that was wrong; the audit script printed only the raw-marker count and the sigmoid count was assumed. Corrected 2026-04-23 Phase 5.5. Full Family B rows at `endpoint_summary.csv` (filter `family == 'B_continuous_neighborhood'`); sensitivity across `min_support` ∈ {10, 20, 40} at `family_b_sensitivity_endpoints.parquet` with per-row `support_sensitive` flag. Current cohort `support_sensitive=True` count: **126/972 Family B rows** (90/540 v1 composite_label + 36/432 v2 discrete_celltype).
 
 **Co-primary sensitivity check (Phase 1.5c, raw arcsinh markers).** `audit_family_b_raw_markers.py` replaces the sigmoid lineage columns with raw-marker composites (`lineage_immune_raw = CD45`; `lineage_endothelial_raw = mean(CD31, CD34)`; `lineage_stromal_raw = CD140a`) and reruns the same neighbor-minus-self pipeline. Neighbor-minus-self is differential, so any Sham-ref additive offset cancels — the raw-marker path is genuinely sigmoid-independent. Produces **18 Sham→D7 endpoints** at |g_shrunk_neutral| > 0.5 (none pathological). **14 endpoints clear in BOTH bases** (Jaccard 0.58 over the union of 21 sigmoid + 18 raw); **96% sign agreement** on overlapping endpoints. Pre-shrinkage magnitude divergence is real (55/166 ≥2× magnitude disagree) but Bayesian shrinkage to neutral converges the headline counts. Output: `family_b_raw_marker_audit.parquet` + `family_b_raw_marker_comparison.csv`. Phase 5.2 plan amendment names the **intersection of both bases as the conservative headline set**; sigmoid-only and raw-only sets are reported but flagged as basis-dependent. Audit script prints both counts at run time so one-sided reporting cannot recur silently.
 

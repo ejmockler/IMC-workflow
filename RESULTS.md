@@ -32,7 +32,7 @@ Nine protein markers cover five biological axes relevant to kidney injury and re
 
 All 9 markers were grounded via the INDRA knowledge graph, yielding 117 unique published molecular relationships among the 8 groundable genes (Ly6G is murine-specific with limited INDRA coverage). Five of eight genes are regulated by TGF-beta, the master regulator of kidney fibrosis. Four are regulated by VEGF. The panel sits at the intersection of six kidney-relevant pathways including nephrogenesis (WP4823), neutrophil degranulation (R-HSA-6798695), and glomerular endothelium development (GO:0072011).
 
-**What the panel cannot do**: With 9 markers, approximately 77% of tissue superpixels remain unassigned to any cell type. T cells, B cells, dendritic cells, and epithelial cells cannot be identified. Macrophage polarization is partial. Fibroblast activation states beyond CD44 positivity are invisible. These are the expected limitations of a 9-marker panel, not failures of the analysis.
+**What the panel cannot do**: With 9 markers, approximately 66% of tissue superpixels remain unassigned to any cell type. T cells, B cells, dendritic cells, and epithelial cells cannot be identified. Macrophage polarization is partial. Fibroblast activation states beyond CD44 positivity are invisible. These are the expected limitations of a 9-marker panel, not failures of the analysis.
 
 ---
 
@@ -52,21 +52,30 @@ Understanding the results requires understanding three methodological choices th
 
 ### Cell Type Assignment
 
-Assignment rate across 24 ROIs: **14.8%–31.8% (mean 22.4%)**. The remaining ~77% of superpixels lack sufficient marker combinations for annotation — a direct consequence of the 9-marker panel.
+Assignment rate across 24 ROIs: **27.5%–44.0% (mean 34.3%)**. The remaining ~66% of superpixels lack sufficient marker combinations for annotation — a direct consequence of the 9-marker panel.
 
-| Cell Type | Overall | D1 | D3 | D7 |
-|-----------|---------|----|----|-----|
-| Activated Immune CD44+ | 4.7% | — | — | — |
-| Activated Fibroblast | 4.4% | 4.0% | 2.9% | 1.7% |
-| Activated Endothelial CD44+ | 4.2% | 5.3% | 5.4% | 2.5% |
-| Neutrophil | 2.5% | 6.4% | 5.8% | 9.1% |
-| Resting Endothelial | 2.0% | — | — | — |
-| Activated Endothelial CD140b+ | 1.9% | — | — | — |
-| Activated Immune CD140b+ | 1.5% | — | — | — |
-| M2 Macrophage | 1.3% | 6.8% | 9.7% | 14.3% |
-| Unassigned | 77.4% | — | — | — |
+Pooled across all 24 ROIs (n_total = 58,137 superpixels) under the current 15-type ontology + `unassigned`:
 
-M2 macrophages more than double from D1 to D7 (6.8% to 14.3%). Neutrophils rise from 6.4% to 9.1%. Activated fibroblasts decline (4.0% to 1.7%). These trajectory patterns — rising resolution-phase markers, declining acute-phase markers — are consistent with the expected injury-to-repair transition, though all proportions carry the caveat that they are relative to total tissue (including the 77% unassigned).
+| Cell Type | Overall | Sham | D1 | D3 | D7 |
+|-----------|---------|------|----|----|-----|
+| Endothelial | 5.69% | 3.82% | 4.48% | 6.57% | 7.86% |
+| Neutrophil | 5.68% | 4.82% | 5.03% | 6.00% | 6.85% |
+| Activated Endothelial CD44+ | 4.89% | 5.58% | 6.04% | 4.39% | 3.56% |
+| Activated Endothelial CD140b+ | 3.33% | 2.91% | 3.37% | 3.10% | 3.92% |
+| Activated M2 CD44+ | 3.23% | 2.53% | 2.68% | 3.75% | 3.97% |
+| Activated Fibroblast CD44+ | 2.34% | 1.46% | 2.17% | 2.68% | 3.03% |
+| Fibroblast | 1.99% | 2.42% | 2.19% | 1.83% | 1.52% |
+| Immune Cells | 1.80% | 2.01% | 2.37% | 1.71% | 1.12% |
+| Activated Fibroblast CD140b+ | 1.67% | 1.88% | 1.84% | 1.62% | 1.34% |
+| Activated Myeloid CD44+ | 1.21% | 1.72% | 1.60% | 0.70% | 0.84% |
+| M2 Macrophage | 0.73% | 0.66% | 0.74% | 0.69% | 0.85% |
+| Activated M2 CD140b+ | 0.58% | — | — | — | — |
+| Activated Immune | 0.52% | — | — | — | — |
+| Myeloid | 0.51% | — | — | — | — |
+| Activated Myeloid CD140b+ | 0.20% | — | — | — | — |
+| Unassigned | 65.63% | 68.48% | 65.91% | 65.44% | 62.72% |
+
+The endothelial compartment expands across the trajectory (3.82% Sham → 7.86% D7), driven by the bare `endothelial` label rising while activated endothelial CD44+ declines — consistent with vascular reorganization rather than uniform endothelial expansion. Neutrophils accumulate progressively (4.82% → 6.85%). Activated CD44+ subtypes of fibroblast and M2 rise across the time course; the bare `fibroblast` and `immune_cells` labels decline. The unassigned fraction itself shrinks ~6 percentage points Sham→D7, so apparent rises in assigned types include both biological enrichment and a denominator effect; effect-size analyses use mouse-level proportions with the unassigned compartment included in the simplex (Family A v2).
 
 ### Marker Expression (arcsinh-transformed, 10 um scale)
 
@@ -114,6 +123,8 @@ The CD11b-CD140b correlation (r=0.755) is notable — it suggests superpixels wh
 ---
 
 ## 3. Temporal Dynamics
+
+> **Scope of §3-§4.** These sections describe Phase 1 differential-abundance and spatial-neighborhood-enrichment baselines (`temporal_differential_abundance.csv`, `temporal_neighborhood_enrichments.csv`). Some cell-type labels below (e.g., "Resting Endothelial", "Activated Immune CD44+") reflect a **legacy ontology** that was active when those CSVs were generated; the current 15-type ontology (see §1 table) does not contain those names. The reviewer-facing analysis is the pre-registered Phase 2 / Phase 7 temporal-interface family at the bottom of this document, sourced from `endpoint_summary.csv`. §3-§4 are retained as descriptive context.
 
 ### Marker Trajectories (D1 to D7)
 
@@ -255,22 +266,24 @@ These avoidance patterns persist across timepoints. INDRA predicts proximity for
 | Fibro — Macrophage | 0.60x | Co-localize (repair/fibrosis niche) | **NO** |
 | Immune — Endothelial | 0.56x | Co-localize (CD44-PECAM1 adhesion) | **NO** |
 
-**Self-clustering predictions match. Every cross-type proximity prediction fails.** This is the most provocative finding in the dataset. Either the expected cellular niches do not form at superpixel resolution in this AKI model, or per-ROI gating normalization obscures the signal, or the molecular interactions documented in INDRA operate at subcellular/membrane-contact scales invisible to 10 um superpixels. Distinguishing these explanations requires higher-resolution analysis (single-cell segmentation) or an expanded marker panel that reduces the 77% unassigned fraction.
+**Self-clustering predictions match. Every cross-type proximity prediction fails.** This is the most provocative finding in the dataset. Either the expected cellular niches do not form at superpixel resolution in this AKI model, or per-ROI gating normalization obscures the signal, or the molecular interactions documented in INDRA operate at subcellular/membrane-contact scales invisible to 10 um superpixels. Distinguishing these explanations requires higher-resolution analysis (single-cell segmentation) or an expanded marker panel that reduces the ~66% unassigned fraction.
 
 ---
 
 ## 5. Multi-Lineage Coordination at D7
 
-D7 candidate trajectories diverge along the repair-vs-fibrosis axis. CD44 activation rates across biological compartments (all D7 ROIs):
+D7 candidate trajectories diverge along the repair-vs-fibrosis axis. CD44 activation rates across Sham-referenced compartments (mouse-level mean across D7 ROIs from `compartment_activation_temporal.parquet`):
 
-| Compartment | CD44+ Rate | SD |
-|-------------|-----------|-----|
-| Immune (CD45+) | 49.4% | 35.0% |
-| Stromal (CD140b+) | 46.7% | 23.4% |
-| Vascular (CD31+) | 28.4% | 23.8% |
-| Background (none+) | 12.8% | 9.0% |
+| Compartment | Sham CD44+ | D7 CD44+ |
+|-------------|-----------:|---------:|
+| Neutrophil-gated (Phase 7 v2) | 31.8% | **81.1%** |
+| CD140b+ (stromal) | 59.2% | 68.3% |
+| CD45+ (immune) | 59.0% | 68.0% |
+| CD31+ (vascular) | 48.2% | 52.2% |
+| Triple-overlap fraction | 7.3% | 23.8% |
+| Background (none+) | 6.4% | 17.0% |
 
-Nearly half of immune and stromal superpixels co-express CD44 at D7, versus only 13% of background tissue. This is not a compartment-specific response — immune, vascular, and stromal cells all show elevated CD44 activation, suggesting coordinated tissue-wide remodeling.
+The neutrophil-gated compartment shows the largest Sham→D7 rise (31.8% → 81.1%, Hedges' g = 4.22, g_shrunk_neutral = +1.00) — a Phase 7 v2 surface that gates the CD44 measurement on the discrete `cell_type=='neutrophil'` annotation rather than on raw CD45/CD31/CD140b positivity. Triple-overlap (the fraction of tissue simultaneously CD45+/CD31+/CD140b+) rises 3.3× across the trajectory and the background compartment more than doubles its CD44 rate. This is not a compartment-specific response — every compartment moves in the same direction by D7. Three of the four substantive Family C effects clear `|g_shrunk_neutral|>0.5` under the neutral prior at n_required=16-18; CD140b clears at n_required=38.
 
 Multi-compartment overlap quantifies the extent of co-expression:
 
@@ -392,7 +405,7 @@ Based on observed effect sizes, required sample sizes for 80% power (alpha=0.05,
 | 1.0-1.5 | 10 | Moderate temporal changes |
 | 0.5-1.0 | 17 | Small effects |
 
-**Recommendation for follow-up**: n >= 10 per group (captures moderate effects), expand panel to 20+ markers (reduce 77% unassigned below 30%), longitudinal design (same animals across timepoints, enabling paired analyses), global-threshold sensitivity analysis (compare per-ROI versus pooled-global gating to quantify signal compression), Wilcoxon signed-rank for paired regional comparisons.
+**Recommendation for follow-up**: n >= 10 per group (captures moderate effects), expand panel to 20+ markers (reduce ~66% unassigned below 30%), longitudinal design (same animals across timepoints, enabling paired analyses), global-threshold sensitivity analysis (compare per-ROI versus pooled-global gating to quantify signal compression), Wilcoxon signed-rank for paired regional comparisons.
 
 ---
 
@@ -460,6 +473,16 @@ Four notebooks present the analysis in a pedagogical arc:
 
 | Output | Path |
 |--------|------|
+| **Phase 2 / Phase 7 (reviewer-facing)** | |
+| Endpoint summary (1134×46) | `results/biological_analysis/temporal_interfaces/endpoint_summary.csv` |
+| Run provenance | `results/biological_analysis/temporal_interfaces/run_provenance.json` |
+| Sham-reference artifact | `results/biological_analysis/sham_reference_10.0um.json` |
+| Top ranked by effect (selection-free) | `results/biological_analysis/differential_abundance/temporal_top_ranked_by_effect.csv` |
+| Phase 1.5b continuous Sham-pct sweep | `results/biological_analysis/temporal_interfaces/continuous_sham_pct_sweep.csv` |
+| Phase 1.5c Family B raw-marker comparison | `results/biological_analysis/temporal_interfaces/family_b_raw_marker_comparison.csv` |
+| Phase 5.1 tissue-mask audit | `results/biological_analysis/tissue_area_audit.csv` |
+| (full inventory of 22 parquets — see `docs/DATA_SCHEMA.md` and `docs/architecture/WORKFLOW_INTEGRATION.md`) | |
+| **Phase 1 (descriptive baseline)** | |
 | Temporal DA | `results/biological_analysis/differential_abundance/temporal_differential_abundance.csv` |
 | Regional DA | `results/biological_analysis/differential_abundance/regional_differential_abundance.csv` |
 | ROI abundances | `results/biological_analysis/differential_abundance/roi_abundances.csv` |

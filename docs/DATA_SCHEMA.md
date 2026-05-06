@@ -181,7 +181,7 @@ ROI-specific metadata extracted from filename or config:
 | `superpixel_id` | int64 | SLIC superpixel ID (0-indexed within ROI at 10 µm scale) |
 | `x` | float64 | Centroid x in pixel units |
 | `y` | float64 | Centroid y in pixel units |
-| `cell_type` | object (str) | Discrete boolean-gating label (15 types including `"unassigned"`); priority-order assignment |
+| `cell_type` | object (str) | Discrete boolean-gating label — 16 unique values: 15 typed cell types from `config.cell_type_annotation.cell_types` + `"unassigned"`. Priority-order assignment via `config.cell_type_annotation.priority_order` (Phase 7 P1). |
 | `confidence` | float64 | Gating confidence score (see cell_type_annotation.py) |
 | `lineage_immune` | float64 | Continuous [0, 1] lineage score; sigmoid-normalized from CD45 |
 | `lineage_endothelial` | float64 | Continuous [0, 1]; sigmoid-normalized from mean(CD31, CD34) |
@@ -190,7 +190,7 @@ ROI-specific metadata extracted from filename or config:
 | `activation_cd44` | float64 | Continuous [0, 1] CD44 activation overlay |
 | `activation_cd140b` | float64 | Continuous [0, 1] CD140b activation overlay |
 | `composite_label` | object (str) | `c:`-prefixed lineage-string label used as Family B v1 stratifier (e.g., `"c:immune+endothelial"`); the prefix disambiguates from `cell_type` values |
-| `normalization_mode` | object (str) | Continuous-membership normalization regime emitted by the annotation engine (e.g., `"sham_reference_v2_continuous"`); validated against `run_provenance.json` at downstream load |
+| `normalization_mode` | object (str) | Continuous-membership normalization regime emitted by the annotation engine. Values: `"sham_reference_v2"` (membership engine active) \| `"discrete_only"` (continuous memberships disabled). NB: `endpoint_summary.csv` uses a longer label `"sham_reference_v2_continuous"` for Family B rows under the same regime — the parquet-level value is the shorter form. |
 
 ### Scale
 10 µm only (Phase 2 pre-registration §2 pins 10 µm a priori).
@@ -247,7 +247,7 @@ ROI-specific metadata extracted from filename or config:
 | `n_unique_resamples` | int | Number of distinct g values in bootstrap (≤9 at n=2 per group) |
 | `n_required_80pct` | float | Sample size for 80% power given raw observed g |
 | `n_required_skeptical`, `n_required_neutral`, `n_required_optimistic` | float | Same under each shrunk g; NaN if pathological |
-| `normalization_mode` | str | Family A: `per_roi_sigmoid` \| `sham_reference_v2_continuous` \| `sham_reference_raw_marker_per_mouse`. Family B: `sham_reference_v2_continuous`. Family C: `sham_reference_raw_marker_per_mouse`. (`per_roi_sigmoid` retained on legacy sensitivity rows; the primary path is Sham-reference v2 since Phase 1.) |
+| `normalization_mode` | str | Family A v1: `per_roi_sigmoid` (legacy label retained on the primary v1 sigmoid path; the underlying sigmoid is Sham-anchored since Phase 1) \| `sham_reference_raw_marker_per_mouse` (raw-marker corroboration path). Family A v2: NaN (single-path, discrete cell-type CLR). Family B: `sham_reference_v2_continuous` \| `sham_reference_raw_marker_per_mouse` (dual-basis Phase 6). Family C: `sham_reference_raw_marker_per_mouse`. |
 | `sham_percentile` | float | Sham percentile used: 75 (Family A primary path); 65/75/85 (Family A sensitivity); per-row Family C sham percentile |
 | `normalization_sign_reverse` | bool | Family A: g flips sign between sigmoid Sham-ref and raw-marker Sham-ref paths (both Sham-anchored since Phase 1) |
 | `normalization_magnitude_disagree` | bool | Family A: ≥2× symmetric magnitude divergence between sigmoid and raw-marker Sham-ref paths (replaces the asymmetric `normalization_g_collapse`; primary headline-filter signal) |
@@ -275,7 +275,7 @@ Row/column counts below were verified against the current run; small drift is po
 - `family_a_sensitivity_endpoints.parquet` — Lineage-threshold sweep {0.2, 0.3, 0.4}.
 - `family_a_continuous_sham_pct_sweep.parquet` — **Phase 1.5b**: continuous Sham-percentile sweep {50, 60, 70} for the sigmoid normalization (in-memory recompute; does not alter persistent annotation artifacts). Companion CSV `continuous_sham_pct_sweep.csv` carries per-endpoint stability (sign-mix + relative-range) summary.
 - `celltype_fractions.parquet` — **Phase 7 v2**: mouse-level fraction per discrete `cell_type` (16 categories: 15 typed + `unassigned`). Family A v2 input.
-- `celltype_clr.parquet` — **Phase 7 v2**: CLR-transformed discrete-cell-type composition (16 coordinates including `unassigned`); Bayesian-multiplicative zero replacement.
+- `celltype_clr.parquet` — **Phase 7 v2**: CLR-transformed discrete-cell-type composition over up to 16 coordinates (15 typed + `unassigned`); Bayesian-multiplicative zero replacement; cell types below `min_prevalence_for_collapse` (0.01 default) are collapsed into `other_rare`. Current pilot: 13 active CLR coordinates (4 typed cells collapsed into `other_rare`).
 - `celltype_min_prevalence_sweep.parquet` — **Phase 7 v2**: minimum-prevalence sweep at {0.005, 0.01, 0.02}; flags rows whose presence is sweep-fragile.
 - `sensitivity_thresholds.parquet` — Per-sweep threshold values.
 
@@ -286,7 +286,7 @@ Row/column counts below were verified against the current run; small drift is po
 - `family_b_raw_marker_audit.parquet` — **Phase 1.5c**: 540 rows = 270 sigmoid (`lineage_source=sham_reference_v2_continuous`) + 270 raw-marker (`lineage_source=raw_marker_arcsinh`). Companion CSV `family_b_raw_marker_comparison.csv` is the per-endpoint sign + magnitude flag table across the two lineage-source bases (Phase 5.2 specifies both bases as co-primary for follow-up cohorts).
 
 **Family C:**
-- `compartment_activation_temporal.parquet` — Per (mouse × timepoint) CD44⁺ rate within CD45⁺/CD31⁺/CD140b⁺/background compartments + triple overlap + n_rois.
+- `compartment_activation_temporal.parquet` — Per (mouse × timepoint) CD44⁺ rate within CD45⁺/CD31⁺/CD140b⁺/background compartments + triple-overlap fraction + Phase 7 v2 `neutrophil_compartment_cd44_rate` (single-row neutrophil extension gating CD44 on `cell_type=='neutrophil'` from the discrete annotation; the 14 other discrete cell types pin CD44 status by gate construction and would be tautological) + per-compartment n.
 - `family_c_sensitivity_endpoints.parquet` — Sham-percentile sweep {65, 75, 85}.
 - `sham_reference_thresholds.parquet` — 75ᵗʰ-percentile thresholds for {CD45, CD31, CD140b, CD44} computed once on Sham ROIs.
 

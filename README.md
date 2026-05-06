@@ -116,7 +116,7 @@ Result files are documented in `docs/DATA_SCHEMA.md`.
 ## Limitations
 
 - **n=2 per group**: Zero FDR-significant findings. Effect sizes reported for follow-up study design.
-- **9-marker panel**: ~79% of tissue unassigned. Coarse lineage identification only.
+- **9-marker panel**: ~66% of tissue unassigned. Coarse lineage identification only.
 - **Near-zero clustering stability**: Bootstrap ARI near zero at all scales.
 - **Cross-sectional design**: Temporal patterns inferred from different subjects.
 - See `METHODS.md` for full limitations discussion.

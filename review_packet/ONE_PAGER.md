@@ -16,17 +16,37 @@
 
 Sample-size constraint at n=2 vs n=2 sets a hard floor on Mann-Whitney p (0.333) — no FDR-significant findings are possible by construction. Reported magnitudes are Hedges' g under three Bayesian shrinkage priors (skeptical N(0, 0.5²) / neutral N(0, 1.0²) / optimistic N(0, 2.0²)).
 
-**Candidate findings (Sham → D7, neutral-shrunk g).** Passes the pre-registered filter: |hedges_g| > 0.5 AND direction-consistent between the two Family A normalization paths AND not flagged as ≥2× symmetric magnitude disagreement. Family C is not subject to the magnitude-disagreement check (single path by design).
+**Candidate findings (Sham → D7, neutral-shrunk g).** Passes the pre-registered filter: |hedges_g| > 0.5 AND direction-consistent between the two Family A normalization paths AND not flagged as ≥2× symmetric magnitude disagreement. Family C v1 (raw-marker compartments) and v2 (neutrophil-gated compartment) are both single-path; the magnitude-disagreement check does not apply.
 
-| Endpoint | Family | g_skep | **g_neut** | g_opt | Corroboration status |
-|----------|:------:|-------:|-----------:|------:|:--------------------|
-| endothelial+immune+stromal_clr | A | 0.32 | **+0.99** | 2.11 | Sham-ref sigmoid |
-| triple_overlap_fraction | C | 0.32 | **+0.98** | 2.08 | Raw markers, Sham-ref pct — independent of CLR closure |
-| background_compartment_cd44_rate | C | 0.31 | **+0.95** | 1.91 | Raw markers — independent of CLR closure |
-| CD140b_compartment_cd44_rate | C | 0.24 | **+0.64** | 1.11 | Raw markers — independent of CLR closure |
-| endothelial+immune_clr | A | 0.21 | **+0.54** | 0.90 | Sham-ref sigmoid |
-| immune+stromal_clr | A | 0.19 | **+0.50** | 0.83 | Sham-ref sigmoid |
-| immune_clr | A | –0.15 | **–0.39** | –0.63 | Sham-ref sigmoid |
+**Family A v1 (composite_label 8-cat) + Family C (v1 + v2):**
+
+| Endpoint | Family | g_skep | **g_neut** | g_opt | n_req (neutral) | Corroboration status |
+|----------|:------:|-------:|-----------:|------:|---------------:|:--------------------|
+| endothelial+immune+stromal_clr | A v1 | 0.32 | **+0.99** | 2.11 | 17 | Sham-ref sigmoid |
+| triple_overlap_fraction | C v1 | 0.32 | **+0.98** | 2.08 | 17 | Raw markers, Sham-ref pct — independent of CLR closure |
+| neutrophil_compartment_cd44_rate | C v2 | 0.30 | **+1.00** | 2.34 | 16 | Phase 7 neutrophil-gated compartment — non-tautological because `cell_type=='neutrophil'` is the only discrete celltype not pinned by gate construction |
+| background_compartment_cd44_rate | C v1 | 0.31 | **+0.95** | 1.91 | 18 | Raw markers — independent of CLR closure |
+| CD140b_compartment_cd44_rate | C v1 | 0.24 | **+0.64** | 1.11 | 38 | Raw markers — independent of CLR closure |
+| endothelial+immune_clr | A v1 | 0.21 | **+0.54** | 0.90 | — | Sham-ref sigmoid |
+| immune+stromal_clr | A v1 | 0.19 | **+0.50** | 0.83 | — | Sham-ref sigmoid |
+| immune_clr | A v1 | –0.15 | **–0.39** | –0.63 | — | Sham-ref sigmoid |
+
+**Family A v2 (discrete cell-type 16-cat, Phase 7) — single-path, rule = `|g|>0.5 AND not g_pathological`:** the v1/v2 cross-rule (`headline_demoted_reason='cross_axis_co_headline_forbidden'`) prevents v2 from co-headlining a v1 lineage analog on the same biological event; rows below have `is_headline=True` after demotion. Sorted by |g_neut|:
+
+| Endpoint | g_skep | **g_neut** | g_opt | n_req (neutral) |
+|----------|-------:|-----------:|------:|---------------:|
+| activated_fibroblast_cd140b_clr | –0.31 | **–1.00** | –2.31 | 16 |
+| activated_myeloid_cd44_clr | –0.29 | **–0.99** | –2.41 | 17 |
+| fibroblast_clr | –0.31 | **–0.89** | –1.71 | 20 |
+| endothelial_clr | +0.28 | **+0.77** | +1.39 | 27 |
+| unassigned_clr | –0.27 | **–0.75** | –1.34 | 28 |
+| activated_m2_cd140b_clr | +0.27 | **+0.74** | +1.32 | 29 |
+| activated_endothelial_cd44_clr | –0.27 | **–0.74** | –1.30 | 30 |
+| neutrophil_clr | +0.23 | **+0.62** | +1.07 | 41 |
+| activated_fibroblast_cd44_clr | +0.21 | **+0.56** | +0.94 | 51 |
+| activated_m2_cd44_clr | +0.10 | **+0.26** | +0.42 | 230 |
+
+The v2 set extends — and in some places contradicts — the v1 candidate read. `endothelial_clr` (v2) rises Sham→D7 while `endothelial_clr` (v1, `endothelial+immune` and `endothelial+immune+stromal` aside) does not move at the same magnitude — Phase 7 v2 is operating on the closed simplex of 13 discrete cell-type coordinates (after min-prevalence collapse to `other_rare`), so the CLR coordinate is partly geometric-mean-driven by `unassigned` (the 16th coordinate carries 65.6% of the simplex mass on average and falls 5.8 percentage points Sham→D7).
 
 **Family A endpoints filtered out (full disclosure).**
 

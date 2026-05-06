@@ -21,7 +21,7 @@ src/
 │   ├── memory_management.py     # Chunked processing for large data
 │   ├── parallel_processing.py   # Multi-ROI parallel processing
 │   ├── analysis_manifest.py     # Scientific objectives & manifest
-│   ├── cell_type_annotation.py  # Boolean gating + continuous membership annotation (consumes sham_reference)
+│   ├── cell_type_annotation.py  # Boolean gating + continuous membership annotation (consumes sham_reference; emits `c:`-prefixed `composite_label` values per Phase 7 P1, normalization_mode='sham_reference_v2')
 │   ├── sham_reference.py        # Phase 1: shared Sham-reference threshold + scale primitive (per-mouse aggregation default)
 │   ├── temporal_interface_analysis.py # Phase 2 + Phase 7: Family A/B/C v1+v2 endpoints, Bayesian shrinkage, join counts, discrete-celltype CLR (16-cat with unassigned), per-celltype kNN, neutrophil v2 compartment activation
 │   ├── clustering_comparison.py # Graph vs spatial clustering comparison

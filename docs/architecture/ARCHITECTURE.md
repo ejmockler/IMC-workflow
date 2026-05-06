@@ -66,16 +66,17 @@ generate_sham_reference.py                   # orchestrator (root); writes resul
 - Hard gates on pilot design at write time (n_sham_mice=2, n_sham_rois=6); all consumers (`batch_annotate_all_rois.py`, `temporal_interface_analysis.py`) validate full provenance (config_sha256, percentile, aggregation, per-marker threshold+scale) at load time.
 - `batch_annotate_all_rois.py --archive-prior` rolls forward annotations under a new Sham reference (fail-fast default).
 
-### Temporal Interface Analysis (Phase 2; amended through Phase 5)
+### Temporal Interface Analysis (Phase 2; amended through Phase 7)
 ```
 src/analysis/temporal_interface_analysis.py
 run_temporal_interface_analysis.py           # orchestrator (root)
-analysis_plans/temporal_interfaces_plan.md   # pre-registration + amendment log (Phase 1.5a/b/c, Phase 5)
+analysis_plans/temporal_interfaces_plan.md   # pre-registration + amendment log (Phase 1.5a/b/c, Phase 5, Phase 7)
+analysis_plans/phase_7_celltype_endpoint_spec.md  # Phase 7 discrete-cell-type endpoint spec
 ```
-- Pre-registered, three-family endpoint framework:
-  - **Family A**: interface-composition CLR with Bayesian-multiplicative zero replacement; Sham-reference sigmoid (primary) + raw-marker Sham-reference percentile (corroboration)
-  - **Family B**: continuous neighborhood neighbor-minus-self lineage shifts; Phase 5.2 amendment specifies co-primary intersection-conservative reporting (sigmoid + raw-marker bases)
-  - **Family C**: Sham-reference compartment activation trajectories
+- Pre-registered, three-family endpoint framework with v1 + v2 (Phase 7) surfaces:
+  - **Family A**: v1 = interface-composition CLR (8 categories) with Bayesian-multiplicative zero replacement; Sham-reference sigmoid (primary) + raw-marker Sham-reference percentile (corroboration). v2 = discrete cell-type CLR over up to 16 coordinates (15 typed + `unassigned`; 13 active after min-prevalence collapse to `other_rare`).
+  - **Family B**: v1 = continuous neighborhood neighbor-minus-self lineage shifts stratified by `composite_label`; Phase 5.2 amendment specifies co-primary intersection-conservative reporting (sigmoid + raw-marker bases). v2 = same kNN gradient stratified by discrete `cell_type`.
+  - **Family C**: v1 = Sham-reference compartment activation trajectories within {CD45⁺, CD31⁺, CD140b⁺, background, triple-overlap}. v2 = single-row neutrophil-gated compartment (`cell_type=='neutrophil'`).
 - Bayesian shrinkage of Hedges' g under three priors (skeptical / neutral / optimistic; neutral is planning default)
 - Hedges & Olkin (1985) sampling variance `v = 2/n + g²/(4n)`
 - Pathology gate (`g_pathological = |g|>3 AND pooled_std<0.01`) quarantines variance-collapse artifacts
@@ -190,8 +191,9 @@ Analysis and visualization are decoupled. Notebooks consume analysis outputs.
 - `spatial_clustering.py`
 - `coabundance_features.py`
 - `batch_correction.py`
+- `sham_reference.py`  (Phase 1; pinned Sham-reference threshold + scale primitive)
 - `cell_type_annotation.py`
-- `temporal_interface_analysis.py`  (Phase 2)
+- `temporal_interface_analysis.py`  (Phase 2; amended through Phase 7 v2)
 
 ### Research/Experimental (Available)
 - `graph_clustering.py`
