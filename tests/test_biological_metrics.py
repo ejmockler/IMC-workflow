@@ -97,8 +97,10 @@ class TestMarkerCorrelations:
 
     def test_vascular_module_coherence(self, superpixel_df):
         """
-        CLAIM: "Vascular module: CD31 ↔ CD34 (r ≈ 0.60)"
-        VALIDATION: Vascular markers should correlate strongly
+        CLAIM: Vascular module: CD31 ↔ CD34 correlate strongly (r ≈ 0.85 on the
+        current cohort per RESULTS.md §2; bounds 0.50–0.90 retained for the
+        legacy assertion's tolerance).
+        VALIDATION: Vascular markers should correlate strongly.
         """
         cd31_cd34_corr = superpixel_df['CD31'].corr(superpixel_df['CD34'])
 
@@ -112,8 +114,10 @@ class TestTemporalProgression:
 
     def test_cd45_temporal_increase(self, superpixel_df):
         """
-        CLAIM: "CD45 +23% from Sham to D7"
-        VALIDATION: CD45 should increase significantly from Sham to D7
+        CLAIM: CD45 increases between Sham and D7 (the +23.4% figure in
+        RESULTS.md §3 attributes to D1→D7; the broader Sham→D7 direction is
+        retained here as a direction-only assertion).
+        VALIDATION: CD45 should increase from Sham to D7.
         """
         # Calculate mean CD45 at each timepoint
         temporal_means = superpixel_df.groupby('timepoint')['CD45'].mean()

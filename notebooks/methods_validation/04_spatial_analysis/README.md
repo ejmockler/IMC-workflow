@@ -30,7 +30,7 @@ Analyze spatial tissue organization using superpixel-level clustering. Discover 
 - Tissue reorganizes at superpixel scale
 - The 92.8% superpixel variance IS the biology
 
-**Superpixels are the right unit** - they capture tissue micro-environments (40-50 cells each).
+**Superpixels are the right unit** for tissue micro-environment analysis. (The "(40-50 cells each)" estimate from earlier drafts has been retracted — see `benchmarks/notebooks/CRITICAL_ANALYSIS.retracted.md`. Per `METHODS.md` §SLIC and `RESULTS.md` §How-Processing-Shapes-Results, a 10 µm superpixel covers ~100 µm² of tissue and may span parts of multiple cells or extracellular matrix — not "40-50 cells each".)
 
 ## Next Steps
 

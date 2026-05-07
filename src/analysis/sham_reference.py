@@ -11,10 +11,12 @@ aggregation mode (per-mouse vs pooled superpixels) and per-marker override
 support. All call sites converge here.
 
 ``per_mouse`` is the statistically defensible default under this study's
-design (n=2 Sham mice × 3 ROIs × ~1000 superpixels): pooling ~6000
-correlated superpixels understates uncertainty and weights ROIs by size
-rather than biological replicate. The ``pool`` aggregation mode is retained
-for legacy comparison, not as a recommended path.
+design (n=2 Sham mice × 3 ROIs/mouse = 6 Sham ROIs × ~2,400 superpixels/ROI
+≈ 14,575 Sham superpixels per the artifact at
+``results/biological_analysis/sham_reference_10.0um.json``): pooling correlated
+superpixels understates uncertainty and weights ROIs by size rather than
+biological replicate. The ``pool`` aggregation mode is retained for legacy
+comparison, not as a recommended path.
 """
 from __future__ import annotations
 

@@ -31,7 +31,7 @@ Multi-scale spatial proteomics framework for Imaging Mass Cytometry data, applie
 .venv/bin/python build_indra_evidence_table.py         # Panel context + finding annotations
 
 # 7. Figures
-.venv/bin/python generate_enrichment_heatmaps.py       # Temporal neighborhood heatmaps
+.venv/bin/python generate_enrichment_heatmaps.py       # (LEGACY — pre-Phase-7 ontology; will emit blank/mis-labeled rows on current data — see script docstring)
 .venv/bin/python generate_power_analysis.py             # Effect size forest plot + sample size table
 ```
 

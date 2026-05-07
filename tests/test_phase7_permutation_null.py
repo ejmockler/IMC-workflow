@@ -1,24 +1,27 @@
 """
-Phase 7 MH-1 — permutation null acceptance test.
+Phase 7 MH-1 — permutation-null SMOKE test (NOT a real release gate at HEAD).
 
-Per spec §6.2 (revised post-round-3 F5): run 1000 timepoint-label shuffles in
-null-mode evaluator (skip bootstrap, skip spatial permutations, skip neighbor
-graph; just compute Hedges' g per endpoint and apply the headline filter).
-For each shuffle, count rows with `is_headline == True`. Lock criterion: the
-observed (real-label) headline count must exceed
-`median(null_distribution) + 2 * MAD(null_distribution)`.
+**Status (2026-05-07)**: the implementation in this file is a sign-flip smoke
+test, not a permutation null. `_run_null_shuffle()` only flips the sign of
+`hedges_g` and `g_shrunk_neutral`, but the headline rule (`_is_headline_row`)
+uses `abs(g_neut) > 0.5` and family-specific demotion flags that don't depend
+on sign — so observed-vs-null headline counts are identical by construction
+under the current rule. The test passes trivially and **does not constitute an
+empirical null gate**. The original spec §6.2 called for mouse-level timepoint-
+label shuffles with full re-computation of Hedges' g per endpoint; that
+implementation was deferred and not delivered. Future cohorts must implement
+the real shuffle (or pick an `abs`-asymmetric statistic) before relying on
+this as a release-gate criterion.
 
-Original spec called for "95th percentile == 0" — round-3 F5 verified this is
-mathematically untenable at n=2 (P(|g|>0.5 | H0) ≈ 0.62 → ~800 expected false
-headlines per shuffle; would require the headline filter to drop 99.93% of
-|g|>0.5 events, which it does not). The empirical excess-over-null criterion
-is the discipline floor; future cohorts should re-derive a power-justified
-criterion when MH-1 results are within 1× MAD of the null median (§7 residual
-risk #5).
+What this test currently validates: that the smoke-test infrastructure runs end
+to end, that the headline filter is applied, and that the test fixture loads
+the current `endpoint_summary.csv`. Treat positive results as evidence that
+the test scaffolding works, not that the cohort survived a permutation null.
 
-This test is run as a release gate, NOT on every CI pass. The full 1000-shuffle
-sweep takes ~1.5h wall-clock per §6.4 budget. The shorter `test_null_distribution_smoke`
-runs a 50-shuffle smoke test that should always complete in <30s.
+The full 1000-shuffle sweep takes ~1.5h wall-clock per §6.4 budget but is
+disabled by default at HEAD (gated on `PHASE7_RUN_FULL_NULL=1`). The shorter
+`test_null_distribution_smoke` runs a 50-shuffle smoke test that should always
+complete in <30s.
 """
 from __future__ import annotations
 
