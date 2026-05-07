@@ -1,9 +1,20 @@
 """
-Standalone script: Temporal Neighborhood Enrichment Heatmaps
+Standalone script: Temporal Neighborhood Enrichment Heatmaps (LEGACY)
+
 Produces a publication-quality figure with a 2x2 heatmap grid (one per timepoint)
 plus a temporal trajectory line plot for top cell type pairs.
 
-Usage:
+LEGACY status: the `DISPLAY_NAMES` dict below hard-codes labels from a pre-Phase-7
+ontology (`activated_fibroblast`, `activated_immune_cd140b`, `activated_immune_cd44`,
+`resting_endothelial`) that are not in the current 15-type ontology defined in
+`config.json` / `viz.json`. The script will silently emit blank or mis-labeled
+heatmap rows when run against current `temporal_neighborhood_enrichments.csv`
+output. The reviewer-facing analysis is in `endpoint_summary.csv` (Phase 2/7); this
+script's output is not part of the current review packet. To revive this script,
+load labels from `viz.json` via `VizConfig.cell_type_labels` rather than the
+hard-coded dict.
+
+Usage (legacy):
     .venv/bin/python generate_enrichment_heatmaps.py
 """
 

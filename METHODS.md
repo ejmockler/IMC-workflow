@@ -232,7 +232,7 @@ Pre-registered, effect-size-first analysis consuming Phase 1 continuous lineage 
 - **Hedges' g** on mouse-level means (small-sample-corrected Cohen's d).
 - **Bayesian shrinkage** of g under three explicit priors on the true effect δ: skeptical N(0, 0.5²), neutral N(0, 1.0²), optimistic N(0, 2.0²). Posterior mean `E[δ | g_obs] = g_obs × prior_var / (prior_var + sampling_var)`.
 - **Sampling variance**: Hedges & Olkin (1985) asymptotic formula `v(g, n) = 2/n + g²/(4n)`. An earlier implementation used a non-textbook `4/n + g²/(2n)` inflation; the Gate 5 amendment switched to the standard form.
-- **No default prior.** The three-prior range is a pre-registered sensitivity analysis, not a Bayesian inference. Downstream study designers pick the prior matching their own scepticism.
+- **Three-prior sensitivity, not a Bayesian inference.** The three-prior range is a pre-registered sensitivity analysis. **Neutral N(0, 1.0²) is the planning default** when a single number is needed for design (consistent with `review_packet/FROZEN_PREREG.md` and `METHODS_SUMMARY.md`); skeptical and optimistic bracket prior dependence. A reviewer preferring a different prior is invited to read whichever column matches their assumption.
 - **Bootstrap range**: percentile bootstrap over 10,000 iterations reported as min/max of the ~9 unique resamples at n=2 per group; not a coverage-bearing CI.
 - **Pathology flag**: `g_pathological = (|g| > 3 AND pooled_std < 0.01)` quarantines variance-collapse artifacts; pathological rows emit NaN for all shrunk-g and n_required columns.
 

@@ -207,7 +207,8 @@ results/
 │   ├── roi_*_results.json.gz      # Per-ROI clustering results
 │   └── <roi_id>/                  # Per-ROI subdirectory
 │       ├── provenance.json        # Per-ROI provenance (git-hash, config-hash, package versions)
-│       └── config_snapshot_*.json # Config snapshot at run time
+│       ├── config.json            # Effective config used for this ROI
+│       └── config_snapshot_*.json # Snapshot(s) of upstream config at run time (one per re-run)
 │
 └── biological_analysis/            # Biological modules output
     ├── cell_type_annotations/     # Module 1

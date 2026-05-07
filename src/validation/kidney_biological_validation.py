@@ -85,7 +85,7 @@ class KidneyBiologicalValidator:
                 primary_response="macrophage_activation",
                 key_markers=["CD206", "CD11b"],
                 expected_increase=["CD206", "CD11b", "CD45"],
-                expected_decrease=["Ly6G"],  # Neutrophils resolve
+                expected_decrease=["Ly6G"],  # Prior-biology heuristic only: classical AKI models show neutrophil resolution by D3-D7. The current pilot artifact contradicts this — neutrophil proportion rises 4.82% Sham -> 6.85% D7 (cell_type_annotations metadata) and Ly6G mean is approximately flat. Treat this as a soft prior, not a hard validation gate.
                 spatial_pattern="expanding_inflammation"
             ),
             7: InjuryTimepoint(
@@ -93,7 +93,7 @@ class KidneyBiologicalValidator:
                 primary_response="resolution_or_fibrosis",
                 key_markers=["CD140a", "CD140b", "CD206"],
                 expected_increase=["CD140a", "CD140b", "CD206"],
-                expected_decrease=["Ly6G"],
+                expected_decrease=["Ly6G"],  # See D3 caveat: prior-biology heuristic; current pilot data shows neutrophil rise through D7.
                 spatial_pattern="organized_repair"
             )
         }

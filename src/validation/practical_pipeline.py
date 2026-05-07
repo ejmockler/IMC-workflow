@@ -20,8 +20,11 @@ class PracticalValidationPipeline:
 
     def __init__(self, expected_proteins: Optional[List[str]] = None):
         self.logger = logging.getLogger(__name__)
-        # Default to kidney markers if not specified, but allow config override
-        self.expected_proteins = expected_proteins or ['CD45', 'CD11b', 'CD31', 'CD140a', 'CD140b', 'CD206']
+        # Default to the full 9-marker kidney panel (matches config.json `channels.proteins`).
+        # Earlier versions defaulted to a 6-marker subset that omitted Ly6G, CD34, CD44 — that
+        # silently passed validation on datasets missing markers required by the current
+        # 15-type ontology. Pass `expected_proteins` explicitly to override.
+        self.expected_proteins = expected_proteins or ['CD45', 'CD11b', 'Ly6G', 'CD140a', 'CD140b', 'CD31', 'CD34', 'CD206', 'CD44']
         
     def validate_single_roi(self, roi_file: Path) -> Dict[str, Any]:
         """Validate single ROI with clear metric logging."""

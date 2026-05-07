@@ -844,8 +844,11 @@ def assemble_endpoint_summary(
     # Phase 7 §4.4 — runtime cross-rule demotion. Spec table maps v2
     # cell_type values onto their v1 INTERFACE_CATEGORIES analog (or none).
     # A v2 row gets demoted iff a v1 row at the same (endpoint_root, contrast)
-    # passes the v1 rule. Round-3 F1 acknowledges small reach (~6 endpoints
-    # of ~1296); the architecture is correct for the events that exist.
+    # passes the v1 rule. Runtime cohort: 7 unique demoted endpoints (4 Family A
+    # discrete-celltype CLR + 3 Family B vs_sham_mean_delta_lineage_*) producing
+    # 54 row-level demotions out of 1134 total endpoint rows. The architecture
+    # is correct for the events that exist; reach is small because few v2 events
+    # have a v1 lineage analog passing the v1 rule on the same biological event.
     v2_to_v1_lineage = {
         'endothelial': 'endothelial',
         'activated_endothelial_cd44': 'endothelial',

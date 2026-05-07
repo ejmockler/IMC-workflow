@@ -4,6 +4,13 @@
 **Drafted**: 2026-04-27. **Locked**: 2026-04-27 (post-round-2, all decisions resolved).
 **Iteration log**: round 1 + round 2 patches, structural restructure under "defer nothing" directive. Process history in Appendix A.
 
+> **Pre-run vs. runtime reconciliation (2026-05-07).** Several pre-run predictions in this spec did not match the runtime cohort:
+> - Predicted "**~1296 rows**" total; runtime delivered **1134 rows** (difference: min-prevalence collapse to `other_rare` plus `insufficient_support` rows preserved as NaN-with-flag rather than expanded to all combinations).
+> - Predicted "**~6 endpoint clashes**" under the v1/v2 cross-rule; runtime delivered **7 unique demoted endpoints** (4 Family A discrete-celltype CLR + 3 Family B `vs_sham_mean_delta_lineage_*`) producing **54 row-level demotions**. See `docs/DATA_SCHEMA.md` `headline_demoted_reason` row for the canonical reconciliation.
+> - Predicted output filenames `family_b_v2_basis_divergence.csv` / `family_b_v2_basis_conflict.csv`; runtime emits `family_b_basis_divergence.csv` / `family_b_basis_conflict.csv` (no `_v2_` infix; the basis CSVs cover both v1 and v2 bases). See `docs/architecture/WORKFLOW_INTEGRATION.md` output tree.
+>
+> Runtime values in `endpoint_summary.csv` and the basis CSVs are canonical; this spec's pre-run predictions are retained as historical pre-registration context.
+
 ---
 
 ## 1. Motivation

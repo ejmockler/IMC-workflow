@@ -61,7 +61,7 @@ Disagreement per endpoint is surfaced by two flags:
 Every run emits a `run_provenance.json` alongside the endpoint tables:
 
 - `git_commit` + `git_dirty` flag + `git_modified_critical_files` list.
-- `config_sha256`, `sham_reference` artifact path + SHA256 + percentile + aggregation + n_mice/rois.
+- `config_hash_sha256`, `sham_reference` artifact path + SHA256 + percentile + aggregation + n_mice/rois. (Note: the Sham-reference artifact's own `_metadata.config_sha256` field uses the shorter name; `run_provenance.json` uses `config_hash_sha256` — both refer to the same SHA-256 of the same `config.json`.)
 - `analysis_file_sha256` for each module read by the pipeline.
 - `python_version`, `platform`, package versions (numpy, pandas, scipy).
 - `random_seeds` (bootstrap=42, join-count=42).
