@@ -226,7 +226,7 @@ results/
     │   └── regional_neighborhood_enrichments.csv
     │
     ├── temporal_interfaces/       # Module 4 (Phase 2 pre-registered) + Phase 1.5 sensitivity outputs + Phase 6/7 basis bookkeeping + v2 surfaces
-    │   ├── endpoint_summary.csv           # primary reviewer-facing table (1134 rows × 46 cols post-Phase-7)
+    │   ├── endpoint_summary.csv           # primary reviewer-facing table (840 rows × 46 cols post-remediation)
     │   ├── run_provenance.json            # git hash, config hash, file sha256, seeds, parameters, continuous Sham-reference artifact path/SHA/percentile/aggregation
     │   ├── interface_fractions.parquet
     │   ├── interface_fractions_normalization_sensitivity.parquet

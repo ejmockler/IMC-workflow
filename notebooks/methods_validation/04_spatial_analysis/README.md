@@ -1,7 +1,7 @@
 # Spatial Analysis (Legacy)
 
 **Created**: 2025-11-08
-**Status**: 📦 Legacy descriptive content — superseded by Phase 2/Phase 7 temporal-interface analysis (`endpoint_summary.csv`, 1134 rows × 46 cols). Numbers below are from a pre-current-ontology run (~59,972 superpixels under an earlier segmentation; current cohort is 58,137 superpixels at 10 µm).
+**Status**: 📦 Legacy descriptive content — superseded by Phase 2/Phase 7 temporal-interface analysis (`endpoint_summary.csv`, 840 rows × 46 cols, post-remediation). Numbers below are from a pre-current-ontology run (~59,972 superpixels under an earlier segmentation; current cohort is 58,137 superpixels at 10 µm).
 
 ## Purpose
 

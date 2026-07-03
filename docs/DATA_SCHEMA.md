@@ -6,7 +6,7 @@
 
 **Scope (v2.1)**: This document covers two families of outputs and two configuration files.
 - **Phase 1 per-ROI pipeline** (§1-§5): `results/roi_results/roi_*_results.json.gz`.
-- **Phase 2 + Phase 7 biological analysis** (§6-§7): `results/biological_analysis/cell_type_annotations/` (13-column parquet per ROI; `composite_label` values now `c:`-prefixed) and `results/biological_analysis/temporal_interfaces/` (22 parquets + `endpoint_summary.csv` 1134×46 + Phase 1.5 sensitivity CSVs + `run_provenance.json`).
+- **Phase 2 + Phase 7 biological analysis** (§6-§7): `results/biological_analysis/cell_type_annotations/` (13-column parquet per ROI; `composite_label` values now `c:`-prefixed) and `results/biological_analysis/temporal_interfaces/` (22 parquets + `endpoint_summary.csv` 840×46 + Phase 1.5 sensitivity CSVs + `run_provenance.json`).
 - **Configuration** (§8): `config.json` (analysis knobs) + `viz.json` (display knobs).
 
 ---
@@ -212,7 +212,7 @@ ROI-specific metadata extracted from filename or config:
 
 ### `endpoint_summary.csv` — primary table
 
-**1134 rows × 46 columns** (post-Phase-7, 2026-04-28). Contents: Family A v1 (48) + Family A v2 (78) + Family B v1 (540, dual-basis) + Family B v2 (432, dual-basis) + Family C (36, includes neutrophil v2). Phase 7 added 8 new schema columns and 516 new rows over Phase 6 baseline (618 rows × 37 columns).
+**840 rows × 46 columns** (post-remediation, spec-literal neutrophil gate). Contents: Family A v1 (48 composite_label_8cat) + Family A v2 (36 discrete_celltype_16cat) + Family B v1 (540, dual-basis composite_label) + Family B v2 (180, dual-basis discrete_celltype) + Family C (36, includes neutrophil v2). Family A v2 row count is lower than pre-remediation because the spec-literal gate restoration increased neutrophil prevalence which raised min-prevalence collapse pressure on the activated_*_cd44 / cd140b subtypes. Family B v2 row count drops correspondingly with the discrete-celltype stratifier set.
 
 **Phase 7 schema additions**:
 | Column | Type | Description |
@@ -221,7 +221,7 @@ ROI-specific metadata extracted from filename or config:
 | `stratifier_basis` | str | Family B only: `composite_label` (v1) \| `discrete_celltype` (v2). NaN for Family A/C. |
 | `min_prevalence_sweep_value` | float | Family A_v2 only: 0.01 default; sensitivity sweep at {0.005, 0.01, 0.02}. NaN for other rows. |
 | `headline_rule_version` | str | Family A only: `v1_dual_normalization_intersection` \| `v2_pathology_only`. Tags which rule a flagged row passed. NaN for Family B/C. |
-| `headline_demoted_reason` | str | Closed enum {null, `cross_axis_co_headline_forbidden`, `family_b_basis_conflict`}. Null = no demotion reason (does NOT mean "headline" — use `is_headline` for canonical headline status; null rows can still fail family-specific rules). Non-null = demoted with the recorded reason. The pre-registered plan `analysis_plans/temporal_interfaces_plan.md` describes "effective reach ~6 distinct v2 endpoint events" while the runtime row count is **54 demotions** in the current cohort. Reconciliation: 7 unique endpoints get demoted (4 Family A discrete-celltype CLR + 3 Family B `vs_sham_mean_delta_lineage_*` deltas) × varying row instances per endpoint (Family A 2-3 contrasts; Family B 10-23 stratifier-basis × contrast combinations) = 54 row-level demotions. The plan's "~6 events" approximation rounds 7 to nearest order-of-magnitude tier; the runtime count is canonical. The plan file is SHA-anchored; this row is the canonical reconciliation. |
+| `headline_demoted_reason` | str | Closed enum {null, `cross_axis_co_headline_forbidden`, `family_b_basis_conflict`}. Null = no demotion reason (does NOT mean "headline" — use `is_headline` for canonical headline status; null rows can still fail family-specific rules). Non-null = demoted with the recorded reason. The pre-registered plan `analysis_plans/temporal_interfaces_plan.md` describes "effective reach ~6 distinct v2 endpoint events" while the runtime row count (post-remediation) is **18 demotions** in the current cohort. Reconciliation: 5 unique endpoints get demoted (≤3 Family A discrete-celltype CLR + the rest Family B `vs_sham_mean_delta_lineage_*` deltas) × varying row instances per endpoint (Family A 2-3 contrasts; Family B 5-10 stratifier-basis × contrast combinations) = 18 row-level demotions. The plan's "~6 events" approximation rounds 5 to nearest order-of-magnitude tier; the runtime count is canonical. The plan file is SHA-anchored; this row is the canonical reconciliation. |
 | `is_headline` | bool | Canonical headline-status column on every row, computed as `(passes_family_specific_rule) AND (headline_demoted_reason is null)`. Downstream consumers query this. |
 | `unassigned_rate_mouse_mean_1`, `unassigned_rate_mouse_mean_2` | float | Family A only: per-mouse-mean unassigned rate in each contrast side. Provenance for the gmean-drag from `unassigned` IN the simplex. NaN for other rows. |
 
@@ -275,7 +275,7 @@ Row/column counts below were verified against the current run; small drift is po
 - `family_a_sensitivity_endpoints.parquet` — Lineage-threshold sweep {0.2, 0.3, 0.4}.
 - `family_a_continuous_sham_pct_sweep.parquet` — **Phase 1.5b**: continuous Sham-percentile sweep {50, 60, 70} for the sigmoid normalization (in-memory recompute; does not alter persistent annotation artifacts). Companion CSV `continuous_sham_pct_sweep.csv` carries per-endpoint stability (sign-mix + relative-range) summary.
 - `celltype_fractions.parquet` — **Phase 7 v2**: mouse-level fraction per discrete `cell_type` (16 categories: 15 typed + `unassigned`). Family A v2 input.
-- `celltype_clr.parquet` — **Phase 7 v2**: CLR-transformed discrete-cell-type composition over up to 16 coordinates (15 typed + `unassigned`); Bayesian-multiplicative zero replacement; cell types below `min_prevalence_for_collapse` (0.01 default) are collapsed into `other_rare`. Current pilot: 13 active CLR coordinates (4 typed cells collapsed into `other_rare`).
+- `celltype_clr.parquet` — **Phase 7 v2**: CLR-transformed discrete-cell-type composition over up to 16 coordinates (15 typed + `unassigned`); Bayesian-multiplicative zero replacement; cell types below `min_prevalence_for_collapse` (0.01 default) are collapsed into `other_rare`. Current post-remediation pilot: 4 active typed coordinates + `other_rare` + `unassigned` (11 typed cells collapsed into `other_rare`; was 13 active pre-remediation when the activated_*_cd44 / cd140b subtypes cleared the threshold).
 - `celltype_min_prevalence_sweep.parquet` — **Phase 7 v2**: minimum-prevalence sweep at {0.005, 0.01, 0.02}; flags rows whose presence is sweep-fragile.
 - `sensitivity_thresholds.parquet` — Per-sweep threshold values.
 
