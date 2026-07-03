@@ -47,3 +47,6 @@ analysis_log.txt
 relative_path.pdf
 test_figure*.png
 test_heterogeneity.png
+
+# Playwright MCP browser cache (tool artifact)
+.playwright-mcp/
