@@ -1,0 +1,9 @@
+{
+  "variance_formula": "hedges_olkin_1985_equal_n: v=2/n+g^2/(4n)",
+  "variance_source": "src.analysis.temporal_interface_analysis.hedges_g_sampling_variance",
+  "prior_sds": {
+    "skeptical": 0.5,
+    "neutral": 1.0,
+    "optimistic": 2.0
+  }
+}

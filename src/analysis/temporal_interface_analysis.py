@@ -63,10 +63,10 @@ PATHOLOGY_STD_THRESHOLD: float = 0.01
 # Bayesian shrinkage prior standard deviations for Hedges' g.
 # Replaces the old single-scalar TYPE_M_CORRECTION (0.65) with a per-endpoint,
 # per-prior posterior mean. Posterior under N(0, prior_sd**2) prior on the true
-# effect, given observed g with sampling variance v = 4/n + g**2/(2n):
+# effect, given observed g with sampling variance v = 2/n + g**2/(4n):
 #     E[delta | g_obs] = g_obs * prior_var / (prior_var + v)
-# At n=2 per group, v ~ 2 + g**2/4, so a g of 2.28 has v ~ 3.3 and a neutral
-# (prior_sd=1.0) prior shrinks it to 2.28 * 1/(1+3.3) ~ 0.53.
+# At n=2 per group, v ~ 1 + g**2/8, so a g of 2.28 has v ~ 1.65 and a neutral
+# (prior_sd=1.0) prior shrinks it to 2.28 * 1/(1+1.65) ~ 0.86.
 # Three priors give a defensible range, not false precision:
 SHRINKAGE_PRIOR_SD_SKEPTICAL: float = 0.5    # sceptical: small effects expected
 SHRINKAGE_PRIOR_SD_NEUTRAL: float = 1.0      # neutral: medium effects plausible

@@ -27,8 +27,22 @@ from scipy.stats.mstats import gmean
 from src.utils.metadata import parse_roi_metadata as _parse_canonical
 from src.utils.paths import get_paths
 from src.config import Config
+from src.analysis.temporal_interface_analysis import hedges_g_sampling_variance
 
 _PATHS = get_paths()
+
+
+def _shrink_posterior_mean(g, v, prior_sd):
+    """Posterior mean of the true effect under a N(0, prior_sd**2) prior given
+    observed Hedges' g with sampling variance v: E[delta|g] = g*prior_var/(prior_var+v).
+
+    NOT a variance formula — the single canonical sampling variance is
+    temporal_interface_analysis.hedges_g_sampling_variance. Works elementwise on
+    pandas Series (g, v) or on scalars, so the rank-table loop and the
+    variance-consistency test exercise the same production arithmetic.
+    """
+    prior_var = prior_sd ** 2
+    return g * prior_var / (prior_var + v)
 
 
 def load_metadata() -> pd.DataFrame:
@@ -126,8 +140,8 @@ def add_clr_columns(df: pd.DataFrame, cell_types: List[str]) -> pd.DataFrame:
     Add centered log-ratio (CLR) transformed columns for compositional awareness.
 
     Cell type proportions are compositional data (they share the denominator,
-    and ~66% is unassigned). CLR transforms break the spurious negative
-    correlation induced by the shared denominator.
+    and ~86% is unassigned under strict gating). CLR transforms break the
+    spurious negative correlation induced by the shared denominator.
 
     CLR(x_i) = log(x_i / geometric_mean(x))
 
@@ -697,16 +711,25 @@ def main():
         rt['g_pathological'] = (rt['hedges_g'].abs() > 3.0) & (rt['pooled_std'] < 0.01)
 
         # Bayesian shrinkage under three priors. Sampling variance per
-        # Hedges & Olkin (1985): v = 2/n + g^2/(4n). Per-prior posterior
-        # mean: E[delta|g] = g * prior_var / (prior_var + v). At n=2 v is
-        # large so shrinkage is aggressive; that's the point.
-        n_eff = ((n1 * n2) / (n1 + n2)).replace(0, np.nan)
-        v_sampling = 2.0 / n_eff + rt['hedges_g']**2 / (4.0 * n_eff)
+        # Hedges & Olkin (1985): v = 2/n + g^2/(4n)
+        # (reuses temporal_interface_analysis.hedges_g_sampling_variance —
+        # single source of truth, no second variance formula). Per-prior
+        # posterior mean: E[delta|g] = g * prior_var / (prior_var + v). At n=2
+        # v is large so shrinkage is aggressive; that's the point.
+        if (rt['n_mice_1'] == rt['n_mice_2']).all():
+            # Equal group sizes (pilot: n1==n2==2) — reuse the canonical fn.
+            v_sampling = rt.apply(
+                lambda r: hedges_g_sampling_variance(r['hedges_g'], int(r['n_mice_1'])),
+                axis=1,
+            )
+        else:
+            # Unequal groups: general Hedges & Olkin form, which reduces to the
+            # canonical fn exactly when n1==n2.
+            v_sampling = (n1 + n2) / (n1 * n2) + rt['hedges_g']**2 / (2.0 * (n1 + n2))
         for name, sd in (
             ('skeptical', 0.5), ('neutral', 1.0), ('optimistic', 2.0),
         ):
-            prior_var = sd ** 2
-            shrunk = rt['hedges_g'] * prior_var / (prior_var + v_sampling)
+            shrunk = _shrink_posterior_mean(rt['hedges_g'], v_sampling, sd)
             shrunk = shrunk.where(~rt['g_pathological'], np.nan)
             rt[f'g_shrunk_{name}'] = shrunk
 
@@ -730,6 +753,15 @@ def main():
             rank_frames.append(ranked)
         rank_table = pd.concat(rank_frames, ignore_index=True)
         rank_table.to_csv(output_dir / 'temporal_top_ranked_by_effect.csv', index=False)
+
+        # Provenance: record which variance formula + priors produced the
+        # g_shrunk_* columns, beside the CSV. Leaves CSV columns unchanged.
+        with open(output_dir / 'temporal_top_ranked_by_effect.csv.meta.json', 'w') as f:
+            json.dump({
+                'variance_formula': 'hedges_olkin_1985_equal_n: v=2/n+g^2/(4n)',
+                'variance_source': 'src.analysis.temporal_interface_analysis.hedges_g_sampling_variance',
+                'prior_sds': {'skeptical': 0.5, 'neutral': 1.0, 'optimistic': 2.0},
+            }, f, indent=2)
 
     if len(regional_results) > 0:
         regional_results.to_csv(output_dir / 'regional_differential_abundance.csv', index=False)
