@@ -187,81 +187,241 @@
       "activated_fibroblast_cd140b",
       "fibroblast"
     ],
-    "_comment_priority_order": "Phase 7 P1: explicit gate priority. Most-specific first (Ly6G+ neutrophil), then activated subtypes by lineage, then base subtypes, then base lineages. Replaces pre-Phase-7 implicit reliance on JSON dict insertion order. Schema validator (src/config_schema.py) rejects priority_order entries that don't match cell_types keys.",
+    "_comment_priority_order": "Explicit gate priority across 15 cell types. Most-specific first per lineage (Ly6G+ neutrophil before non-neutrophil immune, etc.), then activated subtypes by lineage, then base subtypes, then base lineages. 14 of 15 gates exercise all 9 panel markers; the neutrophil gate is the named exception (see _comment_neutrophil_exception) — required by the locked Phase 7 v2 pre-registration so that the Family C v2 endpoint neutrophil_compartment_cd44_rate is non-tautological. Schema validator (src/config_schema.py) rejects priority_order entries that don't match cell_types keys.",
     "cell_types": {
       "neutrophil": {
-        "positive_markers": ["CD45", "Ly6G"],
-        "negative_markers": ["CD31", "CD34"],
+        "positive_markers": [
+          "CD45",
+          "Ly6G"
+        ],
+        "negative_markers": [
+          "CD31",
+          "CD34"
+        ],
         "family": "immune_neutrophil"
       },
       "activated_m2_cd44": {
-        "positive_markers": ["CD45", "CD11b", "CD206", "CD44"],
-        "negative_markers": ["CD34", "CD31"],
+        "positive_markers": [
+          "CD45",
+          "CD11b",
+          "CD206",
+          "CD44"
+        ],
+        "negative_markers": [
+          "CD34",
+          "CD31",
+          "CD140a",
+          "Ly6G",
+          "CD140b"
+        ],
         "family": "immune_m2"
       },
       "activated_m2_cd140b": {
-        "positive_markers": ["CD45", "CD11b", "CD206", "CD140b"],
-        "negative_markers": ["CD34", "CD31"],
+        "positive_markers": [
+          "CD45",
+          "CD11b",
+          "CD206",
+          "CD140b"
+        ],
+        "negative_markers": [
+          "CD34",
+          "CD31",
+          "CD140a",
+          "Ly6G",
+          "CD44"
+        ],
         "family": "immune_m2"
       },
       "m2_macrophage": {
-        "positive_markers": ["CD45", "CD11b", "CD206"],
-        "negative_markers": ["CD34", "CD31", "CD44", "CD140b"],
+        "positive_markers": [
+          "CD45",
+          "CD11b",
+          "CD206"
+        ],
+        "negative_markers": [
+          "CD34",
+          "CD31",
+          "CD44",
+          "CD140b",
+          "CD140a",
+          "Ly6G"
+        ],
         "family": "immune_m2"
       },
       "activated_myeloid_cd44": {
-        "positive_markers": ["CD45", "CD11b", "CD44"],
-        "negative_markers": ["CD34", "CD31", "CD206"],
+        "positive_markers": [
+          "CD45",
+          "CD11b",
+          "CD44"
+        ],
+        "negative_markers": [
+          "CD34",
+          "CD31",
+          "CD206",
+          "CD140a",
+          "Ly6G",
+          "CD140b"
+        ],
         "family": "immune_myeloid"
       },
       "activated_myeloid_cd140b": {
-        "positive_markers": ["CD45", "CD11b", "CD140b"],
-        "negative_markers": ["CD34", "CD31", "CD206"],
+        "positive_markers": [
+          "CD45",
+          "CD11b",
+          "CD140b"
+        ],
+        "negative_markers": [
+          "CD34",
+          "CD31",
+          "CD206",
+          "CD140a",
+          "Ly6G",
+          "CD44"
+        ],
         "family": "immune_myeloid"
       },
       "myeloid": {
-        "positive_markers": ["CD45", "CD11b"],
-        "negative_markers": ["CD34", "CD31", "CD44", "CD140b", "CD206"],
+        "positive_markers": [
+          "CD45",
+          "CD11b"
+        ],
+        "negative_markers": [
+          "CD34",
+          "CD31",
+          "CD44",
+          "CD140b",
+          "CD206",
+          "CD140a",
+          "Ly6G"
+        ],
         "family": "immune_myeloid"
       },
       "activated_immune": {
-        "positive_markers": ["CD45", "CD44", "CD140b"],
-        "negative_markers": ["CD34", "CD31", "CD11b"],
+        "positive_markers": [
+          "CD45",
+          "CD44",
+          "CD140b"
+        ],
+        "negative_markers": [
+          "CD34",
+          "CD31",
+          "CD11b",
+          "CD140a",
+          "Ly6G",
+          "CD206"
+        ],
         "family": "immune_other"
       },
       "immune_cells": {
-        "positive_markers": ["CD45"],
-        "negative_markers": ["CD34", "CD31", "CD11b", "CD44", "CD140b"],
+        "positive_markers": [
+          "CD45"
+        ],
+        "negative_markers": [
+          "CD34",
+          "CD31",
+          "CD11b",
+          "CD44",
+          "CD140b",
+          "CD140a",
+          "Ly6G",
+          "CD206"
+        ],
         "family": "immune_other"
       },
       "activated_endothelial_cd44": {
-        "positive_markers": ["CD31", "CD34", "CD44"],
-        "negative_markers": ["CD45"],
+        "positive_markers": [
+          "CD31",
+          "CD34",
+          "CD44"
+        ],
+        "negative_markers": [
+          "CD45",
+          "CD140a",
+          "Ly6G",
+          "CD11b",
+          "CD140b",
+          "CD206"
+        ],
         "family": "endothelial"
       },
       "activated_endothelial_cd140b": {
-        "positive_markers": ["CD31", "CD34", "CD140b"],
-        "negative_markers": ["CD45"],
+        "positive_markers": [
+          "CD31",
+          "CD34",
+          "CD140b"
+        ],
+        "negative_markers": [
+          "CD45",
+          "CD140a",
+          "Ly6G",
+          "CD11b",
+          "CD206",
+          "CD44"
+        ],
         "family": "endothelial"
       },
       "endothelial": {
-        "positive_markers": ["CD31", "CD34"],
-        "negative_markers": ["CD45", "CD44", "CD140b"],
+        "positive_markers": [
+          "CD31",
+          "CD34"
+        ],
+        "negative_markers": [
+          "CD45",
+          "CD44",
+          "CD140b",
+          "CD140a",
+          "Ly6G",
+          "CD11b",
+          "CD206"
+        ],
         "family": "endothelial"
       },
       "activated_fibroblast_cd44": {
-        "positive_markers": ["CD140a", "CD44"],
-        "negative_markers": ["CD45", "CD31", "CD34"],
+        "positive_markers": [
+          "CD140a",
+          "CD44"
+        ],
+        "negative_markers": [
+          "CD45",
+          "CD31",
+          "CD34",
+          "Ly6G",
+          "CD11b",
+          "CD140b",
+          "CD206"
+        ],
         "family": "stromal"
       },
       "activated_fibroblast_cd140b": {
-        "positive_markers": ["CD140a", "CD140b"],
-        "negative_markers": ["CD45", "CD31", "CD34"],
+        "positive_markers": [
+          "CD140a",
+          "CD140b"
+        ],
+        "negative_markers": [
+          "CD45",
+          "CD31",
+          "CD34",
+          "Ly6G",
+          "CD11b",
+          "CD206",
+          "CD44"
+        ],
         "family": "stromal"
       },
       "fibroblast": {
-        "positive_markers": ["CD140a"],
-        "negative_markers": ["CD45", "CD31", "CD34", "CD44", "CD140b"],
+        "positive_markers": [
+          "CD140a"
+        ],
+        "negative_markers": [
+          "CD45",
+          "CD31",
+          "CD34",
+          "CD44",
+          "CD140b",
+          "Ly6G",
+          "CD11b",
+          "CD206"
+        ],
         "family": "stromal"
       }
     },
@@ -270,17 +430,24 @@
       "normalization": "sigmoid_threshold",
       "sigmoid_steepness": 10.0,
       "lineages": {
-        "_comment": "Positive-only markers. No cross-lineage negatives — a superpixel can be immune AND endothelial (tissue interface). Scores are continuous [0,1] normalized expression.",
+        "_comment": "Positive-only markers. No cross-lineage negatives \u2014 a superpixel can be immune AND endothelial (tissue interface). Scores are continuous [0,1] normalized expression.",
         "immune": {
-          "markers": ["CD45"],
+          "markers": [
+            "CD45"
+          ],
           "aggregation": "max"
         },
         "endothelial": {
-          "markers": ["CD31", "CD34"],
+          "markers": [
+            "CD31",
+            "CD34"
+          ],
           "aggregation": "mean"
         },
         "stromal": {
-          "markers": ["CD140a"],
+          "markers": [
+            "CD140a"
+          ],
           "aggregation": "max"
         }
       },
@@ -290,28 +457,41 @@
         "definitions": {
           "neutrophil": {
             "parent_lineage": "immune",
-            "positive": ["Ly6G"],
+            "positive": [
+              "Ly6G"
+            ],
             "negative": []
           },
           "m2_macrophage": {
             "parent_lineage": "immune",
-            "positive": ["CD11b", "CD206"],
+            "positive": [
+              "CD11b",
+              "CD206"
+            ],
             "negative": []
           },
           "myeloid": {
             "parent_lineage": "immune",
-            "positive": ["CD11b"],
-            "negative": ["CD206", "Ly6G"]
+            "positive": [
+              "CD11b"
+            ],
+            "negative": [
+              "CD206",
+              "Ly6G"
+            ]
           },
           "non_myeloid_immune": {
             "parent_lineage": "immune",
             "positive": [],
-            "negative": ["CD11b", "Ly6G"]
+            "negative": [
+              "CD11b",
+              "Ly6G"
+            ]
           }
         }
       },
       "activation": {
-        "_comment": "Independent overlay — scored continuously, not exclusive to any lineage. A stromal-endothelial interface superpixel can be CD44-activated.",
+        "_comment": "Independent overlay \u2014 scored continuously, not exclusive to any lineage. A stromal-endothelial interface superpixel can be CD44-activated.",
         "markers": {
           "cd44": "CD44",
           "cd140b": "CD140b"
@@ -323,7 +503,8 @@
         "activation": 0.3,
         "dominance": 2.0
       }
-    }
+    },
+    "_comment_neutrophil_exception": "Neutrophil gate is the named exception to the convention that every gate exercises all 9 panel markers. Phase 7 v2 spec (analysis_plans/phase_7_celltype_endpoint_spec.md \u00a74.6) requires that the neutrophil gate leave CD44 status free, so that the Family C v2 endpoint `neutrophil_compartment_cd44_rate` (CD44+ rate within Ly6G+ tissue) is non-tautological. Concretely: positive_markers = [CD45, Ly6G] and negative_markers = [CD31, CD34] (the spec literal). Markers CD11b, CD140a, CD140b, CD206, and CD44 are not tested by this gate, so a CD45+Ly6G+ superpixel can be labelled `neutrophil` regardless of activation state or myeloid-marker co-expression. All other 14 gates exercise all 9 markers; this single exception is required by the locked pre-registration."
   },
   "biological_analysis": {
     "_comment": "Configuration for downstream biological analysis modules",

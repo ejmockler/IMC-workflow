@@ -337,6 +337,11 @@ Incorporated 11 critical/high findings from multi-critic Gate 0 review:
 - Annotation parquets regenerated with `c:` prefix; 24/24 ROIs.
 - Pipeline outputs gain 3 new parquets: `celltype_fractions.parquet`, `celltype_clr.parquet`, `celltype_min_prevalence_sweep.parquet`. Total parquets in `temporal_interfaces/`: 22 (was 19).
 
+**Post-remediation cohort run (2026-05-20, addendum)** — does not supersede the 2026-04-28 row; records the state after the spec-literal-gate restoration. SHA-of-record after the 2026-05-21 doc-cycle comment-only config edit: config SHA `07c5b976…`, sham SHA `6bfaa56b…` (the 2026-05-20 endpoint values were generated under config SHA `34890531…` / sham SHA `aefb6779…`; the comment-only rotation produced bit-identical sham threshold/scale values and bit-identical endpoint values, so the change-of-record is provenance-metadata-only):
+- `endpoint_summary.csv`: **840 rows × 46 columns**. Family A: 48 v1 + 36 v2 = 84; Family B: 540 v1 + 180 v2 = 720; Family C: 36.
+- `is_headline=True`: 263 rows. Cross-rule demotions: 18 row-level demotions across 5 unique endpoint roots.
+- Row-count drop driven by the spec-literal-gate restoration (`neutrophil` negative_markers reverted to `[CD31, CD34]` from the intermediate `[CD31, CD34, CD140a]`), which increased neutrophil prevalence (1,336 → 3,300 superpixels) and raised the min-prevalence collapse pressure on the activated_*_cd44 / activated_*_cd140b subtypes in the Family A v2 16-cat simplex, shrinking the active-coordinate count from ~13 to 4 (+`other_rare`+`unassigned`). Family B v2 row count drops correspondingly with the discrete-celltype stratifier set.
+
 **Forbidden language additions (Phase 7-specific, on top of pre-Phase-5 list)**:
 - "Cross-axis co-headline" — the cross-rule prevents this by demotion; a flagged co-headline indicates a missed demotion bug, not a cross-cohort finding.
 - "Reference category" / "ALR" framing for Family A v2 — the round-1 ALR/CLR confusion was patched; revised CLR has no reference. Use "no reference; geometric-mean denominator" if the reader asks.
@@ -348,3 +353,17 @@ Incorporated 11 critical/high findings from multi-critic Gate 0 review:
 - Raw-marker corroborating path for Family A_v2 (`classify_celltype_per_superpixel_global_markers`; would not be corroboration because it shares the entire taxonomy with the primary path; round 1)
 
 **Phase 7 closes amendment cycle for the kidney pilot.** Amendment #7+ should be gated on a second cohort or external validation, not on internal iteration (round-3 §7 residual risk #6).
+
+### 2026-07-03 (Errata amendment — frozen-anchor corrections; NO analysis change)
+
+Two factual/citation errata in frozen text were corrected. **No endpoint, threshold, filter, contrast, prior, or numeric result changed** — pipeline outputs are bit-identical; these are comment/count-only edits. Recorded here per the freeze convention (Status, line 4) and re-pinned in `review_packet/FROZEN_PREREG.md`.
+
+1. **Family A v2 active-typed-coordinate count (2026-05-20 addendum above): "~13 to 5" → "~13 to 4".** The post-remediation `endpoint_summary.csv` (`endpoint_axis='discrete_celltype_16cat'`) has **4** active typed coordinates — `endothelial`, `fibroblast`, `immune_cells`, `neutrophil` — at the 0.01 min-prevalence threshold (verified: `celltype_clr.parquet` coordinate columns = 4 typed + `other_rare` + `unassigned`; 15 − 4 = 11 typed cells collapse into `other_rare`). "5" was a mis-count. Same erratum corrected in the reviewer-facing docs (`METHODS.md`, `review_packet/ONE_PAGER.md`, `docs/DATA_SCHEMA.md`, `analysis_plans/phase_7_celltype_endpoint_spec.md`).
+
+2. **`config.json` `_comment_neutrophil_exception` spec cross-reference: §6.3 → §4.6.** The neutrophil-gate-leaves-CD44-free rationale (so `neutrophil_compartment_cd44_rate` is non-tautological) is in `analysis_plans/phase_7_celltype_endpoint_spec.md` **§4.6 "Family C v2 — single-row neutrophil extension"** ("Why this and only this"), NOT §6.3 "Schema deltas (endpoint_summary.csv)". Comment-only edit; gate logic and all downstream artifacts unchanged.
+
+**SHA rotations (comment/count-only, per the 2026-05-21 cascade precedent):**
+- `config.json`: `07c5b97632201511ce32fdec05719fd2dc73b5840087dda305768f8d0b2a23fb` → `d12930747fa248ab71aa341849012e2462211e214e4b892cf2f79ff101f6b400`
+- `results/biological_analysis/sham_reference_10.0um.json`: `6bfaa56bf7118b53778f981382a25765341f9594e67ec354c39f1ab0132fbd48` → `276933bd2772258c118132da700f86acfdd3f4b142b37e4a55f2a40f43a98652` (embedded `_metadata.config_sha256` updated to the new config SHA; threshold/scale values bit-identical)
+- `analysis_plans/temporal_interfaces_plan.md`: recomputed and re-pinned in `FROZEN_PREREG.md` (this amendment).
+- Resolved `DISCRETE_CELL_TYPES` SHA unchanged (`cell_types` keys untouched). `verify_frozen_prereg.py` PASS after re-pin.

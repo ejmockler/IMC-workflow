@@ -29,11 +29,11 @@
     "n_sham_superpixels": 14575,
     "n_total_rois": 24,
     "n_total_superpixels": 58137,
-    "config_sha256": "adf88d48897988f21fde0910a5a0d927e7fe9e8b56f07dbbe9b42fda32829d61",
-    "generated_at_utc": "2026-04-28T07:25:56.900641+00:00",
+    "config_sha256": "d12930747fa248ab71aa341849012e2462211e214e4b892cf2f79ff101f6b400",
+    "generated_at_utc": "2026-05-21T09:27:01.592235+00:00",
     "python_version": "3.12.10",
     "generator_script": "generate_sham_reference.py",
-    "git_hash": "3ca121036d815cef8d9a4c6e8fc5d8fb2651ab60",
+    "git_hash": "e73d989535787de5bc3bf3759bab9c53a0fa3126",
     "git_dirty": true
   },
   "reference": {

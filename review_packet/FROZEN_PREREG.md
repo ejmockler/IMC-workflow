@@ -8,18 +8,31 @@ Snapshot for external review. Every file referenced is pinned by SHA-256 + git c
 |-------|-------|
 | Git commit | (pinned at Phase 5 commit; verify with `git rev-parse HEAD` after fetching) |
 | Branch | `main` |
-| `config.json` SHA-256 | `adf88d48897988f21fde0910a5a0d927e7fe9e8b56f07dbbe9b42fda32829d61` (Phase 7 P1: priority_order added) |
+| `config.json` SHA-256 | `d12930747fa248ab71aa341849012e2462211e214e4b892cf2f79ff101f6b400` (15-type ontology; 14 of 15 gates exercise all 9 panel markers; the neutrophil gate is the named exception per Phase 7 v2 spec — its gate literal is `+CD45 +Ly6G -CD31 -CD34` (matching `analysis_plans/phase_7_celltype_endpoint_spec.md:198`), leaving CD11b, CD140a, CD140b, CD206, and CD44 free so that the Family C v2 endpoint `neutrophil_compartment_cd44_rate` is non-tautological. Verified bit-exact for all 14 full-panel gates: every labelled superpixel satisfies its gate, every unassigned superpixel fails every gate, 0.0% multi-gate ambiguity. SHA-rotation 2026-05-21: `_comment_neutrophil_exception` field updated to match spec literal `[CD31, CD34]` (was stale `[CD31, CD34, CD140a]`); gate logic and downstream artifacts unchanged. SHA-rotation 2026-07-03 (errata amendment): `_comment_neutrophil_exception` spec cross-ref §6.3→§4.6 corrected; `sham_reference` embedded `config_sha256` and `temporal_interfaces_plan.md` re-pinned in the same amendment; gate logic and pipeline outputs bit-identical — see `analysis_plans/temporal_interfaces_plan.md` §12 (2026-07-03).) |
 | `viz.json` SHA-256 | `422a14a03eff4cd7934ce1ec35138e1891d293b65e167dc8d4db498bfb6c0bd2` |
-| `analysis_plans/temporal_interfaces_plan.md` SHA-256 | `3a2b6ee5c41dc5018e711976ad3a6884a9c14136852cc5d94bf3f2eeeaa0a739` (Phase 5 + 1.5c correction + Phase 6 closure + Phase 7 amendment 2026-04-28) |
-| `results/biological_analysis/sham_reference_10.0um.json` SHA-256 | `6f05d449f60af735e3e5c8442aa206f633eb480aa288b33de6cbbdb2699383e7` (Phase 7 P1: regenerated when config.json rotated; numerical thresholds bit-identical because priority_order does not affect sham-reference computation) |
-| Resolved `DISCRETE_CELL_TYPES` SHA-256 | `6a2ba83c9b99f25b368fb7de89311b42a8fc601623dd202738bd6bf127de52ff` (Phase 7 P3: SHA-256 of newline-joined sorted list of 15 cell_types from `config.cell_type_annotation.cell_types` + literal `unassigned`. Catches config-vocabulary drift independent of `config.json` byte-level SHA. Computed by `verify_frozen_prereg.py::resolved_discrete_cell_types_sha`.) |
+| `analysis_plans/temporal_interfaces_plan.md` SHA-256 | `6c10b2705e157868f929f042c276bf96cdbaf45f5c1d12b67d83b0b73b24fd5b` (post-remediation 2026-05-21 addendum recording 840-row spec-literal-gate cohort run alongside the original 1134-row entry; addendum updated to record post-doc-cycle SHA-of-record `07c5b976…` / `6bfaa56b…`) |
+| `results/biological_analysis/sham_reference_10.0um.json` SHA-256 | `276933bd2772258c118132da700f86acfdd3f4b142b37e4a55f2a40f43a98652` (per-mouse aggregation, sigmoid centered on Sham pooled per-mouse 60th percentile; embedded `_metadata.config_sha256` matches `config.json` above; threshold/scale values bit-identical to prior run — only the embedded config_sha rotated under the comment-only config edit) |
+| Resolved `DISCRETE_CELL_TYPES` SHA-256 | `6a2ba83c9b99f25b368fb7de89311b42a8fc601623dd202738bd6bf127de52ff` (SHA-256 of newline-joined sorted list of 15 cell_types from `config.cell_type_annotation.cell_types` + literal `unassigned`. Catches config-vocabulary drift independent of `config.json` byte-level SHA. Computed by `verify_frozen_prereg.py::resolved_discrete_cell_types_sha`.) |
 | `audit_tissue_mask_density.py` SHA-256 | (computed at commit time, see `verify_frozen_prereg.py`) |
 | `audit_family_b_raw_markers.py` SHA-256 | (computed at commit time, see `verify_frozen_prereg.py`) |
-| Sham-ref artifact `_metadata.git_hash` | `3ca121036d815cef8d9a4c6e8fc5d8fb2651ab60` with `_metadata.git_dirty=true` (regenerated 2026-04-28 during the Phase 7 P1 priority_order rotation; numerical thresholds bit-identical because priority_order does not affect Sham-reference computation, but the artifact was nevertheless re-emitted under the new config_sha256). The artifact's `git_dirty=true` flag is preserved as-is — the regenerator script ran with uncommitted local changes that did not affect the threshold computation. The artifact-level SHA-256 above (`6f05d449…`) is the authoritative integrity check. |
 | Python | 3.12.10 |
 | Platform | Darwin 25.4.0 (macOS) |
-| Snapshot timestamp (UTC) | 2026-04-23 |
 | Manifest verification script | `verify_frozen_prereg.py` (recomputes every SHA above and fails if it diverges from this table) |
+
+## Composite-lineage track (informational)
+
+A parallel Phase 1 DA + SN track operating on the 8-category interface decomposition (none, immune, endothelial, stromal, three two-way interfaces, triple-positive) derived per superpixel via `src.analysis.temporal_interface_analysis.classify_interface_per_superpixel` at threshold 0.3 — the same categorization Family A v1 uses. Captures the multi-lineage interface tissue that the strict-discrete cell-type Phase 1 track forces into `unassigned`. Equivalence with Family A v1's `interface_fractions.parquet` is verified bit-exactly at machine precision.
+
+| Artifact | SHA-256 |
+|---|---|
+| `run_composite_lineage_analysis.py` | `c4ee27132b3337b68e9e2f88a2ac0185beeab4681000ab7ede611bf2ca85e475` |
+| `differential_abundance_composite/temporal_differential_abundance.csv` | `80adcfff2fca232ce6dfea6bdfee5d0cd636f08a2a23fa0757fe7f54ef19c40b` |
+| `differential_abundance_composite/temporal_top_ranked_by_effect.csv` | `47182b72c365be60f7bb0b1b7e11039225262515df6c38a03b9129fda8c3bd33` |
+| `differential_abundance_composite/roi_abundances.csv` | `173bdd29a30bbd67b4844d29931d4b96be9857a7fc61ed482c0aa173c0832ac4` |
+| `spatial_neighborhoods_composite/temporal_neighborhood_enrichments.csv` | `952a6a5fe185ccddeb05e6165d6cfc5d47ae51fb06129c7caaf836cd3daaa6a1` |
+| `discrete_vs_composite_comparison.md` | `2ded1b75221d7d25c81fdbbc1842b6bfb871be23bcaad43f74967787f65bc501` |
+
+These artifacts are **informational** — derived outputs that re-running the composite-lineage script regenerates with bit-exact values given the gating anchors above. The categorization rule is pinned via the script SHA; the data dependency is the existing gating anchors (`config.json` SHA + sham_reference SHA + DISCRETE_CELL_TYPES SHA). The 8-category interface decomposition is the Family A v1 categorization; reusing it in this track preserves cross-family coherence.
 
 ## Pre-registered endpoint families (summary; full spec in `analysis_plans/temporal_interfaces_plan.md`)
 
@@ -89,11 +102,11 @@ This rule is applied unchanged for any follow-up cohort; any relaxation in a fut
 - **Family B_v2** — per-discrete-cell-type neighbor-minus-self. Same kNN gradient operator as v1; stratifier_col swapped from `composite_label` to `cell_type`. Dual-basis (sigmoid + raw-marker) under existing `normalization_mode` column. Tagged `stratifier_basis = 'discrete_celltype'`.
 - **Family C v2** — single-row neutrophil extension. New per-ROI compute path (categorical: `cell_type == 'neutrophil'`); per-mouse aggregation reuses Family C contract (collects `*_cd44_rate` columns). The 14/15 other discrete cell types pin CD44 status by gate construction (rate forced 0 or 1); only `neutrophil` admits a non-tautological measurement.
 - **`c:` rename** — every `composite_label` value gains a `c:` prefix to disambiguate from `cell_type` values (e.g., `c:endothelial` vs `cell_type='endothelial'`). Single-commit migration; runtime assertion test (`tests/test_notebook_composite_label_filters.py`) catches missed rename targets.
-- **v1/v2 cross-rule** — runtime demotion column `headline_demoted_reason = 'cross_axis_co_headline_forbidden'`. Effective reach: 54/1134 rows demoted in current cohort (v2 rows whose v1 lineage analog passes the v1 rule). Architecture is correct for the events that exist; structural reach acknowledged as small (round-3 F1).
-- **`is_headline` boolean** — single canonical headline-status column on every row, computed after demotion. 333/1134 rows pass (post-cross-rule).
+- **v1/v2 cross-rule** — runtime demotion column `headline_demoted_reason = 'cross_axis_co_headline_forbidden'`. Effective reach: 18/840 rows demoted in current cohort post-remediation (v2 rows whose v1 lineage analog passes the v1 rule). Architecture is correct for the events that exist; structural reach acknowledged as small (round-3 F1).
+- **`is_headline` boolean** — single canonical headline-status column on every row, computed after demotion. 263/840 rows pass (post-cross-rule, post-remediation).
 - **Schema deltas (8 new columns)**: `endpoint_axis`, `stratifier_basis`, `min_prevalence_sweep_value`, `headline_rule_version`, `headline_demoted_reason`, `is_headline`, `unassigned_rate_mouse_mean_1`, `unassigned_rate_mouse_mean_2`.
-- **Total endpoint rows**: **1134** (was 618 pre-Phase 7); 46 columns (was 37).
-- **Family breakdown**: A v1=48 + A v2=78 = 126; B v1=540 + B v2=432 = 972; C=36. Total 1134.
+- **Total endpoint rows (post-remediation)**: **840** (was 618 pre-Phase-7; the pre-remediation Phase 7 cohort had 1134 rows when activated_neutrophil_* subtypes were active and the v2 simplex retained more low-prevalence coordinates). 46 columns (was 37 pre-Phase-7).
+- **Family breakdown (post-remediation)**: A v1=48 + A v2=36 = 84; B v1=540 + B v2=180 = 720; C=36. Total 840.
 - **Prerequisites merged ahead of Phase 7**: P1 (priority_order in config; `config_sha256` rotated to `adf88d48…`); P2 (parameterized `apply_min_prevalence_filter`); P3 (`DISCRETE_CELL_TYPES` SHA `6a2ba83c…` pinned in this manifest).
 - **MH-1 permutation null** — empirical null-distribution criterion (round-3 F5: original "95th percentile == 0" was untenable at n=2). Test scaffolded at `tests/test_phase7_permutation_null.py`. Smoke test runs on every CI; full 1000-shuffle lock gate runs under `PHASE7_RUN_FULL_NULL=1` env.
 
