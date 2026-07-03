@@ -1,7 +1,7 @@
 {
   "0": {
     "cell_type": "immune_cells",
-    "confidence": 0.6666666666666666,
+    "confidence": 0.7777777777777778,
     "n_cells": 485,
     "marker_enrichment": {
       "CD45": 0.16187477187512167,
@@ -33,7 +33,7 @@
   },
   "2": {
     "cell_type": "immune_cells",
-    "confidence": 0.6666666666666666,
+    "confidence": 0.7777777777777778,
     "n_cells": 412,
     "marker_enrichment": {
       "CD45": 0.1582192262425181,
@@ -49,7 +49,7 @@
   },
   "3": {
     "cell_type": "activated_myeloid_cd44",
-    "confidence": 0.5,
+    "confidence": 0.3333333333333333,
     "n_cells": 398,
     "marker_enrichment": {
       "CD45": 0.30092829433409546,
@@ -64,8 +64,8 @@
     }
   },
   "4": {
-    "cell_type": "endothelial",
-    "confidence": 0.6,
+    "cell_type": "activated_endothelial_cd140b",
+    "confidence": 0.6666666666666666,
     "n_cells": 323,
     "marker_enrichment": {
       "CD45": 0.8118313691594414,
@@ -96,8 +96,8 @@
     }
   },
   "6": {
-    "cell_type": "activated_endothelial_cd44",
-    "confidence": 0.75,
+    "cell_type": "activated_m2_cd44",
+    "confidence": 0.4444444444444444,
     "n_cells": 87,
     "marker_enrichment": {
       "CD45": 14.303100497692643,

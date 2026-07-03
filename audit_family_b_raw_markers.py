@@ -34,6 +34,7 @@ import numpy as np
 import pandas as pd
 
 from src.analysis import temporal_interface_analysis as tia
+from src.config import Config
 from src.utils.paths import get_paths
 
 
@@ -259,7 +260,9 @@ def main() -> int:
 
     # --- Raw-marker parallel ---
     print('\n  Running Family B on raw markers (sigmoid-independent) ...')
-    raw_annotations = _build_raw_lineage_columns(annotations)
+    config = Config(str(REPO_ROOT / 'config.json'))
+    lineage_definitions = load_lineage_definitions_from_config(config)
+    raw_annotations = _build_raw_lineage_columns(annotations, lineage_definitions)
     raw = _run_family_b_on(raw_annotations, min_support=tia.DEFAULT_MIN_SUPPORT)
     raw['lineage_source'] = 'raw_marker_arcsinh'
     print(f'    {len(raw)} endpoints')

@@ -26,12 +26,12 @@ IMC_241218_Alun_ROI_Sam2_03_8,Sham,M2,247317,2412,0.247317,9752.665607297517
 
 # CV_tissue_area_mm2,0.011568
 # CV_superpixels_per_mm2,0.013653
-# pearson_abs_r_density_vs_proportion_dominant_celltype,0.973087
+# pearson_abs_r_density_vs_proportion_dominant_celltype,0.885573
 # multiplier_density_per_proportion,9857.40
 # non_degeneracy_bar_CV,0.05
 # non_degeneracy_bar_pearson_r,0.95
 # gate_cv_passed,False
-# gate_pearson_passed,False
+# gate_pearson_passed,True
 # gate_passed,False
 # closure_scope,"area-based density on the present acquisition design (constant field-of-view); does NOT close per-nucleus density, DNA-intensity integral, or variable-extent re-acquisition cohorts."
 # corroboration,"Family C raw-marker CD44+ compartment activation remains the only currently-implemented non-compositional corroboration for Family A CLR findings."

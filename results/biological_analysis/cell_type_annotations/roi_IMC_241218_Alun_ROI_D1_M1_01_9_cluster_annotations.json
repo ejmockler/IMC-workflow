@@ -1,7 +1,7 @@
 {
   "0": {
-    "cell_type": "activated_endothelial_cd44",
-    "confidence": 0.5,
+    "cell_type": "unknown",
+    "confidence": 0.0,
     "n_cells": 457,
     "marker_enrichment": {
       "CD45": 1.0214656818053833,
@@ -17,7 +17,7 @@
   },
   "1": {
     "cell_type": "immune_cells",
-    "confidence": 0.5,
+    "confidence": 0.5555555555555556,
     "n_cells": 439,
     "marker_enrichment": {
       "CD45": 0.33331388752446917,
@@ -33,7 +33,7 @@
   },
   "2": {
     "cell_type": "immune_cells",
-    "confidence": 0.6666666666666666,
+    "confidence": 0.7777777777777778,
     "n_cells": 411,
     "marker_enrichment": {
       "CD45": 0.105115359940953,
@@ -64,8 +64,8 @@
     }
   },
   "4": {
-    "cell_type": "activated_fibroblast_cd44",
-    "confidence": 0.4,
+    "cell_type": "activated_immune",
+    "confidence": 0.5555555555555556,
     "n_cells": 263,
     "marker_enrichment": {
       "CD45": 0.2011775070716287,
@@ -80,7 +80,7 @@
     }
   },
   "5": {
-    "cell_type": "immune_cells",
+    "cell_type": "activated_fibroblast_cd140b",
     "confidence": 0.6666666666666666,
     "n_cells": 259,
     "marker_enrichment": {
@@ -96,8 +96,8 @@
     }
   },
   "6": {
-    "cell_type": "activated_endothelial_cd44",
-    "confidence": 0.75,
+    "cell_type": "neutrophil",
+    "confidence": 0.5,
     "n_cells": 223,
     "marker_enrichment": {
       "CD45": 5.953249085637827,
@@ -112,8 +112,8 @@
     }
   },
   "7": {
-    "cell_type": "activated_fibroblast_cd44",
-    "confidence": 0.4,
+    "cell_type": "activated_immune",
+    "confidence": 0.4444444444444444,
     "n_cells": 84,
     "marker_enrichment": {
       "CD45": -0.5315077471041951,

@@ -1,7 +1,7 @@
 {
   "0": {
     "cell_type": "endothelial",
-    "confidence": 0.6,
+    "confidence": 0.7777777777777778,
     "n_cells": 535,
     "marker_enrichment": {
       "CD45": 0.18471584796034868,
@@ -17,7 +17,7 @@
   },
   "1": {
     "cell_type": "immune_cells",
-    "confidence": 0.8333333333333334,
+    "confidence": 0.8888888888888888,
     "n_cells": 532,
     "marker_enrichment": {
       "CD45": 0.46442959602844536,
@@ -33,7 +33,7 @@
   },
   "2": {
     "cell_type": "endothelial",
-    "confidence": 0.6,
+    "confidence": 0.6666666666666666,
     "n_cells": 506,
     "marker_enrichment": {
       "CD45": 0.31615543220908354,
@@ -48,8 +48,8 @@
     }
   },
   "3": {
-    "cell_type": "endothelial",
-    "confidence": 0.8,
+    "cell_type": "activated_endothelial_cd44",
+    "confidence": 0.4444444444444444,
     "n_cells": 406,
     "marker_enrichment": {
       "CD45": 0.4120019224116488,
@@ -64,8 +64,8 @@
     }
   },
   "4": {
-    "cell_type": "activated_endothelial_cd44",
-    "confidence": 0.5,
+    "cell_type": "activated_m2_cd44",
+    "confidence": 0.4444444444444444,
     "n_cells": 140,
     "marker_enrichment": {
       "CD45": 0.6246912539369999,
@@ -81,7 +81,7 @@
   },
   "5": {
     "cell_type": "endothelial",
-    "confidence": 0.8,
+    "confidence": 0.5555555555555556,
     "n_cells": 91,
     "marker_enrichment": {
       "CD45": 1.7007575282087197,
@@ -97,7 +97,7 @@
   },
   "6": {
     "cell_type": "activated_m2_cd44",
-    "confidence": 0.6666666666666666,
+    "confidence": 0.5555555555555556,
     "n_cells": 86,
     "marker_enrichment": {
       "CD45": 2.430890616627888,
@@ -112,7 +112,7 @@
     }
   },
   "7": {
-    "cell_type": "activated_immune",
+    "cell_type": "activated_m2_cd140b",
     "confidence": 0.6666666666666666,
     "n_cells": 33,
     "marker_enrichment": {
@@ -128,7 +128,7 @@
     }
   },
   "8": {
-    "cell_type": "immune_cells",
+    "cell_type": "activated_fibroblast_cd44",
     "confidence": 0.3333333333333333,
     "n_cells": 27,
     "marker_enrichment": {
