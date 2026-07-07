@@ -1,0 +1,696 @@
+<style>
+  #fig7-shrink-explore { margin: 2.4rem 0; }
+  #fig7-shrink-explore .fig7-eyebrow { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); margin:0 0 4px; }
+  #fig7-shrink-explore h3.fig7-title { font-size:20px; line-height:1.28; font-weight:600; color:var(--ink); margin:0 0 4px; max-width:60ch; }
+  #fig7-shrink-explore h3.fig7-title em { font-style:italic; color:var(--accent); }
+  #fig7-shrink-explore .fig7-lens-note { font-size:12.5px; color:var(--ink-soft); line-height:1.5; max-width:70ch; margin:6px 0 12px; }
+  #fig7-shrink-explore .fig7-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:6px 0 12px; }
+  #fig7-shrink-explore .fig7-ctl-label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); }
+  #fig7-shrink-explore .fig7-toggle { display:inline-flex; border:1px solid var(--rule); border-radius:3px; overflow:hidden; }
+  #fig7-shrink-explore .fig7-toggle button { appearance:none; border:0; background:var(--paper); color:var(--ink-soft); font:600 11px/1 ui-monospace,Menlo,monospace; letter-spacing:.02em; padding:6px 12px; cursor:pointer; border-left:1px solid var(--rule); transition:background .12s,color .12s; }
+  #fig7-shrink-explore .fig7-toggle button:first-child { border-left:0; }
+  #fig7-shrink-explore .fig7-toggle button[aria-checked="true"] { background:var(--ink); color:var(--paper); }
+  #fig7-shrink-explore .fig7-toggle button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+  #fig7-shrink-explore .fig7-readout { font-size:12px; color:var(--ink-faint); font-variant-numeric:tabular-nums; }
+  #fig7-shrink-explore .fig7-readout b { color:var(--ink-soft); }
+  #fig7-shrink-explore .shrinkage-svg { width:100%; height:auto; display:block; margin:2px 0 4px; overflow:visible; }
+  #fig7-svg .fig7-xgrid { stroke:var(--rule-soft); stroke-width:1; opacity:.45; }
+  #fig7-svg .fig7-xgrid-zero { stroke:var(--ink-faint); stroke-width:1; opacity:.7; stroke-dasharray:2 2; }
+  #fig7-svg .fig7-div { stroke:var(--rule); stroke-width:1; opacity:.6; }
+  #fig7-svg .fig7-xtick { fill:var(--ink-faint); font-size:11px; font-variant-numeric:tabular-nums; }
+  #fig7-svg .fig7-xtitle { fill:var(--ink-soft); font-size:11px; font-style:italic; letter-spacing:.02em; }
+  #fig7-svg .fig7-xanno { fill:var(--ink-faint); font-size:10.5px; font-style:italic; letter-spacing:.04em; }
+  #fig7-svg .fig7-band { fill:var(--accent); fill-opacity:.05; }
+  #fig7-svg .fig7-bandlab { fill:var(--ink-faint); font-size:10px; font-style:italic; letter-spacing:.04em; }
+  #fig7-svg .fig7-guthead, #fig7-svg .fig7-guthead2 { fill:var(--ink-faint); font-size:9.5px; letter-spacing:.03em; text-transform:uppercase; }
+  #fig7-svg .fig7-ptitle { font-size:13px; font-weight:600; letter-spacing:.01em; }
+  #fig7-svg .fig7-pcount { font-size:10.5px; font-weight:500; font-variant-numeric:tabular-nums; opacity:.75; }
+  #fig7-svg .fig7-rlabel { fill:var(--ink-soft); font-size:11.5px; }
+  #fig7-svg .fig7-glyph { font-size:11px; }
+  #fig7-svg .fig7-flag { fill:var(--ink-faint); font-size:9px; font-style:italic; letter-spacing:.02em; }
+  #fig7-svg .fig7-hit { fill:transparent; pointer-events:all; }
+  #fig7-svg .fig7-track { stroke:var(--ink-faint); stroke-width:1.4; opacity:.16; }
+  #fig7-svg .fig7-raw { fill:var(--paper); stroke-width:1.3; opacity:.7; }
+  #fig7-svg .fig7-stem { stroke-width:2.2; opacity:.5; stroke-linecap:round; }
+  #fig7-svg .fig7-dot { stroke:var(--paper); stroke-width:1.3; }
+  #fig7-svg .fig7-off { font-size:10px; font-variant-numeric:tabular-nums; opacity:.8; }
+  #fig7-svg .fig7-nreq { font-size:11px; font-weight:600; font-variant-numeric:tabular-nums; }
+  #fig7-svg .fig7-row .fig7-dot { transition:none; }
+  #fig7-svg:hover .fig7-row:not(:hover) { opacity:.34; }
+  #fig7-svg .fig7-row { transition:opacity .18s; }
+  #fig7-svg .fig7-row:hover .fig7-dot { stroke:var(--ink); stroke-width:1.6; }
+  #fig7-svg .fig7-row:hover .fig7-rlabel { fill:var(--ink); font-weight:600; }
+  @media (prefers-reduced-motion: reduce) { #fig7-svg * { transition:none !important; } }
+</style>
+<figure class="shrinkage-fig" id="fig7-shrink-explore" data-prior="neutral">
+  <div class="shrinkage-wrap">
+    <p class="fig7-eyebrow">Effect-size shrinkage, made switchable · §6</p>
+    <h3 class="fig7-title">Turn the prior and watch all 56 headline effects <em>slide</em>: skeptical collapses them into |g|≈0.32, optimistic lets them fan back out toward their raw values — and the sample size you’d need <em>moves with them</em>.</h3>
+    <p class="fig7-lens-note">These are the 10µm pre-registered Family A/B/C temporal-interface endpoints — there is no superpixel-scale sweep and no cortex/medulla split to switch, so the natural experiment-adjacent lens is the <strong>prior on effect size</strong>. Each endpoint is one dot on a fixed Hedges’ g axis at its Bayesian-shrunk estimate; the faint line behind it runs from 0 to the raw (unshrunk) g, so the dot rides between “all variance” (0) and “all signal” (raw). Switch the prior and only the dots move — axis, rows, colour and labels stay put.</p>
+    <div class="fig7-controls">
+      <span class="fig7-ctl-label">Prior</span>
+      <div class="fig7-toggle" role="radiogroup" aria-label="Bayesian prior on effect size">
+        <button role="radio" data-set-prior="skeptical" aria-checked="false">Skeptical</button>
+        <button role="radio" data-set-prior="neutral" aria-checked="true">Neutral</button>
+        <button role="radio" data-set-prior="optimistic" aria-checked="false">Optimistic</button>
+      </div>
+      <span class="fig7-readout"><b>neutral</b> · N(0, 1.0²) prior · median <b>n≈27</b> / group for 80% power · per-endpoint 16–240</span>
+    </div>
+    <svg class="shrinkage-svg" id="fig7-svg" viewBox="0 0 1280 1320" preserveAspectRatio="xMidYMin meet" role="img" aria-label="Interactive effect-size shrinkage; switch the Bayesian prior and each endpoint's shrunk Hedges' g and required sample size morph in place.">
+<line class="fig7-xgrid" x1="490.0" y1="60" x2="490.0" y2="1292"/>
+<line class="fig7-xgrid" x1="603.3" y1="60" x2="603.3" y2="1292"/>
+<line class="fig7-xgrid" x1="716.7" y1="60" x2="716.7" y2="1292"/>
+<line class="fig7-xgrid-zero" x1="830.0" y1="60" x2="830.0" y2="1292"/>
+<line class="fig7-xgrid" x1="943.3" y1="60" x2="943.3" y2="1292"/>
+<line class="fig7-xgrid" x1="1056.7" y1="60" x2="1056.7" y2="1292"/>
+<line class="fig7-xgrid" x1="1170.0" y1="60" x2="1170.0" y2="1292"/>
+<text class="fig7-xtitle" x="490" y="32">Hedges’ g · effect size (shrunk under the selected prior)</text>
+<text class="fig7-xanno" x="1170" y="32" text-anchor="end">← favors Sham &#160;·&#160; favors D7 →</text>
+<text class="fig7-xtick" x="490.0" y="56" text-anchor="middle">−3</text>
+<text class="fig7-xtick" x="603.3" y="56" text-anchor="middle">−2</text>
+<text class="fig7-xtick" x="716.7" y="56" text-anchor="middle">−1</text>
+<text class="fig7-xtick" x="830.0" y="56" text-anchor="middle">0</text>
+<text class="fig7-xtick" x="943.3" y="56" text-anchor="middle">+1</text>
+<text class="fig7-xtick" x="1056.7" y="56" text-anchor="middle">+2</text>
+<text class="fig7-xtick" x="1170.0" y="56" text-anchor="middle">+3</text>
+<rect class="fig7-band" x="793.7" y="60" width="72.5" height="1232"/>
+<text class="fig7-bandlab" x="830" y="14" text-anchor="middle">skeptical-prior collapses every effect inside |g| ≈ 0.32</text>
+<line class="fig7-div" x1="1176" y1="60" x2="1176" y2="1292"/>
+<text class="fig7-guthead" x="1230" y="40" text-anchor="middle">n / group</text>
+<text class="fig7-guthead2" x="1230" y="52" text-anchor="middle">80% power</text>
+<text class="fig7-ptitle" x="20" y="88" fill="#3d4f6f">Family A · interface composition (CLR)</text>
+<text class="fig7-pcount" x="1160" y="88" text-anchor="end" fill="#3d4f6f">9 headline endpoints</text>
+  <g class="fig7-row" data-id="A_interface_clr-0" data-fam="A">
+    <rect class="fig7-hit" x="0" y="106.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="119.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>endothelial (interface CLR)</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="115.5" x2="1170.0" y2="115.5"/>
+    <text class="fig7-off" x="1166" y="119.5" text-anchor="end" fill="#3d4f6f">→3.9</text>
+    <line class="fig7-stem" id="stem-A_interface_clr-0" x1="830.0" y1="115.5" x2="943.3" y2="115.5" stroke="#3d4f6f"/>
+    <circle class="fig7-dot" id="dot-A_interface_clr-0" cx="943.3" cy="115.5" r="4.2" fill="#3d4f6f"/>
+    <text class="fig7-nreq" id="nreq-A_interface_clr-0" x="1230" y="119.5" text-anchor="middle" fill="#3d4f6f">16</text>
+    <title>endothelial (interface CLR) · Sham→D7 (n=2 vs 2) · raw g=+3.92 · shrunk g skeptical +0.31 / neutral +1.00 / optimistic +2.27 · n/group for 80% power 165 / 16 / 4</title>
+  </g>
+  <g class="fig7-row" data-id="A_interface_clr-1" data-fam="A">
+    <rect class="fig7-hit" x="0" y="125.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="138.5" text-anchor="end"><tspan>endothelial + immune + stromal (interface CLR)</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="134.5" x2="1170.0" y2="134.5"/>
+    <text class="fig7-off" x="1166" y="138.5" text-anchor="end" fill="#3d4f6f">→3.4</text>
+    <line class="fig7-stem" id="stem-A_interface_clr-1" x1="830.0" y1="134.5" x2="941.8" y2="134.5" stroke="#3d4f6f"/>
+    <circle class="fig7-dot" id="dot-A_interface_clr-1" cx="941.8" cy="134.5" r="4.2" fill="#3d4f6f"/>
+    <text class="fig7-nreq" id="nreq-A_interface_clr-1" x="1230" y="138.5" text-anchor="middle" fill="#3d4f6f">17</text>
+    <title>endothelial + immune + stromal (interface CLR) · Sham→D7 (n=2 vs 2) · raw g=+3.40 · shrunk g skeptical +0.32 / neutral +0.99 / optimistic +2.11 · n/group for 80% power 158 / 17 / 4</title>
+  </g>
+  <g class="fig7-row" data-id="A_interface_clr-2" data-fam="A">
+    <rect class="fig7-hit" x="0" y="144.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="157.5" text-anchor="end"><tspan>neutrophil (interface CLR)</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="153.5" x2="1042.5" y2="153.5"/>
+    <circle class="fig7-raw" cx="1042.5" cy="153.5" r="3.1" stroke="#3d4f6f"/>
+    <line class="fig7-stem" id="stem-A_interface_clr-2" x1="830.0" y1="153.5" x2="917.1" y2="153.5" stroke="#3d4f6f"/>
+    <circle class="fig7-dot" id="dot-A_interface_clr-2" cx="917.1" cy="153.5" r="4.2" fill="#3d4f6f"/>
+    <text class="fig7-nreq" id="nreq-A_interface_clr-2" x="1230" y="157.5" text-anchor="middle" fill="#3d4f6f">27</text>
+    <title>neutrophil (interface CLR) · Sham→D7 (n=2 vs 2) · raw g=+1.87 · shrunk g skeptical +0.28 / neutral +0.77 / optimistic +1.38 · n/group for 80% power 204 / 27 / 9</title>
+  </g>
+  <g class="fig7-row" data-id="A_interface_clr-3" data-fam="A">
+    <rect class="fig7-hit" x="0" y="163.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="176.5" text-anchor="end"><tspan>endothelial + immune (interface CLR)</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="172.5" x2="962.5" y2="172.5"/>
+    <circle class="fig7-raw" cx="962.5" cy="172.5" r="3.1" stroke="#3d4f6f"/>
+    <line class="fig7-stem" id="stem-A_interface_clr-3" x1="830.0" y1="172.5" x2="891.0" y2="172.5" stroke="#3d4f6f"/>
+    <circle class="fig7-dot" id="dot-A_interface_clr-3" cx="891.0" cy="172.5" r="4.2" fill="#3d4f6f"/>
+    <text class="fig7-nreq" id="nreq-A_interface_clr-3" x="1230" y="176.5" text-anchor="middle" fill="#3d4f6f">55</text>
+    <title>endothelial + immune (interface CLR) · Sham→D7 (n=2 vs 2) · raw g=+1.17 · shrunk g skeptical +0.21 / neutral +0.54 / optimistic +0.90 · n/group for 80% power 372 / 55 / 20</title>
+  </g>
+  <g class="fig7-row" data-id="A_interface_clr-4" data-fam="A">
+    <rect class="fig7-hit" x="0" y="182.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="195.5" text-anchor="end"><tspan>immune + stromal (interface CLR)</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="191.5" x2="951.2" y2="191.5"/>
+    <circle class="fig7-raw" cx="951.2" cy="191.5" r="3.1" stroke="#3d4f6f"/>
+    <line class="fig7-stem" id="stem-A_interface_clr-4" x1="830.0" y1="191.5" x2="886.6" y2="191.5" stroke="#3d4f6f"/>
+    <circle class="fig7-dot" id="dot-A_interface_clr-4" cx="886.6" cy="191.5" r="4.2" fill="#3d4f6f"/>
+    <text class="fig7-nreq" id="nreq-A_interface_clr-4" x="1230" y="195.5" text-anchor="middle" fill="#3d4f6f">64</text>
+    <title>immune + stromal (interface CLR) · Sham→D7 (n=2 vs 2) · raw g=+1.07 · shrunk g skeptical +0.19 / neutral +0.50 / optimistic +0.83 · n/group for 80% power 427 / 64 / 23</title>
+  </g>
+  <g class="fig7-row" data-id="A_interface_clr-5" data-fam="A">
+    <rect class="fig7-hit" x="0" y="201.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="214.5" text-anchor="end"><tspan>other_rare (interface CLR)</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="210.5" x2="771.0" y2="210.5"/>
+    <circle class="fig7-raw" cx="771.0" cy="210.5" r="3.1" stroke="#3d4f6f"/>
+    <line class="fig7-stem" id="stem-A_interface_clr-5" x1="830.0" y1="210.5" x2="801.0" y2="210.5" stroke="#3d4f6f"/>
+    <circle class="fig7-dot" id="dot-A_interface_clr-5" cx="801.0" cy="210.5" r="4.2" fill="#3d4f6f"/>
+    <text class="fig7-nreq" id="nreq-A_interface_clr-5" x="1230" y="214.5" text-anchor="middle" fill="#3d4f6f">240</text>
+    <title>other_rare (interface CLR) · Sham→D7 (n=2 vs 2) · raw g=-0.52 · shrunk g skeptical -0.10 / neutral -0.26 / optimistic -0.41 · n/group for 80% power 1528 / 240 / 92</title>
+  </g>
+  <g class="fig7-row" data-id="A_interface_clr-6" data-fam="A">
+    <rect class="fig7-hit" x="0" y="220.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="233.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>immune (interface CLR)</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="229.5" x2="739.0" y2="229.5"/>
+    <circle class="fig7-raw" cx="739.0" cy="229.5" r="3.1" stroke="#3d4f6f"/>
+    <line class="fig7-stem" id="stem-A_interface_clr-6" x1="830.0" y1="229.5" x2="786.3" y2="229.5" stroke="#3d4f6f"/>
+    <circle class="fig7-dot" id="dot-A_interface_clr-6" cx="786.3" cy="229.5" r="4.2" fill="#3d4f6f"/>
+    <text class="fig7-nreq" id="nreq-A_interface_clr-6" x="1230" y="233.5" text-anchor="middle" fill="#3d4f6f">106</text>
+    <title>immune (interface CLR) · Sham→D7 (n=2 vs 2) · raw g=-0.80 · shrunk g skeptical -0.15 / neutral -0.39 / optimistic -0.63 · n/group for 80% power 690 / 106 / 40</title>
+  </g>
+  <g class="fig7-row" data-id="A_interface_clr-7" data-fam="A">
+    <rect class="fig7-hit" x="0" y="239.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="252.5" text-anchor="end"><tspan>fibroblast (interface CLR)</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="248.5" x2="537.7" y2="248.5"/>
+    <circle class="fig7-raw" cx="537.7" cy="248.5" r="3.1" stroke="#3d4f6f"/>
+    <line class="fig7-stem" id="stem-A_interface_clr-7" x1="830.0" y1="248.5" x2="726.8" y2="248.5" stroke="#3d4f6f"/>
+    <circle class="fig7-dot" id="dot-A_interface_clr-7" cx="726.8" cy="248.5" r="4.2" fill="#3d4f6f"/>
+    <text class="fig7-nreq" id="nreq-A_interface_clr-7" x="1230" y="252.5" text-anchor="middle" fill="#3d4f6f">19</text>
+    <title>fibroblast (interface CLR) · Sham→D7 (n=2 vs 2) · raw g=-2.58 · shrunk g skeptical -0.31 / neutral -0.91 / optimistic -1.77 · n/group for 80% power 164 / 19 / 6</title>
+  </g>
+  <g class="fig7-row" data-id="A_interface_clr-8" data-fam="A">
+    <rect class="fig7-hit" x="0" y="258.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="271.5" text-anchor="end"><tspan>unassigned (interface CLR)</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="267.5" x2="490.0" y2="267.5"/>
+    <text class="fig7-off" x="494" y="271.5" text-anchor="start" fill="#3d4f6f">←4.4</text>
+    <line class="fig7-stem" id="stem-A_interface_clr-8" x1="830.0" y1="267.5" x2="717.2" y2="267.5" stroke="#3d4f6f"/>
+    <circle class="fig7-dot" id="dot-A_interface_clr-8" cx="717.2" cy="267.5" r="4.2" fill="#3d4f6f"/>
+    <text class="fig7-nreq" id="nreq-A_interface_clr-8" x="1230" y="271.5" text-anchor="middle" fill="#3d4f6f">16</text>
+    <title>unassigned (interface CLR) · Sham→D7 (n=2 vs 2) · raw g=-4.42 · shrunk g skeptical -0.30 / neutral -0.99 / optimistic -2.38 · n/group for 80% power 176 / 16 / 3</title>
+  </g>
+<text class="fig7-ptitle" x="20" y="317" fill="#7a3322">Family B · continuous neighborhood enrichment</text>
+<text class="fig7-pcount" x="1160" y="317" text-anchor="end" fill="#7a3322">43 headline endpoints</text>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-0" data-fam="B">
+    <rect class="fig7-hit" x="0" y="335.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="348.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around stromal</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="344.5" x2="1170.0" y2="344.5"/>
+    <text class="fig7-off" x="1166" y="348.5" text-anchor="end" fill="#7a3322">→4.0</text>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-0" x1="830.0" y1="344.5" x2="943.3" y2="344.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-0" cx="943.3" cy="344.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-0" x="1230" y="348.5" text-anchor="middle" fill="#7a3322">16</text>
+    <title>Δ immune-neighborhood · around stromal · Sham→D7 (n=2 vs 2) · raw g=+3.98 · shrunk g skeptical +0.31 / neutral +1.00 / optimistic +2.28 · n/group for 80% power 166 / 16 / 4</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-1" data-fam="B">
+    <rect class="fig7-hit" x="0" y="354.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="367.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around mixed</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="363.5" x2="1170.0" y2="363.5"/>
+    <text class="fig7-off" x="1166" y="367.5" text-anchor="end" fill="#7a3322">→4.1</text>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-1" x1="830.0" y1="363.5" x2="943.3" y2="363.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-1" cx="943.3" cy="363.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-1" x="1230" y="367.5" text-anchor="middle" fill="#7a3322">16</text>
+    <title>Δ endothelial-neighborhood · around mixed · Sham→D7 (n=2 vs 2) · raw g=+4.09 · shrunk g skeptical +0.31 / neutral +1.00 / optimistic +2.31 · n/group for 80% power 168 / 16 / 3</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-2" data-fam="B">
+    <rect class="fig7-hit" x="0" y="373.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="386.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around activated endothelial · CD44</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="382.5" x2="1170.0" y2="382.5"/>
+    <text class="fig7-off" x="1166" y="386.5" text-anchor="end" fill="#7a3322">→4.1</text>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-2" x1="830.0" y1="382.5" x2="943.3" y2="382.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-2" cx="943.3" cy="382.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-2" x="1230" y="386.5" text-anchor="middle" fill="#7a3322">16</text>
+    <title>Δ immune-neighborhood · around activated endothelial · CD44 · Sham→D7 (n=2 vs 2) · raw g=+4.11 · shrunk g skeptical +0.31 / neutral +1.00 / optimistic +2.31 · n/group for 80% power 169 / 16 / 3</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-3" data-fam="B">
+    <rect class="fig7-hit" x="0" y="392.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="405.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around activated stromal · CD140b CD44</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="401.5" x2="1170.0" y2="401.5"/>
+    <text class="fig7-off" x="1166" y="405.5" text-anchor="end" fill="#7a3322">→4.1</text>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-3" x1="830.0" y1="401.5" x2="943.3" y2="401.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-3" cx="943.3" cy="401.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-3" x="1230" y="405.5" text-anchor="middle" fill="#7a3322">16</text>
+    <title>Δ immune-neighborhood · around activated stromal · CD140b CD44 · Sham→D7 (n=2 vs 2) · raw g=+4.12 · shrunk g skeptical +0.31 / neutral +1.00 / optimistic +2.31 · n/group for 80% power 169 / 16 / 3</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-4" data-fam="B">
+    <rect class="fig7-hit" x="0" y="411.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="424.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around activated stromal · CD140b CD44</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="420.5" x2="1170.0" y2="420.5"/>
+    <text class="fig7-off" x="1166" y="424.5" text-anchor="end" fill="#7a3322">→4.5</text>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-4" x1="830.0" y1="420.5" x2="942.7" y2="420.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-4" cx="942.7" cy="420.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-4" x="1230" y="424.5" text-anchor="middle" fill="#7a3322">16</text>
+    <title>Δ endothelial-neighborhood · around activated stromal · CD140b CD44 · Sham→D7 (n=2 vs 2) · raw g=+4.45 · shrunk g skeptical +0.30 / neutral +0.99 / optimistic +2.38 · n/group for 80% power 177 / 16 / 3</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-5" data-fam="B">
+    <rect class="fig7-hit" x="0" y="430.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="443.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around non-myeloid immune</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="439.5" x2="1170.0" y2="439.5"/>
+    <text class="fig7-off" x="1166" y="443.5" text-anchor="end" fill="#7a3322">→3.6</text>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-5" x1="830.0" y1="439.5" x2="942.6" y2="439.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-5" cx="942.6" cy="439.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-5" x="1230" y="443.5" text-anchor="middle" fill="#7a3322">16</text>
+    <title>Δ immune-neighborhood · around non-myeloid immune · Sham→D7 (n=2 vs 2) · raw g=+3.57 · shrunk g skeptical +0.31 / neutral +0.99 / optimistic +2.16 · n/group for 80% power 160 / 16 / 4</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-6" data-fam="B">
+    <rect class="fig7-hit" x="0" y="449.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="462.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around stromal</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="458.5" x2="1170.0" y2="458.5"/>
+    <text class="fig7-off" x="1166" y="462.5" text-anchor="end" fill="#7a3322">→4.6</text>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-6" x1="830.0" y1="458.5" x2="942.3" y2="458.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-6" cx="942.3" cy="458.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-6" x="1230" y="462.5" text-anchor="middle" fill="#7a3322">16</text>
+    <title>Δ immune-neighborhood · around stromal · Sham→D7 (n=2 vs 2) · raw g=+4.58 · shrunk g skeptical +0.30 / neutral +0.99 / optimistic +2.40 · n/group for 80% power 180 / 16 / 3</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-7" data-fam="B">
+    <rect class="fig7-hit" x="0" y="468.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="481.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around activated endothelial · CD44</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="477.5" x2="1170.0" y2="477.5"/>
+    <text class="fig7-off" x="1166" y="481.5" text-anchor="end" fill="#7a3322">→3.3</text>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-7" x1="830.0" y1="477.5" x2="941.4" y2="477.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-7" cx="941.4" cy="477.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-7" x="1230" y="481.5" text-anchor="middle" fill="#7a3322">17</text>
+    <title>Δ endothelial-neighborhood · around activated endothelial · CD44 · Sham→D7 (n=2 vs 2) · raw g=+3.33 · shrunk g skeptical +0.32 / neutral +0.98 / optimistic +2.08 · n/group for 80% power 158 / 17 / 4</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-8" data-fam="B">
+    <rect class="fig7-hit" x="0" y="487.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="500.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around activated endothelial · CD140b</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="496.5" x2="1170.0" y2="496.5"/>
+    <text class="fig7-off" x="1166" y="500.5" text-anchor="end" fill="#7a3322">→3.1</text>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-8" x1="830.0" y1="496.5" x2="939.6" y2="496.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-8" cx="939.6" cy="496.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-8" x="1230" y="500.5" text-anchor="middle" fill="#7a3322">17</text>
+    <title>Δ immune-neighborhood · around activated endothelial · CD140b · Sham→D7 (n=2 vs 2) · raw g=+3.08 · shrunk g skeptical +0.32 / neutral +0.97 / optimistic +1.99 · n/group for 80% power 158 / 17 / 4</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-9" data-fam="B">
+    <rect class="fig7-hit" x="0" y="506.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="519.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around mixed</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="515.5" x2="1163.9" y2="515.5"/>
+    <circle class="fig7-raw" cx="1163.9" cy="515.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-9" x1="830.0" y1="515.5" x2="938.2" y2="515.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-9" cx="938.2" cy="515.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-9" x="1230" y="519.5" text-anchor="middle" fill="#7a3322">18</text>
+    <title>Δ immune-neighborhood · around mixed · Sham→D7 (n=2 vs 2) · raw g=+2.95 · shrunk g skeptical +0.32 / neutral +0.95 / optimistic +1.94 · n/group for 80% power 158 / 18 / 5</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-10" data-fam="B">
+    <rect class="fig7-hit" x="0" y="525.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="538.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around unassigned</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="534.5" x2="1154.6" y2="534.5"/>
+    <circle class="fig7-raw" cx="1154.6" cy="534.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-10" x1="830.0" y1="534.5" x2="937.3" y2="534.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-10" cx="937.3" cy="534.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-10" x="1230" y="538.5" text-anchor="middle" fill="#7a3322">18</text>
+    <title>Δ immune-neighborhood · around unassigned · Sham→D7 (n=2 vs 2) · raw g=+2.86 · shrunk g skeptical +0.31 / neutral +0.95 / optimistic +1.90 · n/group for 80% power 159 / 18 / 5</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-11" data-fam="B">
+    <rect class="fig7-hit" x="0" y="544.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="557.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around endothelial</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="553.5" x2="1121.5" y2="553.5"/>
+    <circle class="fig7-raw" cx="1121.5" cy="553.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-11" x1="830.0" y1="553.5" x2="933.1" y2="553.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-11" cx="933.1" cy="553.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-11" x="1230" y="557.5" text-anchor="middle" fill="#7a3322">19</text>
+    <title>Δ immune-neighborhood · around endothelial · Sham→D7 (n=2 vs 2) · raw g=+2.57 · shrunk g skeptical +0.31 / neutral +0.91 / optimistic +1.77 · n/group for 80% power 164 / 19 / 6</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-12" data-fam="B">
+    <rect class="fig7-hit" x="0" y="563.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="576.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around neutrophil</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="572.5" x2="1120.1" y2="572.5"/>
+    <circle class="fig7-raw" cx="1120.1" cy="572.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-12" x1="830.0" y1="572.5" x2="932.9" y2="572.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-12" cx="932.9" cy="572.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-12" x="1230" y="576.5" text-anchor="middle" fill="#7a3322">20</text>
+    <title>Δ immune-neighborhood · around neutrophil · Sham→D7 (n=2 vs 2) · raw g=+2.56 · shrunk g skeptical +0.31 / neutral +0.91 / optimistic +1.76 · n/group for 80% power 165 / 20 / 6</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-13" data-fam="B">
+    <rect class="fig7-hit" x="0" y="582.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="595.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around activated stromal · CD140b CD44</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="591.5" x2="1170.0" y2="591.5"/>
+    <text class="fig7-off" x="1166" y="595.5" text-anchor="end" fill="#7a3322">→6.3</text>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-13" x1="830.0" y1="591.5" x2="932.9" y2="591.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-13" cx="932.9" cy="591.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-13" x="1230" y="595.5" text-anchor="middle" fill="#7a3322">20</text>
+    <title>Δ immune-neighborhood · around activated stromal · CD140b CD44 · Sham→D7 (n=2 vs 2) · raw g=+6.26 · shrunk g skeptical +0.25 / neutral +0.91 / optimistic +2.53 · n/group for 80% power 243 / 20 / 3</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-14" data-fam="B">
+    <rect class="fig7-hit" x="0" y="601.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="614.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around activated endothelial · CD44</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="610.5" x2="1115.9" y2="610.5"/>
+    <circle class="fig7-raw" cx="1115.9" cy="610.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-14" x1="830.0" y1="610.5" x2="932.3" y2="610.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-14" cx="932.3" cy="610.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-14" x="1230" y="614.5" text-anchor="middle" fill="#7a3322">20</text>
+    <title>Δ immune-neighborhood · around activated endothelial · CD44 · Sham→D7 (n=2 vs 2) · raw g=+2.52 · shrunk g skeptical +0.31 / neutral +0.90 / optimistic +1.74 · n/group for 80% power 166 / 20 / 6</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-15" data-fam="B">
+    <rect class="fig7-hit" x="0" y="620.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="633.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around unassigned</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="629.5" x2="1113.5" y2="629.5"/>
+    <circle class="fig7-raw" cx="1113.5" cy="629.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-15" x1="830.0" y1="629.5" x2="931.9" y2="629.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-15" cx="931.9" cy="629.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-15" x="1230" y="633.5" text-anchor="middle" fill="#7a3322">20</text>
+    <title>Δ immune-neighborhood · around unassigned · Sham→D7 (n=2 vs 2) · raw g=+2.50 · shrunk g skeptical +0.31 / neutral +0.90 / optimistic +1.73 · n/group for 80% power 166 / 20 / 6</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-16" data-fam="B">
+    <rect class="fig7-hit" x="0" y="639.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="652.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around non-myeloid immune</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="648.5" x2="1106.6" y2="648.5"/>
+    <circle class="fig7-raw" cx="1106.6" cy="648.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-16" x1="830.0" y1="648.5" x2="930.8" y2="648.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-16" cx="930.8" cy="648.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-16" x="1230" y="652.5" text-anchor="middle" fill="#7a3322">20</text>
+    <title>Δ immune-neighborhood · around non-myeloid immune · Sham→D7 (n=2 vs 2) · raw g=+2.44 · shrunk g skeptical +0.31 / neutral +0.89 / optimistic +1.70 · n/group for 80% power 168 / 20 / 6</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-17" data-fam="B">
+    <rect class="fig7-hit" x="0" y="658.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="671.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around activated stromal · CD140b CD44</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="667.5" x2="1076.2" y2="667.5"/>
+    <circle class="fig7-raw" cx="1076.2" cy="667.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-17" x1="830.0" y1="667.5" x2="925.1" y2="667.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-17" cx="925.1" cy="667.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-17" x="1230" y="671.5" text-anchor="middle" fill="#7a3322">23</text>
+    <title>Δ endothelial-neighborhood · around activated stromal · CD140b CD44 · Sham→D7 (n=2 vs 2) · raw g=+2.17 · shrunk g skeptical +0.30 / neutral +0.84 / optimistic +1.55 · n/group for 80% power 181 / 23 / 7</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-18" data-fam="B">
+    <rect class="fig7-hit" x="0" y="677.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="690.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around non-myeloid immune</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="686.5" x2="1069.0" y2="686.5"/>
+    <circle class="fig7-raw" cx="1069.0" cy="686.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-18" x1="830.0" y1="686.5" x2="923.5" y2="686.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-18" cx="923.5" cy="686.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-18" x="1230" y="690.5" text-anchor="middle" fill="#7a3322">24</text>
+    <title>Δ endothelial-neighborhood · around non-myeloid immune · Sham→D7 (n=2 vs 2) · raw g=+2.11 · shrunk g skeptical +0.29 / neutral +0.83 / optimistic +1.52 · n/group for 80% power 185 / 24 / 7</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-19" data-fam="B">
+    <rect class="fig7-hit" x="0" y="696.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="709.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around mixed</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="705.5" x2="1061.2" y2="705.5"/>
+    <circle class="fig7-raw" cx="1061.2" cy="705.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-19" x1="830.0" y1="705.5" x2="921.7" y2="705.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-19" cx="921.7" cy="705.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-19" x="1230" y="709.5" text-anchor="middle" fill="#7a3322">24</text>
+    <title>Δ stromal-neighborhood · around mixed · Sham→D7 (n=2 vs 2) · raw g=+2.04 · shrunk g skeptical +0.29 / neutral +0.81 / optimistic +1.48 · n/group for 80% power 190 / 24 / 8</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-20" data-fam="B">
+    <rect class="fig7-hit" x="0" y="715.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="728.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around activated endothelial · CD140b</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="724.5" x2="1038.5" y2="724.5"/>
+    <circle class="fig7-raw" cx="1038.5" cy="724.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-20" x1="830.0" y1="724.5" x2="916.0" y2="724.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-20" cx="916.0" cy="724.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-20" x="1230" y="728.5" text-anchor="middle" fill="#7a3322">28</text>
+    <title>Δ stromal-neighborhood · around activated endothelial · CD140b · Sham→D7 (n=2 vs 2) · raw g=+1.84 · shrunk g skeptical +0.27 / neutral +0.76 / optimistic +1.36 · n/group for 80% power 208 / 28 / 9</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-21" data-fam="B">
+    <rect class="fig7-hit" x="0" y="734.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="747.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around unassigned</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="743.5" x2="1035.4" y2="743.5"/>
+    <circle class="fig7-raw" cx="1035.4" cy="743.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-21" x1="830.0" y1="743.5" x2="915.2" y2="743.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-21" cx="915.2" cy="743.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-21" x="1230" y="747.5" text-anchor="middle" fill="#7a3322">28</text>
+    <title>Δ stromal-neighborhood · around unassigned · Sham→D7 (n=2 vs 2) · raw g=+1.81 · shrunk g skeptical +0.27 / neutral +0.75 / optimistic +1.34 · n/group for 80% power 211 / 28 / 9</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-22" data-fam="B">
+    <rect class="fig7-hit" x="0" y="753.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="766.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around activated endothelial · CD44</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="762.5" x2="1027.0" y2="762.5"/>
+    <circle class="fig7-raw" cx="1027.0" cy="762.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-22" x1="830.0" y1="762.5" x2="912.9" y2="762.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-22" cx="912.9" cy="762.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-22" x="1230" y="766.5" text-anchor="middle" fill="#7a3322">30</text>
+    <title>Δ endothelial-neighborhood · around activated endothelial · CD44 · Sham→D7 (n=2 vs 2) · raw g=+1.74 · shrunk g skeptical +0.27 / neutral +0.73 / optimistic +1.29 · n/group for 80% power 221 / 30 / 10</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-23" data-fam="B">
+    <rect class="fig7-hit" x="0" y="772.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="785.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around unassigned</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="781.5" x2="1017.2" y2="781.5"/>
+    <circle class="fig7-raw" cx="1017.2" cy="781.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-23" x1="830.0" y1="781.5" x2="910.0" y2="781.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-23" cx="910.0" cy="781.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-23" x="1230" y="785.5" text-anchor="middle" fill="#7a3322">32</text>
+    <title>Δ endothelial-neighborhood · around unassigned · Sham→D7 (n=2 vs 2) · raw g=+1.65 · shrunk g skeptical +0.26 / neutral +0.71 / optimistic +1.24 · n/group for 80% power 234 / 32 / 11</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-24" data-fam="B">
+    <rect class="fig7-hit" x="0" y="791.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="804.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around activated endothelial · CD140b CD44</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="800.5" x2="1015.6" y2="800.5"/>
+    <circle class="fig7-raw" cx="1015.6" cy="800.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-24" x1="830.0" y1="800.5" x2="909.5" y2="800.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-24" cx="909.5" cy="800.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-24" x="1230" y="804.5" text-anchor="middle" fill="#7a3322">32</text>
+    <title>Δ endothelial-neighborhood · around activated endothelial · CD140b CD44 · Sham→D7 (n=2 vs 2) · raw g=+1.64 · shrunk g skeptical +0.26 / neutral +0.70 / optimistic +1.23 · n/group for 80% power 236 / 32 / 11</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-25" data-fam="B">
+    <rect class="fig7-hit" x="0" y="810.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="823.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around endothelial</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="819.5" x2="1009.6" y2="819.5"/>
+    <circle class="fig7-raw" cx="1009.6" cy="819.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-25" x1="830.0" y1="819.5" x2="907.6" y2="819.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-25" cx="907.6" cy="819.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-25" x="1230" y="823.5" text-anchor="middle" fill="#7a3322">34</text>
+    <title>Δ immune-neighborhood · around endothelial · Sham→D7 (n=2 vs 2) · raw g=+1.58 · shrunk g skeptical +0.25 / neutral +0.68 / optimistic +1.19 · n/group for 80% power 245 / 34 / 12</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-26" data-fam="B">
+    <rect class="fig7-hit" x="0" y="829.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="842.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around activated stromal · CD140b CD44</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="838.5" x2="1007.1" y2="838.5"/>
+    <circle class="fig7-raw" cx="1007.1" cy="838.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-26" x1="830.0" y1="838.5" x2="906.8" y2="838.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-26" cx="906.8" cy="838.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-26" x="1230" y="842.5" text-anchor="middle" fill="#7a3322">35</text>
+    <title>Δ stromal-neighborhood · around activated stromal · CD140b CD44 · Sham→D7 (n=2 vs 2) · raw g=+1.56 · shrunk g skeptical +0.25 / neutral +0.68 / optimistic +1.18 · n/group for 80% power 249 / 35 / 12</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-27" data-fam="B">
+    <rect class="fig7-hit" x="0" y="848.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="861.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around activated stromal · CD140b CD44</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="857.5" x2="1005.6" y2="857.5"/>
+    <circle class="fig7-raw" cx="1005.6" cy="857.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-27" x1="830.0" y1="857.5" x2="906.4" y2="857.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-27" cx="906.4" cy="857.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-27" x="1230" y="861.5" text-anchor="middle" fill="#7a3322">35</text>
+    <title>Δ stromal-neighborhood · around activated stromal · CD140b CD44 · Sham→D7 (n=2 vs 2) · raw g=+1.55 · shrunk g skeptical +0.25 / neutral +0.67 / optimistic +1.17 · n/group for 80% power 252 / 35 / 12</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-28" data-fam="B">
+    <rect class="fig7-hit" x="0" y="867.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="880.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around unassigned</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="876.5" x2="1001.4" y2="876.5"/>
+    <circle class="fig7-raw" cx="1001.4" cy="876.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-28" x1="830.0" y1="876.5" x2="905.0" y2="876.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-28" cx="905.0" cy="876.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-28" x="1230" y="880.5" text-anchor="middle" fill="#7a3322">36</text>
+    <title>Δ endothelial-neighborhood · around unassigned · Sham→D7 (n=2 vs 2) · raw g=+1.51 · shrunk g skeptical +0.25 / neutral +0.66 / optimistic +1.14 · n/group for 80% power 260 / 36 / 12</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-29" data-fam="B">
+    <rect class="fig7-hit" x="0" y="886.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="899.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around mixed</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="895.5" x2="1000.4" y2="895.5"/>
+    <circle class="fig7-raw" cx="1000.4" cy="895.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-29" x1="830.0" y1="895.5" x2="904.7" y2="895.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-29" cx="904.7" cy="895.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-29" x="1230" y="899.5" text-anchor="middle" fill="#7a3322">37</text>
+    <title>Δ immune-neighborhood · around mixed · Sham→D7 (n=2 vs 2) · raw g=+1.50 · shrunk g skeptical +0.25 / neutral +0.66 / optimistic +1.14 · n/group for 80% power 261 / 37 / 13</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-30" data-fam="B">
+    <rect class="fig7-hit" x="0" y="905.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="918.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around mixed</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="914.5" x2="998.1" y2="914.5"/>
+    <circle class="fig7-raw" cx="998.1" cy="914.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-30" x1="830.0" y1="914.5" x2="903.9" y2="914.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-30" cx="903.9" cy="914.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-30" x="1230" y="918.5" text-anchor="middle" fill="#7a3322">37</text>
+    <title>Δ stromal-neighborhood · around mixed · Sham→D7 (n=2 vs 2) · raw g=+1.48 · shrunk g skeptical +0.24 / neutral +0.65 / optimistic +1.12 · n/group for 80% power 266 / 37 / 13</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-31" data-fam="B">
+    <rect class="fig7-hit" x="0" y="924.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="937.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around stromal</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="933.5" x2="1170.0" y2="933.5"/>
+    <text class="fig7-off" x="1166" y="937.5" text-anchor="end" fill="#7a3322">→10.8</text>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-31" x1="830.0" y1="933.5" x2="903.6" y2="933.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-31" cx="903.6" cy="933.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-31" x="1230" y="937.5" text-anchor="middle" fill="#7a3322">38</text>
+    <title>Δ stromal-neighborhood · around stromal · Sham→D7 (n=2 vs 2) · raw g=+10.85 · shrunk g skeptical +0.17 / neutral +0.65 / optimistic +2.20 · n/group for 80% power 544 / 38 / 4</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-32" data-fam="B">
+    <rect class="fig7-hit" x="0" y="943.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="956.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around activated endothelial · CD44</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="952.5" x2="990.4" y2="952.5"/>
+    <circle class="fig7-raw" cx="990.4" cy="952.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-32" x1="830.0" y1="952.5" x2="901.3" y2="952.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-32" cx="901.3" cy="952.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-32" x="1230" y="956.5" text-anchor="middle" fill="#7a3322">40</text>
+    <title>Δ stromal-neighborhood · around activated endothelial · CD44 · Sham→D7 (n=2 vs 2) · raw g=+1.42 · shrunk g skeptical +0.24 / neutral +0.63 / optimistic +1.08 · n/group for 80% power 283 / 40 / 14</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-33" data-fam="B">
+    <rect class="fig7-hit" x="0" y="962.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="975.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around activated endothelial · CD140b CD44</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="971.5" x2="982.4" y2="971.5"/>
+    <circle class="fig7-raw" cx="982.4" cy="971.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-33" x1="830.0" y1="971.5" x2="898.5" y2="971.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-33" cx="898.5" cy="971.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-33" x="1230" y="975.5" text-anchor="middle" fill="#7a3322">44</text>
+    <title>Δ immune-neighborhood · around activated endothelial · CD140b CD44 · Sham→D7 (n=2 vs 2) · raw g=+1.34 · shrunk g skeptical +0.23 / neutral +0.60 / optimistic +1.03 · n/group for 80% power 303 / 44 / 15</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-34" data-fam="B">
+    <rect class="fig7-hit" x="0" y="981.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="994.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around activated endothelial · CD140b CD44</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="990.5" x2="980.4" y2="990.5"/>
+    <circle class="fig7-raw" cx="980.4" cy="990.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-34" x1="830.0" y1="990.5" x2="897.7" y2="990.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-34" cx="897.7" cy="990.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-34" x="1230" y="994.5" text-anchor="middle" fill="#7a3322">44</text>
+    <title>Δ stromal-neighborhood · around activated endothelial · CD140b CD44 · Sham→D7 (n=2 vs 2) · raw g=+1.33 · shrunk g skeptical +0.23 / neutral +0.60 / optimistic +1.02 · n/group for 80% power 309 / 44 / 16</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-35" data-fam="B">
+    <rect class="fig7-hit" x="0" y="1000.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1013.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around non-myeloid immune</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1009.5" x2="973.4" y2="1009.5"/>
+    <circle class="fig7-raw" cx="973.4" cy="1009.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-35" x1="830.0" y1="1009.5" x2="895.2" y2="1009.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-35" cx="895.2" cy="1009.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-35" x="1230" y="1013.5" text-anchor="middle" fill="#7a3322">48</text>
+    <title>Δ stromal-neighborhood · around non-myeloid immune · Sham→D7 (n=2 vs 2) · raw g=+1.26 · shrunk g skeptical +0.22 / neutral +0.57 / optimistic +0.97 · n/group for 80% power 331 / 48 / 17</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-36" data-fam="B">
+    <rect class="fig7-hit" x="0" y="1019.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1032.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around stromal</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1028.5" x2="971.6" y2="1028.5"/>
+    <circle class="fig7-raw" cx="971.6" cy="1028.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-36" x1="830.0" y1="1028.5" x2="894.5" y2="1028.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-36" cx="894.5" cy="1028.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-36" x="1230" y="1032.5" text-anchor="middle" fill="#7a3322">49</text>
+    <title>Δ endothelial-neighborhood · around stromal · Sham→D7 (n=2 vs 2) · raw g=+1.25 · shrunk g skeptical +0.22 / neutral +0.57 / optimistic +0.96 · n/group for 80% power 337 / 49 / 17</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-37" data-fam="B">
+    <rect class="fig7-hit" x="0" y="1038.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1051.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around endothelial</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1047.5" x2="971.6" y2="1047.5"/>
+    <circle class="fig7-raw" cx="971.6" cy="1047.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-37" x1="830.0" y1="1047.5" x2="894.5" y2="1047.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-37" cx="894.5" cy="1047.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-37" x="1230" y="1051.5" text-anchor="middle" fill="#7a3322">49</text>
+    <title>Δ endothelial-neighborhood · around endothelial · Sham→D7 (n=2 vs 2) · raw g=+1.25 · shrunk g skeptical +0.22 / neutral +0.57 / optimistic +0.96 · n/group for 80% power 337 / 49 / 17</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-38" data-fam="B">
+    <rect class="fig7-hit" x="0" y="1057.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1070.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around activated endothelial · CD140b</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1066.5" x2="961.5" y2="1066.5"/>
+    <circle class="fig7-raw" cx="961.5" cy="1066.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-38" x1="830.0" y1="1066.5" x2="890.6" y2="1066.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-38" cx="890.6" cy="1066.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-38" x="1230" y="1070.5" text-anchor="middle" fill="#7a3322">55</text>
+    <title>Δ stromal-neighborhood · around activated endothelial · CD140b · Sham→D7 (n=2 vs 2) · raw g=+1.16 · shrunk g skeptical +0.20 / neutral +0.54 / optimistic +0.90 · n/group for 80% power 376 / 55 / 20</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-39" data-fam="B">
+    <rect class="fig7-hit" x="0" y="1076.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1089.5" text-anchor="end"><tspan class="fig7-glyph" fill="#b8412c">●</tspan><tspan dx="5"> </tspan><tspan>Δ immune-neighborhood · around activated endothelial · CD140b CD44</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1085.5" x2="958.1" y2="1085.5"/>
+    <circle class="fig7-raw" cx="958.1" cy="1085.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-39" x1="830.0" y1="1085.5" x2="889.3" y2="1085.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-39" cx="889.3" cy="1085.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-39" x="1230" y="1089.5" text-anchor="middle" fill="#7a3322">58</text>
+    <title>Δ immune-neighborhood · around activated endothelial · CD140b CD44 · Sham→D7 (n=2 vs 2) · raw g=+1.13 · shrunk g skeptical +0.20 / neutral +0.52 / optimistic +0.88 · n/group for 80% power 391 / 58 / 21</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-40" data-fam="B">
+    <rect class="fig7-hit" x="0" y="1095.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1108.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around endothelial</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1104.5" x2="689.9" y2="1104.5"/>
+    <circle class="fig7-raw" cx="689.9" cy="1104.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-40" x1="830.0" y1="1104.5" x2="766.0" y2="1104.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-40" cx="766.0" cy="1104.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-40" x="1230" y="1108.5" text-anchor="middle" fill="#7a3322">50</text>
+    <title>Δ endothelial-neighborhood · around endothelial · Sham→D7 (n=2 vs 2) · raw g=-1.24 · shrunk g skeptical -0.21 / neutral -0.56 / optimistic -0.95 · n/group for 80% power 342 / 50 / 18</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-41" data-fam="B">
+    <rect class="fig7-hit" x="0" y="1114.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1127.5" text-anchor="end"><tspan class="fig7-glyph" fill="#2a5d8f">●</tspan><tspan dx="5"> </tspan><tspan>Δ endothelial-neighborhood · around neutrophil</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1123.5" x2="657.1" y2="1123.5"/>
+    <circle class="fig7-raw" cx="657.1" cy="1123.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-41" x1="830.0" y1="1123.5" x2="754.5" y2="1123.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-41" cx="754.5" cy="1123.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-41" x="1230" y="1127.5" text-anchor="middle" fill="#7a3322">36</text>
+    <title>Δ endothelial-neighborhood · around neutrophil · Sham→D7 (n=2 vs 2) · raw g=-1.53 · shrunk g skeptical -0.25 / neutral -0.67 / optimistic -1.15 · n/group for 80% power 257 / 36 / 12</title>
+  </g>
+  <g class="fig7-row" data-id="B_continuous_neighborhood-42" data-fam="B">
+    <rect class="fig7-hit" x="0" y="1133.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1146.5" text-anchor="end"><tspan class="fig7-glyph" fill="#4e7a3e">●</tspan><tspan dx="5"> </tspan><tspan>Δ stromal-neighborhood · around endothelial</tspan><tspan class="fig7-flag" dx="6">threshold-sensitive</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1142.5" x2="632.4" y2="1142.5"/>
+    <circle class="fig7-raw" cx="632.4" cy="1142.5" r="3.1" stroke="#7a3322"/>
+    <line class="fig7-stem" id="stem-B_continuous_neighborhood-42" x1="830.0" y1="1142.5" x2="747.0" y2="1142.5" stroke="#7a3322"/>
+    <circle class="fig7-dot" id="dot-B_continuous_neighborhood-42" cx="747.0" cy="1142.5" r="4.2" fill="#7a3322"/>
+    <text class="fig7-nreq" id="nreq-B_continuous_neighborhood-42" x="1230" y="1146.5" text-anchor="middle" fill="#7a3322">30</text>
+    <title>Δ stromal-neighborhood · around endothelial · Sham→D7 (n=2 vs 2) · raw g=-1.74 · shrunk g skeptical -0.27 / neutral -0.73 / optimistic -1.30 · n/group for 80% power 220 / 30 / 10</title>
+  </g>
+<text class="fig7-ptitle" x="20" y="1192" fill="#4e6e3a">Family C · compartment activation rate</text>
+<text class="fig7-pcount" x="1160" y="1192" text-anchor="end" fill="#4e6e3a">4 headline endpoints</text>
+  <g class="fig7-row" data-id="C_compartment_activation-0" data-fam="C">
+    <rect class="fig7-hit" x="0" y="1210.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1223.5" text-anchor="end"><tspan>CD44⁺ rate within neutrophil compartment</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1219.5" x2="1170.0" y2="1219.5"/>
+    <text class="fig7-off" x="1166" y="1223.5" text-anchor="end" fill="#4e6e3a">→4.2</text>
+    <line class="fig7-stem" id="stem-C_compartment_activation-0" x1="830.0" y1="1219.5" x2="943.2" y2="1219.5" stroke="#4e6e3a"/>
+    <circle class="fig7-dot" id="dot-C_compartment_activation-0" cx="943.2" cy="1219.5" r="4.2" fill="#4e6e3a"/>
+    <text class="fig7-nreq" id="nreq-C_compartment_activation-0" x="1230" y="1223.5" text-anchor="middle" fill="#4e6e3a">16</text>
+    <title>CD44⁺ rate within neutrophil compartment · Sham→D7 (n=2 vs 2) · raw g=+4.22 · shrunk g skeptical +0.30 / neutral +1.00 / optimistic +2.34 · n/group for 80% power 171 / 16 / 3</title>
+  </g>
+  <g class="fig7-row" data-id="C_compartment_activation-1" data-fam="C">
+    <rect class="fig7-hit" x="0" y="1229.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1242.5" text-anchor="end"><tspan>triple-positive lineage overlap fraction</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1238.5" x2="1170.0" y2="1238.5"/>
+    <text class="fig7-off" x="1166" y="1242.5" text-anchor="end" fill="#4e6e3a">→3.3</text>
+    <line class="fig7-stem" id="stem-C_compartment_activation-1" x1="830.0" y1="1238.5" x2="941.3" y2="1238.5" stroke="#4e6e3a"/>
+    <circle class="fig7-dot" id="dot-C_compartment_activation-1" cx="941.3" cy="1238.5" r="4.2" fill="#4e6e3a"/>
+    <text class="fig7-nreq" id="nreq-C_compartment_activation-1" x="1230" y="1242.5" text-anchor="middle" fill="#4e6e3a">17</text>
+    <title>triple-positive lineage overlap fraction · Sham→D7 (n=2 vs 2) · raw g=+3.31 · shrunk g skeptical +0.32 / neutral +0.98 / optimistic +2.08 · n/group for 80% power 158 / 17 / 4</title>
+  </g>
+  <g class="fig7-row" data-id="C_compartment_activation-2" data-fam="C">
+    <rect class="fig7-hit" x="0" y="1248.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1261.5" text-anchor="end"><tspan>CD44⁺ rate within background compartment</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1257.5" x2="1156.4" y2="1257.5"/>
+    <circle class="fig7-raw" cx="1156.4" cy="1257.5" r="3.1" stroke="#4e6e3a"/>
+    <line class="fig7-stem" id="stem-C_compartment_activation-2" x1="830.0" y1="1257.5" x2="937.5" y2="1257.5" stroke="#4e6e3a"/>
+    <circle class="fig7-dot" id="dot-C_compartment_activation-2" cx="937.5" cy="1257.5" r="4.2" fill="#4e6e3a"/>
+    <text class="fig7-nreq" id="nreq-C_compartment_activation-2" x="1230" y="1261.5" text-anchor="middle" fill="#4e6e3a">18</text>
+    <title>CD44⁺ rate within background compartment · Sham→D7 (n=2 vs 2) · raw g=+2.88 · shrunk g skeptical +0.31 / neutral +0.95 / optimistic +1.91 · n/group for 80% power 159 / 18 / 5</title>
+  </g>
+  <g class="fig7-row" data-id="C_compartment_activation-3" data-fam="C">
+    <rect class="fig7-hit" x="0" y="1267.0" width="1280" height="19"/>
+    <text class="fig7-rlabel" x="458" y="1280.5" text-anchor="end"><tspan>CD44⁺ rate within CD140b compartment</tspan></text>
+    <line class="fig7-track" x1="830.0" y1="1276.5" x2="995.6" y2="1276.5"/>
+    <circle class="fig7-raw" cx="995.6" cy="1276.5" r="3.1" stroke="#4e6e3a"/>
+    <line class="fig7-stem" id="stem-C_compartment_activation-3" x1="830.0" y1="1276.5" x2="903.1" y2="1276.5" stroke="#4e6e3a"/>
+    <circle class="fig7-dot" id="dot-C_compartment_activation-3" cx="903.1" cy="1276.5" r="4.2" fill="#4e6e3a"/>
+    <text class="fig7-nreq" id="nreq-C_compartment_activation-3" x="1230" y="1280.5" text-anchor="middle" fill="#4e6e3a">38</text>
+    <title>CD44⁺ rate within CD140b compartment · Sham→D7 (n=2 vs 2) · raw g=+1.46 · shrunk g skeptical +0.24 / neutral +0.64 / optimistic +1.11 · n/group for 80% power 271 / 38 / 13</title>
+  </g>
+    </svg>
+    <figcaption>
+      Every Sham → D7 headline endpoint (n = 56) as one shrunk-g dot on a shared Hedges’ g axis; the faint track behind each runs 0 → raw g. The <strong>Prior</strong> control (Skeptical · Neutral · Optimistic, default neutral — N(0, 0.5²)/1.0²/2.0²) tweens each dot to its estimate under that prior (460 ms, object constancy — only x moves); the right gutter shows the n per group needed for 80% power, which updates with it. The shaded band is the skeptical-prior ceiling |g| ≈ 0.32. Hover a row for its full per-prior numbers. <strong>No endpoint survives BH-FDR q &lt; 0.05</strong> at this sample size — this figure is descriptive (n = 2 mice/group, no CIs): it shows how much of each effect is prior versus data, and what confirming it would cost. Rows sort by neutral g within family.
+      <span class="source">Source: results/biological_analysis/temporal_interfaces/endpoint_summary.csv · is_headline=True · contrast=Sham_vs_D7 · columns g_shrunk_{skeptical,neutral,optimistic}, n_required_{skeptical,neutral,optimistic}, hedges_g. Descriptive; n=2 mice/group.</span>
+    </figcaption>
+  </div>
+</figure>
+<script>
+(function(){
+var D = {"priors":["skeptical","neutral","optimistic"],"default":"neutral","sd":{"skeptical":0.5,"neutral":1.0,"optimistic":2.0},"rows":[{"id":"A_interface_clr-0","fam":"A","label":"endothelial (interface CLR)","glyph":"#2a5d8f","flag":"threshold-sensitive","raw":3.9197,"g":[0.3091,0.9998,2.2655],"n":[165,16,4]},{"id":"A_interface_clr-1","fam":"A","label":"endothelial + immune + stromal (interface CLR)","glyph":null,"flag":null,"raw":3.3973,"g":[0.3154,0.9868,2.1092],"n":[158,17,4]},{"id":"A_interface_clr-2","fam":"A","label":"neutrophil (interface CLR)","glyph":null,"flag":null,"raw":1.8749,"g":[0.2774,0.7686,1.3787],"n":[204,27,9]},{"id":"A_interface_clr-3","fam":"A","label":"endothelial + immune (interface CLR)","glyph":null,"flag":null,"raw":1.1688,"g":[0.2057,0.5384,0.9041],"n":[372,55,20]},{"id":"A_interface_clr-4","fam":"A","label":"immune + stromal (interface CLR)","glyph":null,"flag":null,"raw":1.0693,"g":[0.1919,0.499,0.8317],"n":[427,64,23]},{"id":"A_interface_clr-5","fam":"A","label":"other_rare (interface CLR)","glyph":null,"flag":null,"raw":-0.5206,"g":[-0.1014,-0.256,-0.4137],"n":[1528,240,92]},{"id":"A_interface_clr-6","fam":"A","label":"immune (interface CLR)","glyph":"#b8412c","flag":null,"raw":-0.8028,"g":[-0.1508,-0.3859,-0.6321],"n":[690,106,40]},{"id":"A_interface_clr-7","fam":"A","label":"fibroblast (interface CLR)","glyph":null,"flag":null,"raw":-2.5791,"g":[-0.3098,-0.9109,-1.7691],"n":[164,19,6]},{"id":"A_interface_clr-8","fam":"A","label":"unassigned (interface CLR)","glyph":null,"flag":null,"raw":-4.4199,"g":[-0.2993,-0.995,-2.3757],"n":[176,16,3]},{"id":"B_continuous_neighborhood-0","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around stromal","glyph":"#b8412c","flag":null,"raw":3.9781,"g":[0.3081,1.0,2.2803],"n":[166,16,4]},{"id":"B_continuous_neighborhood-1","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around mixed","glyph":"#2a5d8f","flag":null,"raw":4.0926,"g":[0.306,0.9997,2.3077],"n":[168,16,3]},{"id":"B_continuous_neighborhood-2","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around activated endothelial \u00b7 CD44","glyph":"#b8412c","flag":null,"raw":4.1129,"g":[0.3056,0.9996,2.3124],"n":[169,16,3]},{"id":"B_continuous_neighborhood-3","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around activated stromal \u00b7 CD140b CD44","glyph":"#b8412c","flag":null,"raw":4.1162,"g":[0.3055,0.9996,2.3132],"n":[169,16,3]},{"id":"B_continuous_neighborhood-4","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around activated stromal \u00b7 CD140b CD44","glyph":"#2a5d8f","flag":null,"raw":4.4508,"g":[0.2986,0.9943,2.3813],"n":[177,16,3]},{"id":"B_continuous_neighborhood-5","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around non-myeloid immune","glyph":"#b8412c","flag":null,"raw":3.5663,"g":[0.314,0.9935,2.1647],"n":[160,16,4]},{"id":"B_continuous_neighborhood-6","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around stromal","glyph":"#b8412c","flag":null,"raw":4.5828,"g":[0.2956,0.9908,2.404],"n":[180,16,3]},{"id":"B_continuous_neighborhood-7","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around activated endothelial \u00b7 CD44","glyph":"#2a5d8f","flag":null,"raw":3.3279,"g":[0.3158,0.9833,2.085],"n":[158,17,4]},{"id":"B_continuous_neighborhood-8","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around activated endothelial \u00b7 CD140b","glyph":"#b8412c","flag":null,"raw":3.0792,"g":[0.3161,0.9667,1.9914],"n":[158,17,4]},{"id":"B_continuous_neighborhood-9","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around mixed","glyph":"#b8412c","flag":null,"raw":2.9461,"g":[0.3154,0.955,1.9367],"n":[158,18,5]},{"id":"B_continuous_neighborhood-10","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around unassigned","glyph":"#b8412c","flag":null,"raw":2.8641,"g":[0.3147,0.9467,1.9013],"n":[159,18,5]},{"id":"B_continuous_neighborhood-11","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around endothelial","glyph":"#b8412c","flag":null,"raw":2.5721,"g":[0.3096,0.9098,1.7656],"n":[164,19,6]},{"id":"B_continuous_neighborhood-12","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around neutrophil","glyph":"#b8412c","flag":null,"raw":2.56,"g":[0.3093,0.9081,1.7597],"n":[165,20,6]},{"id":"B_continuous_neighborhood-13","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around activated stromal \u00b7 CD140b CD44","glyph":"#b8412c","flag":null,"raw":6.2595,"g":[0.2545,0.9075,2.5297],"n":[243,20,3]},{"id":"B_continuous_neighborhood-14","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around activated endothelial \u00b7 CD44","glyph":"#b8412c","flag":null,"raw":2.5224,"g":[0.3083,0.9024,1.741],"n":[166,20,6]},{"id":"B_continuous_neighborhood-15","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around unassigned","glyph":"#b8412c","flag":null,"raw":2.5014,"g":[0.3077,0.8991,1.7305],"n":[166,20,6]},{"id":"B_continuous_neighborhood-16","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around non-myeloid immune","glyph":"#b8412c","flag":null,"raw":2.4402,"g":[0.3059,0.8892,1.6992],"n":[168,20,6]},{"id":"B_continuous_neighborhood-17","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around activated stromal \u00b7 CD140b CD44","glyph":"#2a5d8f","flag":null,"raw":2.1724,"g":[0.2952,0.8388,1.5545],"n":[181,23,7]},{"id":"B_continuous_neighborhood-18","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around non-myeloid immune","glyph":"#2a5d8f","flag":null,"raw":2.1088,"g":[0.2919,0.8251,1.5182],"n":[185,24,7]},{"id":"B_continuous_neighborhood-19","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around mixed","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":2.0399,"g":[0.2881,0.8094,1.4781],"n":[190,24,8]},{"id":"B_continuous_neighborhood-20","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around activated endothelial \u00b7 CD140b","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":1.8397,"g":[0.2749,0.7592,1.3569],"n":[208,28,9]},{"id":"B_continuous_neighborhood-21","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around unassigned","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":1.812,"g":[0.2728,0.7517,1.3396],"n":[211,28,9]},{"id":"B_continuous_neighborhood-22","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around activated endothelial \u00b7 CD44","glyph":"#2a5d8f","flag":null,"raw":1.7385,"g":[0.267,0.7311,1.2931],"n":[221,30,10]},{"id":"B_continuous_neighborhood-23","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around unassigned","glyph":"#2a5d8f","flag":null,"raw":1.6517,"g":[0.2595,0.7055,1.237],"n":[234,32,11]},{"id":"B_continuous_neighborhood-24","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around activated endothelial \u00b7 CD140b CD44","glyph":"#2a5d8f","flag":null,"raw":1.6373,"g":[0.2582,0.7012,1.2276],"n":[236,32,11]},{"id":"B_continuous_neighborhood-25","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around endothelial","glyph":"#b8412c","flag":null,"raw":1.5845,"g":[0.2533,0.6848,1.1927],"n":[245,34,12]},{"id":"B_continuous_neighborhood-26","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around activated stromal \u00b7 CD140b CD44","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":1.5624,"g":[0.2512,0.6778,1.178],"n":[249,35,12]},{"id":"B_continuous_neighborhood-27","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around activated stromal \u00b7 CD140b CD44","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":1.5495,"g":[0.2499,0.6737,1.1694],"n":[252,35,12]},{"id":"B_continuous_neighborhood-28","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around unassigned","glyph":"#2a5d8f","flag":null,"raw":1.5125,"g":[0.2462,0.6616,1.1445],"n":[260,36,12]},{"id":"B_continuous_neighborhood-29","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around mixed","glyph":"#b8412c","flag":null,"raw":1.5035,"g":[0.2453,0.6587,1.1385],"n":[261,37,13]},{"id":"B_continuous_neighborhood-30","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around mixed","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":1.4834,"g":[0.2432,0.652,1.1249],"n":[266,37,13]},{"id":"B_continuous_neighborhood-31","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around stromal","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":10.8487,"g":[0.1699,0.6492,2.2015],"n":[544,38,4]},{"id":"B_continuous_neighborhood-32","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around activated endothelial \u00b7 CD44","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":1.4156,"g":[0.2359,0.629,1.0785],"n":[283,40,14]},{"id":"B_continuous_neighborhood-33","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around activated endothelial \u00b7 CD140b CD44","glyph":"#b8412c","flag":null,"raw":1.345,"g":[0.2278,0.6042,1.0295],"n":[303,44,15]},{"id":"B_continuous_neighborhood-34","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around activated endothelial \u00b7 CD140b CD44","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":1.3268,"g":[0.2256,0.5977,1.0167],"n":[309,44,16]},{"id":"B_continuous_neighborhood-35","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around non-myeloid immune","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":1.265,"g":[0.2181,0.575,0.9731],"n":[331,48,17]},{"id":"B_continuous_neighborhood-36","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around stromal","glyph":"#2a5d8f","flag":null,"raw":1.2492,"g":[0.2161,0.5691,0.9619],"n":[337,49,17]},{"id":"B_continuous_neighborhood-37","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around endothelial","glyph":"#2a5d8f","flag":null,"raw":1.249,"g":[0.2161,0.569,0.9617],"n":[337,49,17]},{"id":"B_continuous_neighborhood-38","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around activated endothelial \u00b7 CD140b","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":1.1601,"g":[0.2045,0.535,0.8979],"n":[376,55,20]},{"id":"B_continuous_neighborhood-39","fam":"B","label":"\u0394 immune-neighborhood \u00b7 around activated endothelial \u00b7 CD140b CD44","glyph":"#b8412c","flag":null,"raw":1.1307,"g":[0.2005,0.5235,0.8765],"n":[391,58,21]},{"id":"B_continuous_neighborhood-40","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around endothelial","glyph":"#2a5d8f","flag":null,"raw":-1.2366,"g":[-0.2145,-0.5644,-0.9528],"n":[342,50,18]},{"id":"B_continuous_neighborhood-41","fam":"B","label":"\u0394 endothelial-neighborhood \u00b7 around neutrophil","glyph":"#2a5d8f","flag":null,"raw":-1.5257,"g":[-0.2475,-0.666,-1.1535],"n":[257,36,12]},{"id":"B_continuous_neighborhood-42","fam":"B","label":"\u0394 stromal-neighborhood \u00b7 around endothelial","glyph":"#4e7a3e","flag":"threshold-sensitive","raw":-1.7432,"g":[-0.2674,-0.7325,-1.2961],"n":[220,30,10]},{"id":"C_compartment_activation-0","fam":"C","label":"CD44\u207a rate within neutrophil compartment","glyph":null,"flag":null,"raw":4.2222,"g":[0.3035,0.9985,2.3365],"n":[171,16,3]},{"id":"C_compartment_activation-1","fam":"C","label":"triple-positive lineage overlap fraction","glyph":null,"flag":null,"raw":3.3058,"g":[0.3159,0.9821,2.0772],"n":[158,17,4]},{"id":"C_compartment_activation-2","fam":"C","label":"CD44\u207a rate within background compartment","glyph":null,"flag":null,"raw":2.8802,"g":[0.3149,0.9484,1.9084],"n":[159,18,5]},{"id":"C_compartment_activation-3","fam":"C","label":"CD44\u207a rate within CD140b compartment","glyph":null,"flag":null,"raw":1.4612,"g":[0.2408,0.6446,1.1097],"n":[271,38,13]}],"stats":{"skeptical":{"median":209,"min":158,"max":1528},"neutral":{"median":27,"min":16,"max":240},"optimistic":{"median":8,"min":3,"max":92}},"counts":{"A":9,"B":43,"C":4}};
+var fig = document.getElementById("fig7-shrink-explore");
+if(!fig) return;
+var PR = D.priors, SD = D.sd;
+var X0=830.0, SC=113.33333333333333, GLO=-3.0, GHI=3.0;
+function xg(g){g=Math.max(GLO,Math.min(GHI,g));return X0+SC*g;}
+function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+function lerp(a,b,t){return a+(b-a)*t;}
+var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function idx(p){return PR.indexOf(p);}
+function stateFor(p){var i=idx(p),st={};D.rows.forEach(function(r){st[r.id]={g:r.g[i],n:r.n[i]};});return st;}
+var cur = stateFor(fig.getAttribute("data-prior"));
+function draw(st){D.rows.forEach(function(r){var s=st[r.id];
+  var dot=document.getElementById("dot-"+r.id); if(dot)dot.setAttribute("cx",xg(s.g).toFixed(1));
+  var stem=document.getElementById("stem-"+r.id); if(stem)stem.setAttribute("x2",xg(s.g).toFixed(1));
+  var nq=document.getElementById("nreq-"+r.id); if(nq)nq.textContent=Math.round(s.n);
+});}
+function readout(p){var s=D.stats[p];
+  fig.querySelector(".fig7-readout").innerHTML="<b>"+p+"</b> \u00b7 N(0, "+SD[p].toFixed(1)+"\u00b2) prior \u00b7 median <b>n\u2248"+s.median+"</b> / group for 80% power \u00b7 per-endpoint "+s.min+"\u2013"+s.max;}
+var raf=null;
+function apply(p){fig.setAttribute("data-prior",p);
+  fig.querySelectorAll("[data-set-prior]").forEach(function(b){b.setAttribute("aria-checked",b.getAttribute("data-set-prior")===p?"true":"false");});
+  readout(p);
+  var target=stateFor(p);
+  if(reduce){cur=target;draw(cur);return;}
+  if(raf)cancelAnimationFrame(raf);
+  var from={}; D.rows.forEach(function(r){from[r.id]={g:cur[r.id].g,n:cur[r.id].n};});
+  var t0=null,DUR=460;
+  function step(ts){if(t0===null)t0=ts;var t=Math.min(1,(ts-t0)/DUR),e=ease(t);
+    D.rows.forEach(function(r){var a=from[r.id],b=target[r.id],s=cur[r.id];
+      s.g=lerp(a.g,b.g,e); s.n=lerp(a.n,b.n,e);});
+    draw(cur);
+    if(t<1){raf=requestAnimationFrame(step);}else{D.rows.forEach(function(r){cur[r.id]={g:target[r.id].g,n:target[r.id].n};});draw(cur);raf=null;}}
+  raf=requestAnimationFrame(step);}
+fig.addEventListener("click",function(e){var t=e.target.closest("[data-set-prior]");if(!t)return;apply(t.getAttribute("data-set-prior"));});
+fig.addEventListener("keydown",function(e){if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName))return;
+  if(e.key==="ArrowLeft"||e.key==="ArrowRight"){var j=idx(fig.getAttribute("data-prior"));j=(j+(e.key==="ArrowRight"?1:PR.length-1))%PR.length;apply(PR[j]);e.preventDefault();}});
+readout(fig.getAttribute("data-prior"));
+draw(cur);
+})();
+</script>
