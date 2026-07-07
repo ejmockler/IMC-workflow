@@ -78,7 +78,7 @@ Pooled across all 24 ROIs (n_total = 58,137 superpixels):
 **Three trajectories dominate the compositional picture**:
 
 1. **Endothelial deactivation + expansion**: bare `endothelial` triples Sham → D7 (1.31% → 3.92%) while `activated_endothelial_cd44` declines (0.36% → 0.24%) and `activated_endothelial_cd140b` more than doubles (0.35% → 0.76%). The vascular compartment expands overall while shifting its activation profile from CD44 to CD140b co-expression.
-2. **Stromal contraction by D7**: bare `fibroblast` declines (1.07% → 0.67%), `activated_fibroblast_cd140b` declines (0.80% → 0.40%), `activated_myeloid_cd44` declines (0.50% → 0.19%). Combined with the spatial-tightening signal in §4 (activated_fibroblast_cd140b self-enrichment 1.35 → 2.68×), the stromal compartment becomes "fewer-but-more-clustered" by D7.
+2. **Stromal contraction by D7**: bare `fibroblast` declines (1.07% → 0.67%), `activated_fibroblast_cd140b` declines (0.80% → 0.40%), `activated_myeloid_cd44` declines (0.50% → 0.19%). Combined with the spatial-tightening signal in §4 (activated_fibroblast_cd140b self-enrichment 1.33 → 2.00×, mouse-of-mouse), the stromal compartment becomes "fewer-but-more-clustered" by D7.
 3. **The neutrophil compartment rises progressively Sham → D7** (4.82% → 6.85%, +42% relative). Under the locked Phase 7 v2 gate (`+CD45 +Ly6G −CD31 −CD34`, the named exception to the all-9-marker convention), CD44 status is intentionally free so that the Family C v2 endpoint `neutrophil_compartment_cd44_rate` can measure CD44⁺ rate within this compartment non-tautologically. That CD44 rate rises 31.8% → 81.1% across Sham → D7 (§5) — the largest single-compartment effect in this dataset (g_neut = +1.00). Most Ly6G⁺ tissue regions in this dataset co-express other lineage markers; the strict gates for non-neutrophil cell types exclude those co-expressions, but the neutrophil gate accepts them by design.
 
 ### Marker Expression (arcsinh-transformed, 10 um scale)
@@ -128,7 +128,7 @@ The CD11b-CD140b correlation (r=0.755) is notable — it suggests superpixels wh
 
 ## 3. Temporal Dynamics
 
-The §3 Marker-Trajectories table below is **upstream** of the cell-type ontology: it reports pixel-superpixel-pooled arcsinh marker means computed before any gating, so it is **not dependent on the Sham-reference normalization or the Hedges' g variance v = 2/n + g²/(4n)** — a timeless descriptive table with no CSV drift. The §4 spatial-enrichment tables are **live**: every value is reproduced from the current `results/biological_analysis/spatial_neighborhoods/temporal_neighborhood_enrichments.csv`, so they carry **no "earlier run" caveat**. Per the framework's narrowing, discrete cell-type proportions are **descriptive-of-segmentation, never significance-bearing**; the §4 phrasings are descriptive spatial-coherence, not cell–cell-interaction claims. The reviewer-facing quantitative analysis is the Phase 2 / Phase 7 temporal-interface family sourced from `endpoint_summary.csv`.
+The §3 Marker-Trajectories table below is **upstream** of the cell-type ontology: it reports pixel-superpixel-pooled arcsinh marker means computed before any gating, so it is **not dependent on the Sham-reference normalization or the Hedges' g variance v = 2/n + g²/(4n)** — a timeless descriptive table with no CSV drift. The §4 spatial-enrichment tables are **live**; the §4 self-enrichment table is now aggregated **mouse-of-mouse** (per-mouse, then across the two mice per timepoint) from `results/biological_analysis/spatial_neighborhoods/stratified_neighborhood_enrichments.csv`, retiring the ROI-level pseudoreplication of the earlier `temporal_neighborhood_enrichments.csv` — so it no longer carries the "reproduced from the ROI-level CSV, no earlier-run caveat" framing. The §4 cross-type D1 tables are a **labeled ROI-level reproduction anchor**; the canonical mouse-of-mouse cross-pair reading is the INDRA concordance table (§4) and §6. Per the framework's narrowing, discrete cell-type proportions are **descriptive-of-segmentation, never significance-bearing**; the §4 phrasings are descriptive spatial-coherence, not cell–cell-interaction claims. The reviewer-facing quantitative analysis is the Phase 2 / Phase 7 temporal-interface family sourced from `endpoint_summary.csv`.
 
 ### Marker Trajectories
 
@@ -204,29 +204,31 @@ Permutation-tested neighborhood enrichment (1,000 shuffles per ROI, Phipson & Sm
 
 | Cell type | Sham | D1 | D3 | D7 | Temporal trend |
 |---|---:|---:|---:|---:|---|
-| activated_endothelial_cd140b | 1.36× | 1.76× | **3.07×** | **3.55×** | **Strongest monotonic rise** |
-| activated_endothelial_cd44 | 2.15× | 1.47× | 2.22× | 2.19× | U-shaped, plateaus |
-| activated_fibroblast_cd140b | 1.35× | 1.37× | 1.65× | **2.68×** | Monotonic rise |
-| activated_m2_cd44 | 1.67× | 1.89× | 1.81× | 2.17× | Modest progressive rise |
-| fibroblast (bare) | 1.49× | 1.57× | 1.39× | **2.55×** | D7-dominant spike |
-| m2_macrophage | 1.24× | 1.53× | 1.20× | **2.35×** | D7 spike |
-| immune_cells | 1.14× | 1.03× | 1.38× | **2.40×** | D7-dominant rise |
-| activated_myeloid_cd44 | 2.05× | 2.65× | 1.99× | **4.13×** | D7 spike |
-| endothelial (bare) | 1.51× | 1.34× | 1.52× | 1.79× | Modest rise |
-| neutrophil | 1.11× | 1.13× | 1.25× | 1.48× | Modest rise; n=3,300 across 24 ROIs |
-| myeloid | 0.99× | 1.15× | 0.53× | 1.80× | Weak / noisy |
-| activated_fibroblast_cd44 | 1.76× | — | — | 2.07× | Sparse mid-points; n=79 |
-| activated_m2_cd140b | — | — | 2.45× | 2.52× | Sparse early; n=68 |
-| activated_immune | — | 3.14× | — | — | Erratic; n=39 |
-| activated_myeloid_cd140b | 5.56× | 2.83× | — | 1.72× | Erratic; n=31 |
+| activated_myeloid_cd44 | 2.20× | 2.64× | **4.84×** | **5.34×** | **Monotonic rise — largest self-enrichment** |
+| activated_endothelial_cd140b | 1.76× | 1.61× | **2.81×** | **3.27×** | Strong rise; dips at D1 (non-monotonic) |
+| fibroblast (bare) | 1.29× | 1.59× | 1.46× | **2.53×** | D7-dominant spike |
+| immune_cells | 1.08× | 1.01× | 1.40× | **2.23×** | D7-dominant rise |
+| activated_fibroblast_cd140b | 1.33× | 1.35× | 1.30× | **2.00×** | Flat, then D7 spike |
+| endothelial (bare) | 1.51× | 1.33× | 1.54× | 1.81× | Modest rise |
+| m2_macrophage | 1.22× | 1.90× | 1.13× | 1.78× | Noisy / non-monotonic |
+| activated_m2_cd44 | 1.46× | 1.75× | 1.75× | 1.69× | Roughly flat |
+| neutrophil | 1.11× | 1.14× | 1.27× | 1.48× | Modest rise; n=3,300 across 24 ROIs |
+| activated_endothelial_cd44 | 2.17× | 2.14× | 2.24× | *insuf.* | Flat Sham–D3; D7 single effective mouse (no firm value) |
+| myeloid | 1.09× | 1.10× | — | 2.04× | D3 single effective mouse; noisy |
+| activated_fibroblast_cd44 | 3.83× | — | — | 3.31× | D1/D3 unsupported across mice |
+| activated_m2_cd140b | — | — | *(low)* | 2.91× | D3 below support; sparse early |
+| activated_myeloid_cd140b | — | — | — | — | All strata insufficient (≤1 effective mouse) |
+| activated_immune | — | — | — | — | All strata insufficient |
 
-(Entries shown as "—" are timepoints with too few cells per ROI for permutation-test stability; the cell-type label is defensible but its per-timepoint trajectory is not.)
+(Entries shown as "—" are strata with **insufficient across-mouse support** — below the minimum-support threshold, or resolvable from a single effective mouse (`n_mice_effective`=1) — for which no mouse-level point estimate is defensible; the cell-type label holds but its per-timepoint self-enrichment does not. "*insuf.*" marks a single-effective-mouse stratum (below support at that timepoint); "*(low)*" marks a below-minimum-support stratum. In particular `activated_endothelial_cd44` at D7 rests on a **single effective mouse** — no firm D7 value is stated.)
 
-**Vascular-and-stromal niche tightening is the dominant single-compartment spatial finding.** `activated_endothelial_cd140b` self-enrichment rises Sham → D7 (1.36 → 3.55×, the strongest signal); `activated_fibroblast_cd140b` rises (1.35 → 2.68×); bare `fibroblast` (1.49 → 2.55×); bare `m2_macrophage` (1.24 → 2.35×); bare `immune_cells` (1.14 → 2.40×). The PDGFRβ⁺-co-expressing activated endothelium and the PDGFRα⁺/PDGFRβ⁺ stromal compartment concentrate into focal niches by D7. The CD140b activation axis carries the cleanest temporal signal in the dataset.
+**Corrected aggregation (mouse-of-mouse).** These self-enrichment values are now computed **mouse-of-mouse** — per-mouse aggregation first, then across the two mice per timepoint — from `results/biological_analysis/spatial_neighborhoods/stratified_neighborhood_enrichments.csv` (region=pooled, timepoint marginal). This retires the ROI-level **pseudoreplication** that inflated several earlier estimates (activated_fibroblast_cd140b 2.68 → 2.00×; m2_macrophage 2.35 → 1.78×; immune_cells and fibroblast slightly) and in one case *deflated* it (activated_myeloid_cd44 4.13 → 5.34×). The region-resolved lineage view — cortex vs. medulla by timepoint — lives in the new `results/biological_analysis/spatial_neighborhoods/lineage_neighborhood_by_region_timepoint.csv` product and **Fig 4** (`results/biological_analysis/spatial_neighborhoods/fig4_region_lens.html`), which surfaces the stromal-medullary tightening lens. The §4 cross-type D1 tables below and the §4b composite track are **labeled ROI-level reproduction anchors**; the canonical mouse-of-mouse cross-pair reading is the INDRA concordance table and §6. Only the self-enrichment table above is mouse-of-mouse.
 
-**Activated_myeloid_cd44 shows a striking D7 spike** (2.05 → 4.13×), even though its compositional proportion declines (§1 shows 0.50% → 0.19%). Fewer cells in fewer locations, more tightly packed where they remain — the "fewer-but-more-clustered" signature also visible across the stromal compartment.
+**Progressive niche tightening is the dominant single-compartment spatial finding.** `activated_myeloid_cd44` self-enrichment is the **largest in the dataset** and the one clean **monotonic** rise Sham → D7 (2.20 → 5.34×). `activated_endothelial_cd140b` is a strong vascular consolidation (1.76 → 3.27×) but is **not monotonic** — it dips at D1 (1.61×) before climbing. The stromal compartment tightens by D7 as well: `activated_fibroblast_cd140b` (1.33 → 2.00×), bare `fibroblast` (1.29 → 2.53×), bare `immune_cells` (1.08 → 2.23×). The PDGFRβ⁺-co-expressing activated endothelium and the PDGFRα⁺/PDGFRβ⁺ stromal compartment concentrate into focal niches by D7.
 
-**Bare endothelial self-clustering rises modestly** (1.51 → 1.79×). Combined with §1's finding that bare endothelial *proportion* triples (1.31% → 3.92%), the vascular compartment is expanding while only modestly tightening. The CD140b⁺-activated subset shows the strongest spatial consolidation (1.36 → 3.55×), suggesting the residual activated endothelium concentrates as the bare population disperses.
+**Activated_myeloid_cd44 rises monotonically to the largest self-enrichment in the dataset** (2.20 → 5.34×), even though its compositional proportion declines (§1 shows 0.50% → 0.19%). Fewer cells in fewer locations, more tightly packed where they remain — the "fewer-but-more-clustered" signature also visible across the stromal compartment.
+
+**Bare endothelial self-clustering rises modestly** (1.51 → 1.81×). Combined with §1's finding that bare endothelial *proportion* triples (1.31% → 3.92%), the vascular compartment is expanding while only modestly tightening. The CD140b⁺-activated subset consolidates more sharply (1.76 → 3.27×, dipping at D1), suggesting the residual activated endothelium concentrates as the bare population disperses.
 
 **The neutrophil compartment shows a modest spatial rise** (1.11 → 1.48× self-enrichment, n=3,300 across 24 ROIs). The spatial signal is weaker than the compositional signal — neutrophils accumulate (+42% Sham → D7 in tissue fraction, §1) but disperse rather than focalize. The strongest neutrophil-related finding is the cross-compartment CD44 activation rate measured in §5 (Phase 7 v2 endpoint, 31.8% → 81.1%).
 
@@ -235,6 +237,8 @@ Permutation-tested neighborhood enrichment (1,000 shuffles per ROI, Phipson & Sm
 ### Cross-Type Spatial Associations
 
 Of 210 cross-type pairs at D1, **96 have stable log₂ enrichment**; the others contain at least one cell type with sparse co-occurrence (`expected_proportion ≈ 0`). The largest sparse-sample artifacts in the raw output are excluded from the tables below.
+
+_These §4 cross-type D1 attraction/avoidance tables are a **labeled ROI-level reproduction anchor**: the values are ROI-level (read from the frozen `temporal_neighborhood_enrichments.csv`) and retained for reproduction continuity. The canonical mouse-of-mouse cross-pair reading is the reconciled INDRA concordance table below and §6._
 
 **Top attractions at D1** (cross-type, log₂ > +0.3):
 
@@ -262,23 +266,23 @@ Of 210 cross-type pairs at D1, **96 have stable log₂ enrichment**; the others 
 | activated_m2_cd44 | activated_fibroblast_cd140b | 0.74× | −0.60 |
 | endothelial | activated_fibroblast_cd44 | 0.97× | −0.59 |
 
-**The PDGFRβ-anchored stromal-endothelial-myeloid niche emerges at D1.** `activated_fibroblast_cd140b` ↔ `activated_endothelial_cd140b` at 1.40× and `activated_fibroblast_cd140b` ↔ `activated_myeloid_cd140b` at 1.53× both anchor on CD140b co-expression — the PDGFRβ axis recurring as a stromal-vascular-immune assembly point. The composite-lineage track (§4b) recovers the symmetric multi-lineage reading at higher tissue coverage (immune+stromal ↔ stromal at 1.62×/1.59×).
+**The PDGFRβ-anchored stromal-endothelial-myeloid niche emerges at D1.** `activated_fibroblast_cd140b` ↔ `activated_endothelial_cd140b` at 1.31× and `activated_fibroblast_cd140b` ↔ `activated_myeloid_cd140b` at 1.46× (mouse-of-mouse) both anchor on CD140b co-expression — the PDGFRβ axis recurring as a stromal-vascular-immune assembly point. The composite-lineage track (§4b) recovers the symmetric multi-lineage reading at higher tissue coverage (immune+stromal ↔ stromal at 1.62×/1.59×).
 
-**Avoidance is concentrated at the activated_m2_cd44 axis.** The CD44-activated M2 macrophage compartment shows below-chance proximity to multiple compartments at D1: activated_endothelial_cd140b (0.52×), endothelial (0.63×), activated_fibroblast_cd140b (0.67×), fibroblast (0.76×). The transendothelial-migration interface (activated_myeloid_cd44 ↔ endothelial at 0.63×) sits in this same low-proximity zone.
+**Avoidance is concentrated at the activated_m2_cd44 axis.** The CD44-activated M2 macrophage compartment shows below-chance proximity to multiple compartments at D1 (mouse-of-mouse): activated_endothelial_cd140b (0.48×), endothelial (0.65×), activated_fibroblast_cd140b (0.70×), fibroblast (0.79×). The transendothelial-migration interface (activated_myeloid_cd44 ↔ endothelial at 0.67×) sits in this same low-proximity zone.
 
-**INDRA concordance table** (D1):
+**INDRA concordance table** (mouse-of-mouse, D1):
 
 | Cell-type pair | Observed proximity | INDRA prediction | Agreement |
 |---|---:|---|---|
-| endothelial ↔ endothelial | 1.34× (self) | Co-localize (PECAM1 homophilic adhesion) | ✓ |
-| fibroblast ↔ fibroblast | 1.57× (self) | Co-localize (interstitial compartment) | ✓ |
-| m2_macrophage ↔ m2_macrophage | 1.53× (self) | Co-localize (immune niche formation) | ✓ |
-| **activated_fibroblast_cd140b ↔ activated_endothelial_cd140b** | **1.40×** | Co-localize (PDGFRβ axis; vascular-stromal interface) | **✓** |
-| **activated_fibroblast_cd140b ↔ activated_myeloid_cd140b** | **1.53×** | Co-localize (PDGFRβ–CD44 complex; stromal-myeloid niche) | **✓** |
-| activated_myeloid_cd44 ↔ endothelial | 0.63× | Co-localize (CD11b–PECAM1 transmigration) | **✗** |
-| activated_m2_cd44 ↔ endothelial | 0.63× | Co-localize (extravasation) | **✗** |
+| endothelial ↔ endothelial | 1.33× (self) | Co-localize (PECAM1 homophilic adhesion) | ✓ |
+| fibroblast ↔ fibroblast | 1.59× (self) | Co-localize (interstitial compartment) | ✓ |
+| m2_macrophage ↔ m2_macrophage | 1.90× (self) | Co-localize (immune niche formation) | ✓ |
+| **activated_fibroblast_cd140b ↔ activated_endothelial_cd140b** | **1.31×** | Co-localize (PDGFRβ axis; vascular-stromal interface) | **✓** |
+| **activated_fibroblast_cd140b ↔ activated_myeloid_cd140b** | **1.46×** | Co-localize (PDGFRβ–CD44 complex; stromal-myeloid niche) | **✓** |
+| activated_myeloid_cd44 ↔ endothelial | 0.67× | Co-localize (CD11b–PECAM1 transmigration) | **✗** |
+| activated_m2_cd44 ↔ endothelial | 0.65× | Co-localize (extravasation) | **✗** |
 
-**INDRA-predicted niches: PDGFRβ-anchored stromal-vascular-myeloid assemblies form; transendothelial migration interfaces do not.** CD140b⁺-co-expressing cells across endothelial, stromal, and myeloid lineages cluster together at D1 — consistent with the PDGFRβ-CD44 physical complex documented in INDRA. The persistent failures are at activated_myeloid_cd44 ↔ endothelial (0.63×) and activated_m2_cd44 ↔ endothelial (0.63×). The transendothelial migration machinery (CD11b–PECAM1, CD45–CD31, 3 INDRA evidence) is not spatially evident at superpixel resolution. Three readings remain possible — none fully resolvable at superpixel scale:
+**INDRA-predicted niches: PDGFRβ-anchored stromal-vascular-myeloid assemblies form; transendothelial migration interfaces do not.** CD140b⁺-co-expressing cells across endothelial, stromal, and myeloid lineages cluster together at D1 — consistent with the PDGFRβ-CD44 physical complex documented in INDRA. The persistent failures are at activated_myeloid_cd44 ↔ endothelial (0.67×) and activated_m2_cd44 ↔ endothelial (0.65×). The transendothelial migration machinery (CD11b–PECAM1, CD45–CD31, 3 INDRA evidence) is not spatially evident at superpixel resolution. Three readings remain possible — none fully resolvable at superpixel scale:
 1. Transmigration occurs at sub-superpixel scale (the immune cell and the endothelial cell are not co-resident in a 100 µm² patch);
 2. Per-ROI gating compresses the CD44 thresholds in a way that fragments the interface;
 3. The interface is genuinely sparse at D1 in this AKI model and densifies later.
@@ -323,6 +327,8 @@ The discrete cell-type Phase 1 analyses in §4/§6 use the 15-type ontology, whi
 
 **Self-enrichment by timepoint (multi-lineage tissue spatial focalization)**:
 
+_**Basis note (composite track).** The composite-track self- and cross-enrichment values in this §4b SN subsection (and the composite column of the Track-coherence table below) are **ROI-level values** read from the frozen reproduction anchor `spatial_neighborhoods_composite/temporal_neighborhood_enrichments.csv`. They are retained by design and are **not reconcilable to the discrete mouse-of-mouse product**: the 8-category interface decomposition is a distinct ontology that is absent from the discrete stratified product, and the source CSV is frozen (per-ROI recompute forbidden). The discrete-column values in Track coherence are mouse-of-mouse, as labelled there._
+
 | Interface | Sham | D1 | D3 | D7 | Trajectory |
 |---|---:|---:|---:|---:|---|
 | **stromal (pure)** | 1.66× | 1.66× | 2.83× | **3.57×** | ▲ stromal foci tighten progressively |
@@ -364,9 +370,9 @@ The composite-lineage track corroborates and amplifies the discrete findings, an
 
 | Finding | Discrete | Composite | Classification |
 |---|---|---|---|
-| Stromal-niche emergence | activated_fibroblast_cd140b self 1.35 → 2.68× | `stromal` self 1.66 → 3.57×; `endothelial+stromal` 1.44 → 3.26× | **COHERENT** (composite stronger) |
-| Repair-niche reciprocity | af_cd140b ↔ m2 asymmetric (1.30× / 0.94×) | immune+stromal ↔ stromal symmetric (1.62/1.59×) | **COMPOSITE-RESCUES symmetry** |
-| Transmigration interface avoidance | activated_myeloid_cd44 ↔ endothelial at 0.63× | NOT visible at 8-cat resolution | **DISCRETE-ONLY** |
+| Stromal-niche emergence | activated_fibroblast_cd140b self 1.33 → 2.00× (mouse-of-mouse) | `stromal` self 1.66 → 3.57×; `endothelial+stromal` 1.44 → 3.26× | **COHERENT** (composite stronger) |
+| Repair-niche reciprocity | af_cd140b ↔ m2 symmetric under mouse-of-mouse (1.19× / 1.15×) | immune+stromal ↔ stromal symmetric (1.62/1.59×) | **COHERENT** (both symmetric) |
+| Transmigration interface avoidance | activated_myeloid_cd44 ↔ endothelial at 0.67× (mouse-of-mouse) | NOT visible at 8-cat resolution | **DISCRETE-ONLY** |
 | Triple-positive interface doubling | invisible (forced to unassigned) | g = −3.98 raw, −3.40 CLR | **COMPOSITE-ONLY** |
 | Cross-interface avoidance | invisible | endothelial ↔ I+S at 0.58×, etc. | **COMPOSITE-ONLY** |
 
@@ -448,19 +454,19 @@ The panel is positioned to detect downstream consequences of these cytokine axes
 
 The publication notebook generates 8 mechanistic narratives from INDRA, each cross-referenced with observed spatial enrichment:
 
-- **Activated endothelial self-clustering** (CD140b⁺ 1.76× at D1 rising to 3.55× at D7; CD44⁺ 1.47× at D1 plateauing at 2.19× at D7): PECAM1 mediates homophilic adhesion (GO:0007156). Both CD31 and CD34 share glomerular endothelium development (GO:0072011). Spatial data is consistent with expected vascular network topology, with the CD140b⁺-activated subset consolidating into tighter spatial domains as injury progresses — the strongest temporal self-clustering signal in the dataset.
+- **Activated endothelial self-clustering** (mouse-of-mouse: CD140b⁺ 1.61× at D1 rising to 3.27× at D7; CD44⁺ 2.14× at D1, 2.24× at D3, with **D7 resolvable from only a single effective mouse and therefore not reported**): PECAM1 mediates homophilic adhesion (GO:0007156). Both CD31 and CD34 share glomerular endothelium development (GO:0072011). Spatial data is consistent with expected vascular network topology, with the CD140b⁺-activated subset consolidating into tighter spatial domains as injury progresses. (The largest temporal self-clustering signal in the dataset is now `activated_myeloid_cd44`, 2.20 → 5.34×.)
 
-- **Fibroblast self-clustering and stromal-niche emergence**: bare `fibroblast` 1.57× at D1 rising to 2.55× at D7; `activated_fibroblast_cd140b` 1.37× at D1 → 2.68× at D7; `activated_fibroblast_cd44` 0.00× at D1 (sparse) → 2.07× at D7. PDGFRA is expressed in kidney cortex and nephron tubule interstitium. In nephrogenesis (WP4823), fibroblasts form the structural scaffold. Spatial data is consistent with interstitial compartment organization, with the activated forms concentrating into focal stromal niches by D7.
+- **Fibroblast self-clustering and stromal-niche emergence** (mouse-of-mouse): bare `fibroblast` 1.59× at D1 rising to 2.53× at D7; `activated_fibroblast_cd140b` 1.35× at D1 → 2.00× at D7; `activated_fibroblast_cd44` unsupported across mice at D1/D3 → 3.31× at D7. PDGFRA is expressed in kidney cortex and nephron tubule interstitium. In nephrogenesis (WP4823), fibroblasts form the structural scaffold. Spatial data is consistent with interstitial compartment organization, with the activated forms concentrating into focal stromal niches by D7.
 
-- **M2 macrophage niche formation** (`m2_macrophage` 1.53× at D1 → 2.35× at D7): ITGAM⁺ cells accumulate at injury sites via complement-mediated adhesion. MRC1⁺ M2 macrophages cluster in resolution zones. Spatial data is consistent with immune niche formation peaking at D7.
+- **M2 macrophage niche formation** (mouse-of-mouse: `m2_macrophage` 1.90× at D1, 1.78× at D7): ITGAM⁺ cells accumulate at injury sites via complement-mediated adhesion. MRC1⁺ M2 macrophages cluster in resolution zones. Spatial data is consistent with immune niche formation; the self-clustering trajectory is non-monotonic across timepoints (peaks near D1, not D7).
 
-- **PDGFRβ-anchored stromal-vascular-myeloid axis IS spatially evident** (`activated_fibroblast_cd140b` ↔ `activated_endothelial_cd140b` 1.40× at D1; `activated_fibroblast_cd140b` ↔ `activated_myeloid_cd140b` 1.53× at D1): PDGFRβ forms a physical complex with CD44 (10 evidence, belief 0.74) and with MRC1 (3 evidence). The TGF-β-driven repair/fibrosis niche predicted by these interactions is consistent with the observed CD140b⁺ co-clustering across all three CD140b⁺-co-expressing subtypes (stromal, vascular, myeloid). The `activated_fibroblast_cd140b` ↔ `m2_macrophage` direct pair is asymmetric (1.30× from fibroblast side, 0.94× from macrophage side); the symmetric multi-lineage reading lives in the composite-lineage track (§4b: immune+stromal ↔ stromal at 1.62×/1.59×).
+- **PDGFRβ-anchored stromal-vascular-myeloid axis IS spatially evident** (mouse-of-mouse at D1: `activated_fibroblast_cd140b` ↔ `activated_endothelial_cd140b` 1.31×; `activated_fibroblast_cd140b` ↔ `activated_myeloid_cd140b` 1.46×): PDGFRβ forms a physical complex with CD44 (10 evidence, belief 0.74) and with MRC1 (3 evidence). The TGF-β-driven repair/fibrosis niche predicted by these interactions is consistent with the observed CD140b⁺ co-clustering across all three CD140b⁺-co-expressing subtypes (stromal, vascular, myeloid). Under mouse-of-mouse aggregation the `activated_fibroblast_cd140b` ↔ `m2_macrophage` direct pair is attractive in **both** directions (1.19× from the fibroblast side, 1.15× from the macrophage side) — the prior ROI-level avoidance asymmetry (1.30×/0.94×) no longer holds. (These cross-pairs are mouse-of-mouse; the §4 cross-type D1 table is a labeled ROI-level reproduction anchor — the canonical mouse-of-mouse cross reading is the concordance table and §6.) The symmetric multi-lineage reading also lives in the composite-lineage track (§4b: immune+stromal ↔ stromal at 1.62×/1.59×).
 
-- **Endothelial–activated-myeloid avoidance is the persistent failure** (`activated_endothelial_cd140b` ↔ `activated_myeloid_cd140b` 0.29×/0.47× and `activated_endothelial_cd140b` ↔ `activated_myeloid_cd44` 0.41×/0.55× at D1): INDRA predicts CD11b–PECAM1 transendothelial migration (3 evidence) and PECAM1–CD44 adhesion. Observed avoidance at superpixel resolution is consistent with three interpretations: transmigration occurs at sub-superpixel scale; per-ROI gating fragments the interface; or the interface is genuinely sparse at D1 and densifies later. Distinguishing requires single-cell segmentation or expanded panel.
+- **Endothelial–activated-myeloid avoidance is present but milder under mouse-of-mouse** (at D1: `activated_endothelial_cd140b` ↔ `activated_myeloid_cd44` 0.73×/0.62× — milder avoidance than the ROI-level 0.41×/0.55×; the `activated_endothelial_cd140b` ↔ `activated_myeloid_cd140b` pair is not resolvable at mouse level — single effective mouse): INDRA predicts CD11b–PECAM1 transendothelial migration (3 evidence) and PECAM1–CD44 adhesion. Observed avoidance at superpixel resolution is consistent with three interpretations: transmigration occurs at sub-superpixel scale; per-ROI gating fragments the interface; or the interface is genuinely sparse at D1 and densifies later. Distinguishing requires single-cell segmentation or expanded panel.
 
 ### Finding Annotations
 
-491 findings annotated: 78 differential-abundance + 413 neighborhood-enrichment rows from the regenerated CSVs. CD44 is the only panel gene with direct AKI disease annotation (MESH:D058186). INDRA provides Discussion-level interpretation, not Results-level evidence — a distinction maintained throughout the analysis.
+413 findings annotated: 78 differential-abundance + 335 neighborhood-enrichment rows from the regenerated CSVs. CD44 is the only panel gene with direct AKI disease annotation (MESH:D058186). INDRA provides Discussion-level interpretation, not Results-level evidence — a distinction maintained throughout the analysis.
 
 ---
 
