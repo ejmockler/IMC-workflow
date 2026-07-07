@@ -23,6 +23,10 @@ from collections import Counter
 
 from src.utils.metadata import parse_roi_metadata
 from src.utils.paths import get_paths
+# Single-source the min-support threshold from the temporal-interface module so the
+# gate stays auditable (temporal_interface_analysis.py:53); that module does not import
+# this one, so the import is acyclic.
+from src.analysis.temporal_interface_analysis import DEFAULT_MIN_SUPPORT
 
 _PATHS = get_paths()
 
@@ -316,19 +320,155 @@ def aggregate_across_rois(
 
     return aggregated
 
-def main():
-    print("="*80)
-    print("Spatial Neighborhood Analysis - Cell Type Interactions")
-    print("="*80)
+def aggregate_strata(
+    roi_results: List[pd.DataFrame],
+    strata: List[str],
+    min_support: int = DEFAULT_MIN_SUPPORT,
+) -> pd.DataFrame:
+    """Mouse-of-mouse stratified aggregation of per-ROI neighborhood enrichment.
 
-    # Parameters
-    k_neighbors = 10
-    n_permutations = 1000
+    ``strata`` is a subset of ``['region', 'timepoint']`` (order preserved):
+    ``[]`` == fully pooled, ``['timepoint']`` / ``['region']`` reproduce the
+    existing single-key products, and ``['region', 'timepoint']`` is the
+    region×timepoint lens. One output row per
+    ``[*strata, focal_cell_type, neighbor_cell_type]``.
 
-    print(f"\nParameters:")
-    print(f"  k-nearest neighbors: {k_neighbors}")
-    print(f"  Permutations: {n_permutations}")
+    Aggregation (DESIGN Decision 1 + 4) is MOUSE-OF-MOUSE mean-of-logs:
+    per-ROI ``log2_enrichment`` → per-mouse UNWEIGHTED mean → per-stratum
+    UNWEIGHTED mean over mice, requiring ≥2 mice. This deliberately does NOT use
+    the ``n_focal``-weighted ROI mean of ``aggregate_across_rois`` (:294-299),
+    which pseudoreplicates by weighting biological replicates by cell count;
+    MOUSE is the replication unit for this dataset. The log2 basis is kept
+    throughout; ``enrichment_score = 2**log2_enrichment`` is display-only.
 
+    Support ledger (Decision 3), carried as columns NEVER dropped:
+    ``n_focal_cells`` (summed focal cells), ``n_rois`` (distinct ROIs),
+    ``n_mice`` (distinct mice), ``n_clipped_extremes`` (contributing per-ROI
+    rows whose ``|log2_enrichment| >= 10`` hit the ±10 clip). Emit-not-drop
+    semantics: every stratum×focal×neighbor present in the inputs is emitted.
+    Sparse strata are FLAGGED, never removed — ``below_min_support``
+    (``n_focal_cells < min_support``) and ``insufficient_support``
+    (``n_mice < 2``); when either is True the estimate columns
+    (``log2_enrichment``, ``enrichment_score``, ``range_min``, ``range_max``)
+    are NaN while the row, its per-mouse points, and all counts remain.
+
+    Uncertainty (Decision 2) is the OBSERVED per-mouse spread only:
+    ``mouse_values`` (the per-mouse mean log2 points to plot) plus
+    ``range_min``/``range_max`` (their min/max). NO bootstrap is computed —
+    ``bootstrap_range_g`` is a two-group Hedges-g primitive that cannot band a
+    single 2-mouse stratum, so it is not called here. NO significance is
+    surfaced: this output carries no ``p_value``, ``p_value_fdr``,
+    ``fraction_significant_raw``/``fraction_significant_fdr``, and no binarized
+    ``>0.5``/``>1.5`` headline (the per-ROI primitive keeps ``p_value``
+    internally; the lens simply does not expose it).
+    """
+    ordered_cols = [
+        *strata,
+        'focal_cell_type', 'neighbor_cell_type',
+        'log2_enrichment', 'enrichment_score',
+        'range_min', 'range_max', 'mouse_values',
+        'n_focal_cells', 'n_rois', 'n_mice', 'n_mice_effective', 'n_clipped_extremes',
+        'below_min_support', 'insufficient_support',
+    ]
+
+    if not roi_results:
+        return pd.DataFrame(columns=ordered_cols)
+
+    # Combine + attach metadata exactly as aggregate_across_rois (:281-282), adding
+    # the mouse key; drop Test ROIs (:285); guard mouse==None so the ≥2-mice count
+    # is well-defined.
+    combined = pd.concat(roi_results, ignore_index=True)
+    combined['timepoint'] = combined['roi_id'].apply(lambda x: parse_roi_metadata(x)['timepoint'])
+    combined['region'] = combined['roi_id'].apply(lambda x: parse_roi_metadata(x)['region'])
+    combined['mouse'] = combined['roi_id'].apply(lambda x: parse_roi_metadata(x)['mouse'])
+    combined = combined[combined['timepoint'] != 'Test']
+    combined = combined[combined['mouse'].notna()]
+
+    if len(combined) == 0:
+        return pd.DataFrame(columns=ordered_cols)
+
+    group_keys = [*strata, 'focal_cell_type', 'neighbor_cell_type']
+
+    # Per-ROI → per-mouse UNWEIGHTED mean-of-logs: one value per mouse (Decision 1+4).
+    per_mouse = (
+        combined.groupby([*group_keys, 'mouse'], dropna=False)['log2_enrichment']
+        .mean()
+        .reset_index()
+    )
+    per_mouse_lookup: Dict[tuple, pd.DataFrame] = {}
+    for k, g in per_mouse.groupby(group_keys, dropna=False):
+        per_mouse_lookup[k if isinstance(k, tuple) else (k,)] = g
+
+    rows: List[Dict[str, Any]] = []
+    for key, grp in combined.groupby(group_keys, dropna=False):
+        key_t = key if isinstance(key, tuple) else (key,)
+        row: Dict[str, Any] = dict(zip(group_keys, key_t))
+
+        # Support ledger (Decision 3) — never dropped.
+        n_focal = int(grp['n_focal_cells'].sum())
+        row['n_focal_cells'] = n_focal
+        row['n_rois'] = int(grp['roi_id'].nunique())
+        n_mice = int(grp['mouse'].nunique())
+        row['n_mice'] = n_mice  # mice with any ROI row in this stratum
+        # ±10-clip flag (Decision 4): count contributing per-ROI rows at the clip.
+        row['n_clipped_extremes'] = int((grp['log2_enrichment'].abs() >= 10).sum())
+
+        # Per-mouse points (mouse-of-mouse, Decision 1) + observed spread (Decision 2).
+        pm = per_mouse_lookup[key_t]
+        mouse_values = [float(v) for v in pm['log2_enrichment'].tolist() if pd.notna(v)]
+        row['mouse_values'] = mouse_values
+        # BRUTALIST FIX: the >=2-mice guard must count mice that actually CONTRIBUTE a
+        # defined estimate, not mice with rows. The per-ROI primitive coerces
+        # observed_proportion==0 (structural depletion) to NaN log2 (:246); such a mouse
+        # is dropped from mouse_values, so gating on n_mice (row-presence) would present a
+        # single-mouse headline as >=2-mouse-supported with a false zero-width band.
+        n_mice_effective = len(mouse_values)
+        row['n_mice_effective'] = n_mice_effective
+
+        # Emit-not-drop flags (Decision 3).
+        below_min_support = n_focal < min_support
+        insufficient_support = n_mice_effective < 2
+        row['below_min_support'] = bool(below_min_support)
+        row['insufficient_support'] = bool(insufficient_support)
+
+        if below_min_support or insufficient_support or not mouse_values:
+            # Retain the row + counts + points, but NaN the estimate: no headline
+            # from a stratum that rests on <2 mice or <min_support focal cells.
+            row['log2_enrichment'] = np.nan
+            row['enrichment_score'] = np.nan
+            row['range_min'] = np.nan
+            row['range_max'] = np.nan
+        else:
+            # UNWEIGHTED mean over per-mouse mean-of-logs values (each mouse once).
+            log2_est = float(np.mean(mouse_values))
+            row['log2_enrichment'] = log2_est
+            row['enrichment_score'] = float(2 ** log2_est)  # display only
+            row['range_min'] = float(np.min(mouse_values))
+            row['range_max'] = float(np.max(mouse_values))
+
+        rows.append(row)
+
+    return pd.DataFrame(rows)[ordered_cols]
+
+def compute_all_roi_results(
+    k_neighbors: int = 10,
+    n_permutations: int = 1000,
+) -> List[pd.DataFrame]:
+    """Compute per-ROI neighborhood enrichment for every annotation parquet.
+
+    Behavior-preserving extraction of ``main()``'s per-ROI compute loop (the
+    annotation-dir glob + the ``analyze_roi_neighborhoods`` loop). It globs the
+    annotation dir, runs the per-ROI primitive with the same arguments in the
+    same order, and returns the list of non-empty per-ROI DataFrames. The prints
+    are preserved verbatim so ``main()``'s stdout is unchanged.
+
+    Shared by ``main()`` (which then writes the temporal/regional CSVs) and the
+    stratified orchestrator (``run_stratified_neighborhood_analysis.py``, which
+    feeds the list to ``aggregate_strata``). Because ``analyze_roi_neighborhoods``
+    is UNCHANGED and seeded deterministically per ROI (:212), the returned list is
+    bit-identical regardless of caller — so ``main()`` still writes the
+    temporal/regional products byte-identically.
+    """
     # Get all ROI annotation files
     annotation_dir = _PATHS.annotations_dir
     annotation_files = sorted(annotation_dir.glob('roi_*_cell_types.parquet'))
@@ -357,6 +497,25 @@ def main():
             print(f" ❌ Error: {e}")
 
     print(f"\n✓ Analyzed {len(roi_results)} ROIs successfully")
+
+    return roi_results
+
+def main():
+    print("="*80)
+    print("Spatial Neighborhood Analysis - Cell Type Interactions")
+    print("="*80)
+
+    # Parameters
+    k_neighbors = 10
+    n_permutations = 1000
+
+    print(f"\nParameters:")
+    print(f"  k-nearest neighbors: {k_neighbors}")
+    print(f"  Permutations: {n_permutations}")
+
+    # Analyze each ROI (behavior-preserving extraction; identical per-ROI compute
+    # is reused by run_stratified_neighborhood_analysis.py).
+    roi_results = compute_all_roi_results(k_neighbors, n_permutations)
 
     # Aggregate by timepoint
     print("\n" + "─"*80)
