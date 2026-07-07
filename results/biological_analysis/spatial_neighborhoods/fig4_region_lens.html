@@ -1,0 +1,450 @@
+<!-- FIG4_LENS_START -->
+<style>
+  #fig-4 .f4-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:2px 0 8px; }
+  #fig-4 .f4-ctl-label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); font-family:var(--font-sans); }
+  #fig-4 .f4-toggle { display:inline-flex; border:1px solid var(--rule); border-radius:3px; overflow:hidden; }
+  #fig-4 .f4-toggle button { appearance:none; border:0; background:var(--paper); color:var(--ink-soft); font:600 11px/1 ui-monospace,Menlo,monospace; letter-spacing:.02em; padding:6px 11px; cursor:pointer; border-left:1px solid var(--rule); transition:background .12s,color .12s; }
+  #fig-4 .f4-toggle button:first-child { border-left:0; }
+  #fig-4 .f4-toggle button[aria-checked="true"] { background:var(--ink); color:var(--paper); }
+  #fig-4 .f4-toggle button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+  #fig-4 .f4-readout { font-size:12px; color:var(--ink-faint); font-variant-numeric:tabular-nums; font-family:var(--font-sans); }
+  #fig-4 .f4-readout b { color:var(--ink-soft); }
+  #fig-4 .f4-note { font-size:12px; line-height:1.45; color:var(--ink-soft); font-family:var(--font-sans); background:var(--rule-soft); border-left:3px solid var(--accent); padding:7px 11px; margin:2px 0 12px; max-width:96ch; }
+  #fig-4 .f4-note b { color:var(--ink); }
+  #fig-4 .f4-svg { width:100%; height:auto; display:block; font-family:var(--font-sans); }
+  #fig-4 .f4-superlab { fill:var(--ink-faint); font-size:11px; font-style:italic; letter-spacing:.02em; }
+  #fig-4 .f4-collab { font-size:12.5px; font-weight:600; letter-spacing:.005em; }
+  #fig-4 .f4-rowlab { font-size:12.5px; font-weight:600; letter-spacing:.005em; }
+  #fig-4 .f4-panelbg { fill:transparent; stroke:var(--rule); stroke-width:1; opacity:.7; }
+  #fig-4 .f4-panelbg.f4-self { fill:rgba(122,51,34,0.035); }
+  #fig-4 .f4-grid { stroke:var(--rule-soft); stroke-width:1; opacity:.6; }
+  #fig-4 .f4-ref { stroke:var(--ink-faint); stroke-width:1; stroke-dasharray:3 3; opacity:.6; }
+  #fig-4 .f4-spine { stroke:var(--rule); stroke-width:1; opacity:.7; }
+  #fig-4 .f4-ytick, #fig-4 .f4-xtick { stroke:var(--ink-faint); stroke-width:1; }
+  #fig-4 text.f4-ytick { fill:var(--ink-faint); stroke:none; font-size:9.5px; font-variant-numeric:tabular-nums; }
+  #fig-4 .f4-xlab { fill:var(--ink-faint); font-size:10px; font-variant-numeric:tabular-nums; }
+  #fig-4 .f4-selftag { fill:var(--ink-faint); font-size:9px; font-style:italic; letter-spacing:.02em; }
+  #fig-4 .f4-nrange { fill:var(--ink-faint); font-size:9.5px; font-variant-numeric:tabular-nums; }
+  #fig-4 .f4-flagnote { fill:var(--accent); font-size:11px; font-weight:600; }
+  #fig-4 .f4-line { fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; opacity:.9; }
+  #fig-4 .f4-whisk { stroke-width:1.4; opacity:.4; }
+  #fig-4 .f4-mdot { fill:var(--paper); stroke-width:1.4; opacity:.9; }
+  #fig-4 .f4-mean-dot { stroke:var(--paper); stroke-width:1; }
+  #fig-4 .f4-panel-dim { opacity:.28; }
+  @media (prefers-reduced-motion: reduce) { #fig-4 .f4-svg * { transition:none !important; } }
+</style>
+<figure class="multiples-fig" id="fig-4" data-region="Pooled">
+  <div class="multiples-wrap">
+    <p class="multiples-eyebrow">Spatial self- and cross-association, by region · §4.3</p>
+    <h3 class="multiples-title">Where do the three lineages sit relative to each other, Sham→D7 — and does the pattern hold in <em>cortex vs medulla</em>? Switch region; every panel re-aggregates to that region's mouse-of-mouse enrichment while the grid, axes and lineage colours hold fixed.</h3>
+    <div class="f4-controls">
+      <span class="f4-ctl-label">Region</span>
+      <div class="f4-toggle" role="radiogroup" aria-label="Kidney region">
+        <button role="radio" data-set-region="Cortex" aria-checked="false">Cortex</button>
+        <button role="radio" data-set-region="Medulla" aria-checked="false">Medulla</button>
+        <button role="radio" data-set-region="Pooled" aria-checked="true">Pooled</button>
+      </div>
+      <span class="f4-readout"></span>
+    </div>
+    <p class="f4-note"><b>Grain note.</b> Finer than lineage is unresolvable at region×timepoint: 10 of 119 region×timepoint×cell-type strata rest on a single mouse and 27 on ≤10 cells (the sparse activated_* subtypes). These are shown pooled, never as a per-stratum trajectory. The fine 15-type detail stays pooled and lives at the pooled grain in RESULTS.md §4 — never a per-region fine-type trajectory.</p>
+    <svg class="multiples-svg f4-svg" viewBox="0 0 1200 736" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Interactive lineage neighborhood-enrichment small multiples by kidney region; switch cortex, medulla, or pooled.">
+    <g class="f4-plot">
+    <text class="f4-superlab" x="26" y="26" text-anchor="start">Rows = focal lineage · columns = neighbouring lineage · each panel: Sham → D7 neighborhood enrichment (log₂), 1× = random expectation</text>
+    <text class="f4-collab" x="246.0" y="54" text-anchor="middle" style="fill:var(--lineage-endothelial)">next to endothelial</text>
+    <text class="f4-collab" x="586.0" y="54" text-anchor="middle" style="fill:var(--lineage-immune)">next to immune</text>
+    <text class="f4-collab" x="926.0" y="54" text-anchor="middle" style="fill:var(--lineage-stromal)">next to stromal</text>
+    <text class="f4-rowlab" transform="translate(26,154.0) rotate(-90)" text-anchor="middle" style="fill:var(--lineage-endothelial)">focal endothelial</text>
+    <text class="f4-rowlab" transform="translate(26,380.0) rotate(-90)" text-anchor="middle" style="fill:var(--lineage-immune)">focal immune</text>
+    <text class="f4-rowlab" transform="translate(26,606.0) rotate(-90)" text-anchor="middle" style="fill:var(--lineage-stromal)">focal stromal</text>
+    <rect class="f4-panelbg f4-self" x="96.0" y="70.0" width="300.0" height="168.0" rx="4"/>
+    <line class="f4-grid" x1="96.0" y1="238.0" x2="396.0" y2="238.0"/>
+    <text class="f4-ytick" x="90.0" y="238.0" text-anchor="end" dominant-baseline="middle">0.25×</text>
+    <line class="f4-grid" x1="96.0" y1="188.6" x2="396.0" y2="188.6"/>
+    <text class="f4-ytick" x="90.0" y="188.6" text-anchor="end" dominant-baseline="middle">0.5×</text>
+    <line class="f4-ref" x1="96.0" y1="139.2" x2="396.0" y2="139.2"/>
+    <text class="f4-ytick" x="90.0" y="139.2" text-anchor="end" dominant-baseline="middle">1×</text>
+    <line class="f4-grid" x1="96.0" y1="89.8" x2="396.0" y2="89.8"/>
+    <text class="f4-ytick" x="90.0" y="89.8" text-anchor="end" dominant-baseline="middle">2×</text>
+    <line class="f4-spine" x1="96.0" y1="70.0" x2="96.0" y2="238.0"/>
+    <line class="f4-spine" x1="96.0" y1="238.0" x2="396.0" y2="238.0"/>
+    <line class="f4-xtick" x1="140.0" y1="238.0" x2="140.0" y2="241.0"/>
+    <line class="f4-xtick" x1="218.7" y1="238.0" x2="218.7" y2="241.0"/>
+    <line class="f4-xtick" x1="297.3" y1="238.0" x2="297.3" y2="241.0"/>
+    <line class="f4-xtick" x1="376.0" y1="238.0" x2="376.0" y2="241.0"/>
+    <text class="f4-selftag" x="388.0" y="84" text-anchor="end">self-enrichment</text>
+    <rect class="f4-panelbg" x="436.0" y="70.0" width="300.0" height="168.0" rx="4"/>
+    <line class="f4-grid" x1="436.0" y1="238.0" x2="736.0" y2="238.0"/>
+    <line class="f4-grid" x1="436.0" y1="188.6" x2="736.0" y2="188.6"/>
+    <line class="f4-ref" x1="436.0" y1="139.2" x2="736.0" y2="139.2"/>
+    <line class="f4-grid" x1="436.0" y1="89.8" x2="736.0" y2="89.8"/>
+    <line class="f4-spine" x1="436.0" y1="70.0" x2="436.0" y2="238.0"/>
+    <line class="f4-spine" x1="436.0" y1="238.0" x2="736.0" y2="238.0"/>
+    <line class="f4-xtick" x1="480.0" y1="238.0" x2="480.0" y2="241.0"/>
+    <line class="f4-xtick" x1="558.7" y1="238.0" x2="558.7" y2="241.0"/>
+    <line class="f4-xtick" x1="637.3" y1="238.0" x2="637.3" y2="241.0"/>
+    <line class="f4-xtick" x1="716.0" y1="238.0" x2="716.0" y2="241.0"/>
+    <rect class="f4-panelbg" x="776.0" y="70.0" width="300.0" height="168.0" rx="4"/>
+    <line class="f4-grid" x1="776.0" y1="238.0" x2="1076.0" y2="238.0"/>
+    <line class="f4-grid" x1="776.0" y1="188.6" x2="1076.0" y2="188.6"/>
+    <line class="f4-ref" x1="776.0" y1="139.2" x2="1076.0" y2="139.2"/>
+    <line class="f4-grid" x1="776.0" y1="89.8" x2="1076.0" y2="89.8"/>
+    <line class="f4-spine" x1="776.0" y1="70.0" x2="776.0" y2="238.0"/>
+    <line class="f4-spine" x1="776.0" y1="238.0" x2="1076.0" y2="238.0"/>
+    <line class="f4-xtick" x1="820.0" y1="238.0" x2="820.0" y2="241.0"/>
+    <line class="f4-xtick" x1="898.7" y1="238.0" x2="898.7" y2="241.0"/>
+    <line class="f4-xtick" x1="977.3" y1="238.0" x2="977.3" y2="241.0"/>
+    <line class="f4-xtick" x1="1056.0" y1="238.0" x2="1056.0" y2="241.0"/>
+    <rect class="f4-panelbg" x="96.0" y="296.0" width="300.0" height="168.0" rx="4"/>
+    <line class="f4-grid" x1="96.0" y1="464.0" x2="396.0" y2="464.0"/>
+    <text class="f4-ytick" x="90.0" y="464.0" text-anchor="end" dominant-baseline="middle">0.25×</text>
+    <line class="f4-grid" x1="96.0" y1="414.6" x2="396.0" y2="414.6"/>
+    <text class="f4-ytick" x="90.0" y="414.6" text-anchor="end" dominant-baseline="middle">0.5×</text>
+    <line class="f4-ref" x1="96.0" y1="365.2" x2="396.0" y2="365.2"/>
+    <text class="f4-ytick" x="90.0" y="365.2" text-anchor="end" dominant-baseline="middle">1×</text>
+    <line class="f4-grid" x1="96.0" y1="315.8" x2="396.0" y2="315.8"/>
+    <text class="f4-ytick" x="90.0" y="315.8" text-anchor="end" dominant-baseline="middle">2×</text>
+    <line class="f4-spine" x1="96.0" y1="296.0" x2="96.0" y2="464.0"/>
+    <line class="f4-spine" x1="96.0" y1="464.0" x2="396.0" y2="464.0"/>
+    <line class="f4-xtick" x1="140.0" y1="464.0" x2="140.0" y2="467.0"/>
+    <line class="f4-xtick" x1="218.7" y1="464.0" x2="218.7" y2="467.0"/>
+    <line class="f4-xtick" x1="297.3" y1="464.0" x2="297.3" y2="467.0"/>
+    <line class="f4-xtick" x1="376.0" y1="464.0" x2="376.0" y2="467.0"/>
+    <rect class="f4-panelbg f4-self" x="436.0" y="296.0" width="300.0" height="168.0" rx="4"/>
+    <line class="f4-grid" x1="436.0" y1="464.0" x2="736.0" y2="464.0"/>
+    <line class="f4-grid" x1="436.0" y1="414.6" x2="736.0" y2="414.6"/>
+    <line class="f4-ref" x1="436.0" y1="365.2" x2="736.0" y2="365.2"/>
+    <line class="f4-grid" x1="436.0" y1="315.8" x2="736.0" y2="315.8"/>
+    <line class="f4-spine" x1="436.0" y1="296.0" x2="436.0" y2="464.0"/>
+    <line class="f4-spine" x1="436.0" y1="464.0" x2="736.0" y2="464.0"/>
+    <line class="f4-xtick" x1="480.0" y1="464.0" x2="480.0" y2="467.0"/>
+    <line class="f4-xtick" x1="558.7" y1="464.0" x2="558.7" y2="467.0"/>
+    <line class="f4-xtick" x1="637.3" y1="464.0" x2="637.3" y2="467.0"/>
+    <line class="f4-xtick" x1="716.0" y1="464.0" x2="716.0" y2="467.0"/>
+    <text class="f4-selftag" x="728.0" y="310" text-anchor="end">self-enrichment</text>
+    <rect class="f4-panelbg" x="776.0" y="296.0" width="300.0" height="168.0" rx="4"/>
+    <line class="f4-grid" x1="776.0" y1="464.0" x2="1076.0" y2="464.0"/>
+    <line class="f4-grid" x1="776.0" y1="414.6" x2="1076.0" y2="414.6"/>
+    <line class="f4-ref" x1="776.0" y1="365.2" x2="1076.0" y2="365.2"/>
+    <line class="f4-grid" x1="776.0" y1="315.8" x2="1076.0" y2="315.8"/>
+    <line class="f4-spine" x1="776.0" y1="296.0" x2="776.0" y2="464.0"/>
+    <line class="f4-spine" x1="776.0" y1="464.0" x2="1076.0" y2="464.0"/>
+    <line class="f4-xtick" x1="820.0" y1="464.0" x2="820.0" y2="467.0"/>
+    <line class="f4-xtick" x1="898.7" y1="464.0" x2="898.7" y2="467.0"/>
+    <line class="f4-xtick" x1="977.3" y1="464.0" x2="977.3" y2="467.0"/>
+    <line class="f4-xtick" x1="1056.0" y1="464.0" x2="1056.0" y2="467.0"/>
+    <rect class="f4-panelbg" x="96.0" y="522.0" width="300.0" height="168.0" rx="4"/>
+    <line class="f4-grid" x1="96.0" y1="690.0" x2="396.0" y2="690.0"/>
+    <text class="f4-ytick" x="90.0" y="690.0" text-anchor="end" dominant-baseline="middle">0.25×</text>
+    <line class="f4-grid" x1="96.0" y1="640.6" x2="396.0" y2="640.6"/>
+    <text class="f4-ytick" x="90.0" y="640.6" text-anchor="end" dominant-baseline="middle">0.5×</text>
+    <line class="f4-ref" x1="96.0" y1="591.2" x2="396.0" y2="591.2"/>
+    <text class="f4-ytick" x="90.0" y="591.2" text-anchor="end" dominant-baseline="middle">1×</text>
+    <line class="f4-grid" x1="96.0" y1="541.8" x2="396.0" y2="541.8"/>
+    <text class="f4-ytick" x="90.0" y="541.8" text-anchor="end" dominant-baseline="middle">2×</text>
+    <line class="f4-spine" x1="96.0" y1="522.0" x2="96.0" y2="690.0"/>
+    <line class="f4-spine" x1="96.0" y1="690.0" x2="396.0" y2="690.0"/>
+    <line class="f4-xtick" x1="140.0" y1="690.0" x2="140.0" y2="693.0"/>
+    <text class="f4-xlab" x="140.0" y="706" text-anchor="middle">Sham</text>
+    <line class="f4-xtick" x1="218.7" y1="690.0" x2="218.7" y2="693.0"/>
+    <text class="f4-xlab" x="218.7" y="706" text-anchor="middle">D1</text>
+    <line class="f4-xtick" x1="297.3" y1="690.0" x2="297.3" y2="693.0"/>
+    <text class="f4-xlab" x="297.3" y="706" text-anchor="middle">D3</text>
+    <line class="f4-xtick" x1="376.0" y1="690.0" x2="376.0" y2="693.0"/>
+    <text class="f4-xlab" x="376.0" y="706" text-anchor="middle">D7</text>
+    <rect class="f4-panelbg" x="436.0" y="522.0" width="300.0" height="168.0" rx="4"/>
+    <line class="f4-grid" x1="436.0" y1="690.0" x2="736.0" y2="690.0"/>
+    <line class="f4-grid" x1="436.0" y1="640.6" x2="736.0" y2="640.6"/>
+    <line class="f4-ref" x1="436.0" y1="591.2" x2="736.0" y2="591.2"/>
+    <line class="f4-grid" x1="436.0" y1="541.8" x2="736.0" y2="541.8"/>
+    <line class="f4-spine" x1="436.0" y1="522.0" x2="436.0" y2="690.0"/>
+    <line class="f4-spine" x1="436.0" y1="690.0" x2="736.0" y2="690.0"/>
+    <line class="f4-xtick" x1="480.0" y1="690.0" x2="480.0" y2="693.0"/>
+    <text class="f4-xlab" x="480.0" y="706" text-anchor="middle">Sham</text>
+    <line class="f4-xtick" x1="558.7" y1="690.0" x2="558.7" y2="693.0"/>
+    <text class="f4-xlab" x="558.7" y="706" text-anchor="middle">D1</text>
+    <line class="f4-xtick" x1="637.3" y1="690.0" x2="637.3" y2="693.0"/>
+    <text class="f4-xlab" x="637.3" y="706" text-anchor="middle">D3</text>
+    <line class="f4-xtick" x1="716.0" y1="690.0" x2="716.0" y2="693.0"/>
+    <text class="f4-xlab" x="716.0" y="706" text-anchor="middle">D7</text>
+    <rect class="f4-panelbg f4-self" x="776.0" y="522.0" width="300.0" height="168.0" rx="4"/>
+    <line class="f4-grid" x1="776.0" y1="690.0" x2="1076.0" y2="690.0"/>
+    <line class="f4-grid" x1="776.0" y1="640.6" x2="1076.0" y2="640.6"/>
+    <line class="f4-ref" x1="776.0" y1="591.2" x2="1076.0" y2="591.2"/>
+    <line class="f4-grid" x1="776.0" y1="541.8" x2="1076.0" y2="541.8"/>
+    <line class="f4-spine" x1="776.0" y1="522.0" x2="776.0" y2="690.0"/>
+    <line class="f4-spine" x1="776.0" y1="690.0" x2="1076.0" y2="690.0"/>
+    <line class="f4-xtick" x1="820.0" y1="690.0" x2="820.0" y2="693.0"/>
+    <text class="f4-xlab" x="820.0" y="706" text-anchor="middle">Sham</text>
+    <line class="f4-xtick" x1="898.7" y1="690.0" x2="898.7" y2="693.0"/>
+    <text class="f4-xlab" x="898.7" y="706" text-anchor="middle">D1</text>
+    <line class="f4-xtick" x1="977.3" y1="690.0" x2="977.3" y2="693.0"/>
+    <text class="f4-xlab" x="977.3" y="706" text-anchor="middle">D3</text>
+    <line class="f4-xtick" x1="1056.0" y1="690.0" x2="1056.0" y2="693.0"/>
+    <text class="f4-xlab" x="1056.0" y="706" text-anchor="middle">D7</text>
+    <text class="f4-selftag" x="1068.0" y="536" text-anchor="end">self-enrichment</text>
+    <line id="f4-wk-0-0" class="f4-whisk" x1="140.0" y1="96.7" x2="140.0" y2="114.0" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-0-0-0" class="f4-mdot" cx="140.0" cy="114.0" r="2.4" data-mv="0.5098" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-0-0-1" class="f4-mdot" cx="140.0" cy="96.7" r="2.4" data-mv="0.8592" style="stroke:var(--lineage-endothelial)"/>
+    <line id="f4-wk-0-1" class="f4-whisk" x1="218.7" y1="107.7" x2="218.7" y2="132.3" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-0-1-0" class="f4-mdot" cx="218.7" cy="132.3" r="2.4" data-mv="0.1402" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-0-1-1" class="f4-mdot" cx="218.7" cy="107.7" r="2.4" data-mv="0.6361" style="stroke:var(--lineage-endothelial)"/>
+    <line id="f4-wk-0-2" class="f4-whisk" x1="297.3" y1="109.1" x2="297.3" y2="114.4" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-0-2-0" class="f4-mdot" cx="297.3" cy="114.4" r="2.4" data-mv="0.5008" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-0-2-1" class="f4-mdot" cx="297.3" cy="109.1" r="2.4" data-mv="0.6085" style="stroke:var(--lineage-endothelial)"/>
+    <line id="f4-wk-0-3" class="f4-whisk" x1="376.0" y1="95.5" x2="376.0" y2="106.8" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-0-3-0" class="f4-mdot" cx="376.0" cy="106.8" r="2.4" data-mv="0.6557" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-0-3-1" class="f4-mdot" cx="376.0" cy="95.5" r="2.4" data-mv="0.8843" style="stroke:var(--lineage-endothelial)"/>
+    <polyline id="f4-line-0" class="f4-line" points="140.0,105.4 218.7,120.0 297.3,111.8 376.0,101.1" style="stroke:var(--lineage-endothelial)"/>
+    <g class="f4-mean" data-panel="0" data-tp="Sham"><circle id="f4-mean-0-0" class="f4-mean-dot" cx="140.0" cy="105.4" r="4.2" data-focal="endothelial" data-neighbor="endothelial" data-tp="Sham" data-log2="0.6845" data-n="295" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-0-0"></title></g>
+    <g class="f4-mean" data-panel="0" data-tp="D1"><circle id="f4-mean-0-1" class="f4-mean-dot" cx="218.7" cy="120.0" r="4.2" data-focal="endothelial" data-neighbor="endothelial" data-tp="D1" data-log2="0.3882" data-n="329" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-0-1"></title></g>
+    <g class="f4-mean" data-panel="0" data-tp="D3"><circle id="f4-mean-0-2" class="f4-mean-dot" cx="297.3" cy="111.8" r="4.2" data-focal="endothelial" data-neighbor="endothelial" data-tp="D3" data-log2="0.5547" data-n="537" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-0-2"></title></g>
+    <g class="f4-mean" data-panel="0" data-tp="D7"><circle id="f4-mean-0-3" class="f4-mean-dot" cx="376.0" cy="101.1" r="4.2" data-focal="endothelial" data-neighbor="endothelial" data-tp="D7" data-log2="0.7700" data-n="722" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-0-3"></title></g>
+    <text id="f4-nrange-0" class="f4-nrange" x="388.0" y="230" text-anchor="end">n 295–722</text>
+    <text id="f4-flag-0" class="f4-flagnote" x="246.0" y="154" text-anchor="middle"></text>
+    <line id="f4-wk-1-0" class="f4-whisk" x1="480.0" y1="149.1" x2="480.0" y2="155.5" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-1-0-0" class="f4-mdot" cx="480.0" cy="149.1" r="2.4" data-mv="-0.2016" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-1-0-1" class="f4-mdot" cx="480.0" cy="155.5" r="2.4" data-mv="-0.3306" style="stroke:var(--lineage-endothelial)"/>
+    <line id="f4-wk-1-1" class="f4-whisk" x1="558.7" y1="141.5" x2="558.7" y2="150.5" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-1-1-0" class="f4-mdot" cx="558.7" cy="141.5" r="2.4" data-mv="-0.0472" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-1-1-1" class="f4-mdot" cx="558.7" cy="150.5" r="2.4" data-mv="-0.2301" style="stroke:var(--lineage-endothelial)"/>
+    <line id="f4-wk-1-2" class="f4-whisk" x1="637.3" y1="154.5" x2="637.3" y2="162.0" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-1-2-0" class="f4-mdot" cx="637.3" cy="154.5" r="2.4" data-mv="-0.3098" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-1-2-1" class="f4-mdot" cx="637.3" cy="162.0" r="2.4" data-mv="-0.4628" style="stroke:var(--lineage-endothelial)"/>
+    <line id="f4-wk-1-3" class="f4-whisk" x1="716.0" y1="168.2" x2="716.0" y2="174.5" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-1-3-0" class="f4-mdot" cx="716.0" cy="168.2" r="2.4" data-mv="-0.5875" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-1-3-1" class="f4-mdot" cx="716.0" cy="174.5" r="2.4" data-mv="-0.7150" style="stroke:var(--lineage-endothelial)"/>
+    <polyline id="f4-line-1" class="f4-line" points="480.0,152.3 558.7,146.0 637.3,158.3 716.0,171.4" style="stroke:var(--lineage-endothelial)"/>
+    <g class="f4-mean" data-panel="1" data-tp="Sham"><circle id="f4-mean-1-0" class="f4-mean-dot" cx="480.0" cy="152.3" r="4.2" data-focal="endothelial" data-neighbor="immune" data-tp="Sham" data-log2="-0.2661" data-n="295" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-1-0"></title></g>
+    <g class="f4-mean" data-panel="1" data-tp="D1"><circle id="f4-mean-1-1" class="f4-mean-dot" cx="558.7" cy="146.0" r="4.2" data-focal="endothelial" data-neighbor="immune" data-tp="D1" data-log2="-0.1386" data-n="329" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-1-1"></title></g>
+    <g class="f4-mean" data-panel="1" data-tp="D3"><circle id="f4-mean-1-2" class="f4-mean-dot" cx="637.3" cy="158.3" r="4.2" data-focal="endothelial" data-neighbor="immune" data-tp="D3" data-log2="-0.3863" data-n="537" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-1-2"></title></g>
+    <g class="f4-mean" data-panel="1" data-tp="D7"><circle id="f4-mean-1-3" class="f4-mean-dot" cx="716.0" cy="171.4" r="4.2" data-focal="endothelial" data-neighbor="immune" data-tp="D7" data-log2="-0.6513" data-n="722" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-1-3"></title></g>
+    <text id="f4-nrange-1" class="f4-nrange" x="728.0" y="230" text-anchor="end">n 295–722</text>
+    <text id="f4-flag-1" class="f4-flagnote" x="586.0" y="154" text-anchor="middle"></text>
+    <line id="f4-wk-2-0" class="f4-whisk" x1="820.0" y1="135.0" x2="820.0" y2="136.4" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-2-0-0" class="f4-mdot" cx="820.0" cy="136.4" r="2.4" data-mv="0.0557" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-2-0-1" class="f4-mdot" cx="820.0" cy="135.0" r="2.4" data-mv="0.0841" style="stroke:var(--lineage-endothelial)"/>
+    <line id="f4-wk-2-1" class="f4-whisk" x1="898.7" y1="135.2" x2="898.7" y2="138.1" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-2-1-0" class="f4-mdot" cx="898.7" cy="138.1" r="2.4" data-mv="0.0214" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-2-1-1" class="f4-mdot" cx="898.7" cy="135.2" r="2.4" data-mv="0.0811" style="stroke:var(--lineage-endothelial)"/>
+    <line id="f4-wk-2-2" class="f4-whisk" x1="977.3" y1="128.6" x2="977.3" y2="134.5" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-2-2-0" class="f4-mdot" cx="977.3" cy="134.5" r="2.4" data-mv="0.0956" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-2-2-1" class="f4-mdot" cx="977.3" cy="128.6" r="2.4" data-mv="0.2137" style="stroke:var(--lineage-endothelial)"/>
+    <line id="f4-wk-2-3" class="f4-whisk" x1="1056.0" y1="136.0" x2="1056.0" y2="138.7" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-2-3-0" class="f4-mdot" cx="1056.0" cy="138.7" r="2.4" data-mv="0.0094" style="stroke:var(--lineage-endothelial)"/>
+    <circle id="f4-md-2-3-1" class="f4-mdot" cx="1056.0" cy="136.0" r="2.4" data-mv="0.0641" style="stroke:var(--lineage-endothelial)"/>
+    <polyline id="f4-line-2" class="f4-line" points="820.0,135.7 898.7,136.6 977.3,131.5 1056.0,137.4" style="stroke:var(--lineage-endothelial)"/>
+    <g class="f4-mean" data-panel="2" data-tp="Sham"><circle id="f4-mean-2-0" class="f4-mean-dot" cx="820.0" cy="135.7" r="4.2" data-focal="endothelial" data-neighbor="stromal" data-tp="Sham" data-log2="0.0699" data-n="295" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-2-0"></title></g>
+    <g class="f4-mean" data-panel="2" data-tp="D1"><circle id="f4-mean-2-1" class="f4-mean-dot" cx="898.7" cy="136.6" r="4.2" data-focal="endothelial" data-neighbor="stromal" data-tp="D1" data-log2="0.0512" data-n="329" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-2-1"></title></g>
+    <g class="f4-mean" data-panel="2" data-tp="D3"><circle id="f4-mean-2-2" class="f4-mean-dot" cx="977.3" cy="131.5" r="4.2" data-focal="endothelial" data-neighbor="stromal" data-tp="D3" data-log2="0.1546" data-n="537" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-2-2"></title></g>
+    <g class="f4-mean" data-panel="2" data-tp="D7"><circle id="f4-mean-2-3" class="f4-mean-dot" cx="1056.0" cy="137.4" r="4.2" data-focal="endothelial" data-neighbor="stromal" data-tp="D7" data-log2="0.0368" data-n="722" data-flag="0" style="fill:var(--lineage-endothelial)"/><title id="f4-ti-2-3"></title></g>
+    <text id="f4-nrange-2" class="f4-nrange" x="1068.0" y="230" text-anchor="end">n 295–722</text>
+    <text id="f4-flag-2" class="f4-flagnote" x="926.0" y="154" text-anchor="middle"></text>
+    <line id="f4-wk-3-0" class="f4-whisk" x1="140.0" y1="376.1" x2="140.0" y2="384.2" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-3-0-0" class="f4-mdot" cx="140.0" cy="376.1" r="2.4" data-mv="-0.2210" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-3-0-1" class="f4-mdot" cx="140.0" cy="384.2" r="2.4" data-mv="-0.3840" style="stroke:var(--lineage-immune)"/>
+    <line id="f4-wk-3-1" class="f4-whisk" x1="218.7" y1="371.9" x2="218.7" y2="381.6" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-3-1-0" class="f4-mdot" cx="218.7" cy="371.9" r="2.4" data-mv="-0.1368" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-3-1-1" class="f4-mdot" cx="218.7" cy="381.6" r="2.4" data-mv="-0.3319" style="stroke:var(--lineage-immune)"/>
+    <line id="f4-wk-3-2" class="f4-whisk" x1="297.3" y1="384.4" x2="297.3" y2="390.8" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-3-2-0" class="f4-mdot" cx="297.3" cy="384.4" r="2.4" data-mv="-0.3899" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-3-2-1" class="f4-mdot" cx="297.3" cy="390.8" r="2.4" data-mv="-0.5195" style="stroke:var(--lineage-immune)"/>
+    <line id="f4-wk-3-3" class="f4-whisk" x1="376.0" y1="395.1" x2="376.0" y2="411.3" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-3-3-0" class="f4-mdot" cx="376.0" cy="395.1" r="2.4" data-mv="-0.6053" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-3-3-1" class="f4-mdot" cx="376.0" cy="411.3" r="2.4" data-mv="-0.9333" style="stroke:var(--lineage-immune)"/>
+    <polyline id="f4-line-3" class="f4-line" points="140.0,380.1 218.7,376.8 297.3,387.6 376.0,403.2" style="stroke:var(--lineage-immune)"/>
+    <g class="f4-mean" data-panel="3" data-tp="Sham"><circle id="f4-mean-3-0" class="f4-mean-dot" cx="140.0" cy="380.1" r="4.2" data-focal="immune" data-neighbor="endothelial" data-tp="Sham" data-log2="-0.3025" data-n="1177" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-3-0"></title></g>
+    <g class="f4-mean" data-panel="3" data-tp="D1"><circle id="f4-mean-3-1" class="f4-mean-dot" cx="218.7" cy="376.8" r="4.2" data-focal="immune" data-neighbor="endothelial" data-tp="D1" data-log2="-0.2343" data-n="1275" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-3-1"></title></g>
+    <g class="f4-mean" data-panel="3" data-tp="D3"><circle id="f4-mean-3-2" class="f4-mean-dot" cx="297.3" cy="387.6" r="4.2" data-focal="immune" data-neighbor="endothelial" data-tp="D3" data-log2="-0.4547" data-n="1253" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-3-2"></title></g>
+    <g class="f4-mean" data-panel="3" data-tp="D7"><circle id="f4-mean-3-3" class="f4-mean-dot" cx="376.0" cy="403.2" r="4.2" data-focal="immune" data-neighbor="endothelial" data-tp="D7" data-log2="-0.7693" data-n="1412" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-3-3"></title></g>
+    <text id="f4-nrange-3" class="f4-nrange" x="388.0" y="456" text-anchor="end">n 1177–1412</text>
+    <text id="f4-flag-3" class="f4-flagnote" x="246.0" y="380" text-anchor="middle"></text>
+    <line id="f4-wk-4-0" class="f4-whisk" x1="480.0" y1="360.4" x2="480.0" y2="360.6" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-4-0-0" class="f4-mdot" cx="480.0" cy="360.6" r="2.4" data-mv="0.0924" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-4-0-1" class="f4-mdot" cx="480.0" cy="360.4" r="2.4" data-mv="0.0957" style="stroke:var(--lineage-immune)"/>
+    <line id="f4-wk-4-1" class="f4-whisk" x1="558.7" y1="360.9" x2="558.7" y2="363.6" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-4-1-0" class="f4-mdot" cx="558.7" cy="363.6" r="2.4" data-mv="0.0317" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-4-1-1" class="f4-mdot" cx="558.7" cy="360.9" r="2.4" data-mv="0.0862" style="stroke:var(--lineage-immune)"/>
+    <line id="f4-wk-4-2" class="f4-whisk" x1="637.3" y1="356.1" x2="637.3" y2="356.7" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-4-2-0" class="f4-mdot" cx="637.3" cy="356.7" r="2.4" data-mv="0.1723" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-4-2-1" class="f4-mdot" cx="637.3" cy="356.1" r="2.4" data-mv="0.1846" style="stroke:var(--lineage-immune)"/>
+    <line id="f4-wk-4-3" class="f4-whisk" x1="716.0" y1="347.5" x2="716.0" y2="351.7" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-4-3-0" class="f4-mdot" cx="716.0" cy="351.7" r="2.4" data-mv="0.2725" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-4-3-1" class="f4-mdot" cx="716.0" cy="347.5" r="2.4" data-mv="0.3582" style="stroke:var(--lineage-immune)"/>
+    <polyline id="f4-line-4" class="f4-line" points="480.0,360.5 558.7,362.3 637.3,356.4 716.0,349.6" style="stroke:var(--lineage-immune)"/>
+    <g class="f4-mean" data-panel="4" data-tp="Sham"><circle id="f4-mean-4-0" class="f4-mean-dot" cx="480.0" cy="360.5" r="4.2" data-focal="immune" data-neighbor="immune" data-tp="Sham" data-log2="0.0941" data-n="1177" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-4-0"></title></g>
+    <g class="f4-mean" data-panel="4" data-tp="D1"><circle id="f4-mean-4-1" class="f4-mean-dot" cx="558.7" cy="362.3" r="4.2" data-focal="immune" data-neighbor="immune" data-tp="D1" data-log2="0.0589" data-n="1275" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-4-1"></title></g>
+    <g class="f4-mean" data-panel="4" data-tp="D3"><circle id="f4-mean-4-2" class="f4-mean-dot" cx="637.3" cy="356.4" r="4.2" data-focal="immune" data-neighbor="immune" data-tp="D3" data-log2="0.1784" data-n="1253" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-4-2"></title></g>
+    <g class="f4-mean" data-panel="4" data-tp="D7"><circle id="f4-mean-4-3" class="f4-mean-dot" cx="716.0" cy="349.6" r="4.2" data-focal="immune" data-neighbor="immune" data-tp="D7" data-log2="0.3153" data-n="1412" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-4-3"></title></g>
+    <text id="f4-nrange-4" class="f4-nrange" x="728.0" y="456" text-anchor="end">n 1177–1412</text>
+    <text id="f4-flag-4" class="f4-flagnote" x="586.0" y="380" text-anchor="middle"></text>
+    <line id="f4-wk-5-0" class="f4-whisk" x1="820.0" y1="369.7" x2="820.0" y2="374.2" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-5-0-0" class="f4-mdot" cx="820.0" cy="374.2" r="2.4" data-mv="-0.1821" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-5-0-1" class="f4-mdot" cx="820.0" cy="369.7" r="2.4" data-mv="-0.0922" style="stroke:var(--lineage-immune)"/>
+    <line id="f4-wk-5-1" class="f4-whisk" x1="898.7" y1="365.6" x2="898.7" y2="369.6" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-5-1-0" class="f4-mdot" cx="898.7" cy="365.6" r="2.4" data-mv="-0.0087" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-5-1-1" class="f4-mdot" cx="898.7" cy="369.6" r="2.4" data-mv="-0.0892" style="stroke:var(--lineage-immune)"/>
+    <line id="f4-wk-5-2" class="f4-whisk" x1="977.3" y1="372.3" x2="977.3" y2="379.9" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-5-2-0" class="f4-mdot" cx="977.3" cy="379.9" r="2.4" data-mv="-0.2989" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-5-2-1" class="f4-mdot" cx="977.3" cy="372.3" r="2.4" data-mv="-0.1432" style="stroke:var(--lineage-immune)"/>
+    <line id="f4-wk-5-3" class="f4-whisk" x1="1056.0" y1="377.1" x2="1056.0" y2="414.5" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-5-3-0" class="f4-mdot" cx="1056.0" cy="377.1" r="2.4" data-mv="-0.2409" style="stroke:var(--lineage-immune)"/>
+    <circle id="f4-md-5-3-1" class="f4-mdot" cx="1056.0" cy="414.5" r="2.4" data-mv="-0.9976" style="stroke:var(--lineage-immune)"/>
+    <polyline id="f4-line-5" class="f4-line" points="820.0,372.0 898.7,367.6 977.3,376.1 1056.0,395.8" style="stroke:var(--lineage-immune)"/>
+    <g class="f4-mean" data-panel="5" data-tp="Sham"><circle id="f4-mean-5-0" class="f4-mean-dot" cx="820.0" cy="372.0" r="4.2" data-focal="immune" data-neighbor="stromal" data-tp="Sham" data-log2="-0.1372" data-n="1177" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-5-0"></title></g>
+    <g class="f4-mean" data-panel="5" data-tp="D1"><circle id="f4-mean-5-1" class="f4-mean-dot" cx="898.7" cy="367.6" r="4.2" data-focal="immune" data-neighbor="stromal" data-tp="D1" data-log2="-0.0490" data-n="1275" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-5-1"></title></g>
+    <g class="f4-mean" data-panel="5" data-tp="D3"><circle id="f4-mean-5-2" class="f4-mean-dot" cx="977.3" cy="376.1" r="4.2" data-focal="immune" data-neighbor="stromal" data-tp="D3" data-log2="-0.2210" data-n="1253" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-5-2"></title></g>
+    <g class="f4-mean" data-panel="5" data-tp="D7"><circle id="f4-mean-5-3" class="f4-mean-dot" cx="1056.0" cy="395.8" r="4.2" data-focal="immune" data-neighbor="stromal" data-tp="D7" data-log2="-0.6193" data-n="1412" data-flag="0" style="fill:var(--lineage-immune)"/><title id="f4-ti-5-3"></title></g>
+    <text id="f4-nrange-5" class="f4-nrange" x="1068.0" y="456" text-anchor="end">n 1177–1412</text>
+    <text id="f4-flag-5" class="f4-flagnote" x="926.0" y="380" text-anchor="middle"></text>
+    <line id="f4-wk-6-0" class="f4-whisk" x1="140.0" y1="592.1" x2="140.0" y2="594.6" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-6-0-0" class="f4-mdot" cx="140.0" cy="594.6" r="2.4" data-mv="-0.0693" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-6-0-1" class="f4-mdot" cx="140.0" cy="592.1" r="2.4" data-mv="-0.0184" style="stroke:var(--lineage-stromal)"/>
+    <line id="f4-wk-6-1" class="f4-whisk" x1="218.7" y1="590.2" x2="218.7" y2="590.3" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-6-1-0" class="f4-mdot" cx="218.7" cy="590.2" r="2.4" data-mv="0.0208" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-6-1-1" class="f4-mdot" cx="218.7" cy="590.3" r="2.4" data-mv="0.0186" style="stroke:var(--lineage-stromal)"/>
+    <line id="f4-wk-6-2" class="f4-whisk" x1="297.3" y1="586.4" x2="297.3" y2="591.6" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-6-2-0" class="f4-mdot" cx="297.3" cy="586.4" r="2.4" data-mv="0.0962" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-6-2-1" class="f4-mdot" cx="297.3" cy="591.6" r="2.4" data-mv="-0.0077" style="stroke:var(--lineage-stromal)"/>
+    <line id="f4-wk-6-3" class="f4-whisk" x1="376.0" y1="587.3" x2="376.0" y2="588.5" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-6-3-0" class="f4-mdot" cx="376.0" cy="587.3" r="2.4" data-mv="0.0776" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-6-3-1" class="f4-mdot" cx="376.0" cy="588.5" r="2.4" data-mv="0.0539" style="stroke:var(--lineage-stromal)"/>
+    <polyline id="f4-line-6" class="f4-line" points="140.0,593.3 218.7,590.2 297.3,589.0 376.0,587.9" style="stroke:var(--lineage-stromal)"/>
+    <g class="f4-mean" data-panel="6" data-tp="Sham"><circle id="f4-mean-6-0" class="f4-mean-dot" cx="140.0" cy="593.3" r="4.2" data-focal="stromal" data-neighbor="endothelial" data-tp="Sham" data-log2="-0.0439" data-n="296" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-6-0"></title></g>
+    <g class="f4-mean" data-panel="6" data-tp="D1"><circle id="f4-mean-6-1" class="f4-mean-dot" cx="218.7" cy="590.2" r="4.2" data-focal="stromal" data-neighbor="endothelial" data-tp="D1" data-log2="0.0197" data-n="238" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-6-1"></title></g>
+    <g class="f4-mean" data-panel="6" data-tp="D3"><circle id="f4-mean-6-2" class="f4-mean-dot" cx="297.3" cy="589.0" r="4.2" data-focal="stromal" data-neighbor="endothelial" data-tp="D3" data-log2="0.0443" data-n="207" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-6-2"></title></g>
+    <g class="f4-mean" data-panel="6" data-tp="D7"><circle id="f4-mean-6-3" class="f4-mean-dot" cx="376.0" cy="587.9" r="4.2" data-focal="stromal" data-neighbor="endothelial" data-tp="D7" data-log2="0.0657" data-n="190" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-6-3"></title></g>
+    <text id="f4-nrange-6" class="f4-nrange" x="388.0" y="682" text-anchor="end">n 190–296</text>
+    <text id="f4-flag-6" class="f4-flagnote" x="246.0" y="606" text-anchor="middle"></text>
+    <line id="f4-wk-7-0" class="f4-whisk" x1="480.0" y1="594.9" x2="480.0" y2="599.3" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-7-0-0" class="f4-mdot" cx="480.0" cy="599.3" r="2.4" data-mv="-0.1638" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-7-0-1" class="f4-mdot" cx="480.0" cy="594.9" r="2.4" data-mv="-0.0751" style="stroke:var(--lineage-stromal)"/>
+    <line id="f4-wk-7-1" class="f4-whisk" x1="558.7" y1="594.6" x2="558.7" y2="596.6" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-7-1-0" class="f4-mdot" cx="558.7" cy="594.6" r="2.4" data-mv="-0.0689" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-7-1-1" class="f4-mdot" cx="558.7" cy="596.6" r="2.4" data-mv="-0.1099" style="stroke:var(--lineage-stromal)"/>
+    <line id="f4-wk-7-2" class="f4-whisk" x1="637.3" y1="596.1" x2="637.3" y2="604.7" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-7-2-0" class="f4-mdot" cx="637.3" cy="604.7" r="2.4" data-mv="-0.2738" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-7-2-1" class="f4-mdot" cx="637.3" cy="596.1" r="2.4" data-mv="-0.1003" style="stroke:var(--lineage-stromal)"/>
+    <line id="f4-wk-7-3" class="f4-whisk" x1="716.0" y1="600.8" x2="716.0" y2="619.0" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-7-3-0" class="f4-mdot" cx="716.0" cy="600.8" r="2.4" data-mv="-0.1946" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-7-3-1" class="f4-mdot" cx="716.0" cy="619.0" r="2.4" data-mv="-0.5631" style="stroke:var(--lineage-stromal)"/>
+    <polyline id="f4-line-7" class="f4-line" points="480.0,597.1 558.7,595.6 637.3,600.4 716.0,609.9" style="stroke:var(--lineage-stromal)"/>
+    <g class="f4-mean" data-panel="7" data-tp="Sham"><circle id="f4-mean-7-0" class="f4-mean-dot" cx="480.0" cy="597.1" r="4.2" data-focal="stromal" data-neighbor="immune" data-tp="Sham" data-log2="-0.1195" data-n="296" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-7-0"></title></g>
+    <g class="f4-mean" data-panel="7" data-tp="D1"><circle id="f4-mean-7-1" class="f4-mean-dot" cx="558.7" cy="595.6" r="4.2" data-focal="stromal" data-neighbor="immune" data-tp="D1" data-log2="-0.0894" data-n="238" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-7-1"></title></g>
+    <g class="f4-mean" data-panel="7" data-tp="D3"><circle id="f4-mean-7-2" class="f4-mean-dot" cx="637.3" cy="600.4" r="4.2" data-focal="stromal" data-neighbor="immune" data-tp="D3" data-log2="-0.1870" data-n="207" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-7-2"></title></g>
+    <g class="f4-mean" data-panel="7" data-tp="D7"><circle id="f4-mean-7-3" class="f4-mean-dot" cx="716.0" cy="609.9" r="4.2" data-focal="stromal" data-neighbor="immune" data-tp="D7" data-log2="-0.3789" data-n="190" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-7-3"></title></g>
+    <text id="f4-nrange-7" class="f4-nrange" x="728.0" y="682" text-anchor="end">n 190–296</text>
+    <text id="f4-flag-7" class="f4-flagnote" x="586.0" y="606" text-anchor="middle"></text>
+    <line id="f4-wk-8-0" class="f4-whisk" x1="820.0" y1="566.0" x2="820.0" y2="577.4" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-8-0-0" class="f4-mdot" cx="820.0" cy="566.0" r="2.4" data-mv="0.5101" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-8-0-1" class="f4-mdot" cx="820.0" cy="577.4" r="2.4" data-mv="0.2790" style="stroke:var(--lineage-stromal)"/>
+    <line id="f4-wk-8-1" class="f4-whisk" x1="898.7" y1="569.9" x2="898.7" y2="579.7" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-8-1-0" class="f4-mdot" cx="898.7" cy="579.7" r="2.4" data-mv="0.2328" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-8-1-1" class="f4-mdot" cx="898.7" cy="569.9" r="2.4" data-mv="0.4304" style="stroke:var(--lineage-stromal)"/>
+    <line id="f4-wk-8-2" class="f4-whisk" x1="977.3" y1="552.8" x2="977.3" y2="565.8" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-8-2-0" class="f4-mdot" cx="977.3" cy="552.8" r="2.4" data-mv="0.7774" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-8-2-1" class="f4-mdot" cx="977.3" cy="565.8" r="2.4" data-mv="0.5133" style="stroke:var(--lineage-stromal)"/>
+    <line id="f4-wk-8-3" class="f4-whisk" x1="1056.0" y1="541.0" x2="1056.0" y2="553.8" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-8-3-0" class="f4-mdot" cx="1056.0" cy="553.8" r="2.4" data-mv="0.7568" style="stroke:var(--lineage-stromal)"/>
+    <circle id="f4-md-8-3-1" class="f4-mdot" cx="1056.0" cy="541.0" r="2.4" data-mv="1.0153" style="stroke:var(--lineage-stromal)"/>
+    <polyline id="f4-line-8" class="f4-line" points="820.0,571.7 898.7,574.8 977.3,559.3 1056.0,547.4" style="stroke:var(--lineage-stromal)"/>
+    <g class="f4-mean" data-panel="8" data-tp="Sham"><circle id="f4-mean-8-0" class="f4-mean-dot" cx="820.0" cy="571.7" r="4.2" data-focal="stromal" data-neighbor="stromal" data-tp="Sham" data-log2="0.3945" data-n="296" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-8-0"></title></g>
+    <g class="f4-mean" data-panel="8" data-tp="D1"><circle id="f4-mean-8-1" class="f4-mean-dot" cx="898.7" cy="574.8" r="4.2" data-focal="stromal" data-neighbor="stromal" data-tp="D1" data-log2="0.3316" data-n="238" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-8-1"></title></g>
+    <g class="f4-mean" data-panel="8" data-tp="D3"><circle id="f4-mean-8-2" class="f4-mean-dot" cx="977.3" cy="559.3" r="4.2" data-focal="stromal" data-neighbor="stromal" data-tp="D3" data-log2="0.6453" data-n="207" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-8-2"></title></g>
+    <g class="f4-mean" data-panel="8" data-tp="D7"><circle id="f4-mean-8-3" class="f4-mean-dot" cx="1056.0" cy="547.4" r="4.2" data-focal="stromal" data-neighbor="stromal" data-tp="D7" data-log2="0.8860" data-n="190" data-flag="0" style="fill:var(--lineage-stromal)"/><title id="f4-ti-8-3"></title></g>
+    <text id="f4-nrange-8" class="f4-nrange" x="1068.0" y="682" text-anchor="end">n 190–296</text>
+    <text id="f4-flag-8" class="f4-flagnote" x="926.0" y="606" text-anchor="middle"></text>
+    </g>
+    </svg>
+  </div>
+  <figcaption>
+    <span class="num">Fig. 4</span> Lineage-grain spatial neighborhood enrichment across Sham→D1→D3→D7, as a 3×3 matrix of focal lineage (row) × neighbouring lineage (column). Each panel's trajectory is the k=10 nearest-neighbor enrichment: for each focal patch of the row lineage, the fraction of its 10 nearest neighbours that are the column lineage, divided by the fraction expected under a shuffled-label baseline (1× = random expectation; log₂ y-axis, fixed and shared). The diagonal panels are self-enrichment (how strongly a lineage clusters with its own kind). <strong>Switch region</strong> (cortex / medulla / pooled) and every panel's line, per-mouse points and spread morph in place while panels, axes and lineage colours stay fixed. The two dots per timepoint are the per-mouse means (n=2 mice, no error bars); the whisker is the observed per-mouse spread (min–max of the two mice); the corner label is the focal-cell count range. Aggregation is mouse-of-mouse (per-ROI → per-mouse → per-stratum, each mouse once); region is a whole-ROI label, so a region is a re-aggregation over that region's ROIs, n=2 mice — <strong>no region test</strong>. Uncertainty here is the observed per-mouse spread only. Sparser and finer-than-lineage detail is not resolvable at region×timepoint and stays pooled in RESULTS.md §4 (see grain note above).
+    <span class="source">Source: results/biological_analysis/spatial_neighborhoods/lineage_neighborhood_by_region_timepoint.csv (incl. the region=Pooled marginal; mouse-of-mouse via aggregate_strata; descriptive, n=2 mice).</span>
+  </figcaption>
+</figure>
+<script>
+(function(){
+var F4 = {"tps":["Sham","D1","D3","D7"],"lineages":["endothelial","immune","stromal"],"min_support":20,"regions":{"Cortex":[{"focal":"endothelial","neighbor":"endothelial","mean":[0.5942943356308145,0.4116842915027236,0.4864572426698557,0.8239601964681351],"mv":[[0.4454472382769208,0.7431414329847081],[0.16340261485146568,0.6599659681539816],[0.49189431139358325,0.4810201739461282],[0.7123799519313625,0.9355404410049077]],"n":[159,153,251,382],"flag":[false,false,false,false]},{"focal":"endothelial","neighbor":"immune","mean":[-0.1963238800807284,-0.1392007678435169,-0.334138398208378,-0.9143683940191932],"mv":[[-0.16602662536982185,-0.226621134791635],[-0.04131380555458192,-0.23708773013245196],[-0.3849346395871018,-0.28334215682965413],[-0.7028454200198777,-1.125891368018509]],"n":[159,153,251,382],"flag":[false,false,false,false]},{"focal":"endothelial","neighbor":"stromal","mean":[-0.0981232658884671,0.0369156681413923,0.2046932439954217,0.3874913811294851],"mv":[[0.03765928475327028,-0.23390581653020456],[-0.028034083500517774,0.10186541978330238],[0.3587933886392247,0.05059309935161867],[0.2732117108852914,0.501771051373679]],"n":[159,153,251,382],"flag":[false,false,false,false]},{"focal":"immune","neighbor":"endothelial","mean":[-0.270413919750759,-0.2183988319300853,-0.3620961715196875,-1.172059368670421],"mv":[[-0.1215616267674875,-0.41926621273403064],[-0.15121141603652835,-0.2855862478236422],[-0.4034904586153457,-0.32070188442402936],[-0.6776589879596302,-1.6664597493812119]],"n":[598,638,577,678],"flag":[false,false,false,false]},{"focal":"immune","neighbor":"immune","mean":[0.0749523552408092,0.0529609885357581,0.1708558345679742,0.4118761274362985],"mv":[[0.0466438415750082,0.10326086890661026],[0.02310077995325774,0.08282119711825847],[0.22483978775628777,0.11687188137966065],[0.29842325430831895,0.5253290005642781]],"n":[598,638,577,678],"flag":[false,false,false,false]},{"focal":"immune","neighbor":"stromal","mean":[-0.0787631854986641,-0.0416679333911453,-0.3612346670237895,-1.0291775232544895],"mv":[[-0.06840875995562828,-0.08911761104169998],[0.02598713043410445,-0.10932299721639517],[-0.7180222084116065,-0.004447125635972646],[-0.2656147683443246,-1.792740278164655]],"n":[598,638,577,678],"flag":[false,false,false,false]},{"focal":"stromal","neighbor":"endothelial","mean":[-0.2048444974085859,-0.0049972790679676,0.1678145381061039,0.5144356113305163],"mv":[[-0.0024515754014056423,-0.40723741941576624],[-0.052153731794969994,0.04215917365903468],[0.42292372605894013,-0.08729464984673235],[0.2904938907312053,0.7383773319298274]],"n":[133,116,75,63],"flag":[false,false,false,false]},{"focal":"stromal","neighbor":"immune","mean":[-0.0475443590390446,-0.0985098035697716,-0.2372992948361722,-0.5806992226870115],"mv":[[-0.11422399768841247,0.019135279610323158],[-0.012873433166262455,-0.18414617397328087],[-0.43261998954935793,-0.041978600122986535],[-0.2677292583585873,-0.8936691870154356]],"n":[133,116,75,63],"flag":[false,false,false,false]},{"focal":"stromal","neighbor":"stromal","mean":[0.3604191635164597,0.3367584106080169,0.5866666434815138,0.7930221794173824],"mv":[[0.356620394766729,0.36421793226619054],[0.12029850835701918,0.5532183128590147],[0.7948925034458978,0.37844078351712984],[0.5154992575759543,1.0705451012588105]],"n":[133,116,75,63],"flag":[false,false,false,false]}],"Medulla":[{"focal":"endothelial","neighbor":"endothelial","mean":[0.777870771993656,0.3589763052251748,0.6843848346916976,0.7005048443832977],"mv":[[0.6385836152316623,0.9171579287556495],[0.09371915570610141,0.6242334547442482],[0.5053037855717402,0.8634658838116551],[0.542399027238309,0.8586106615282866]],"n":[136,176,286,340],"flag":[false,false,false,false]},{"focal":"endothelial","neighbor":"immune","mean":[-0.3275891944200532,-0.1427380861624087,-0.5470104925495911,-0.433234618162069],"mv":[[-0.2726071178104817,-0.3825712710296246],[-0.05888353670061073,-0.22659263562420667],[-0.2721600209014843,-0.8218609641976979],[-0.35693229815836375,-0.5095369381657743]],"n":[136,176,286,340],"flag":[false,false,false,false]},{"focal":"endothelial","neighbor":"stromal","mean":[0.167414214158921,0.095462668115757,0.2519189636174773,-0.3364316755237027],"mv":[[0.09175624339727691,0.24307218492056515],[0.12026631031766082,0.07065902591385323],[-0.03601827924208904,0.5398562064770437],[-0.5181175612665904,-0.15474578978081505]],"n":[136,176,286,340],"flag":[false,false,false,false]},{"focal":"immune","neighbor":"endothelial","mean":[-0.3931368804827968,-0.2315282575395765,-0.650038079445811,-0.5136255635419738],"mv":[[-0.4198330709936598,-0.3664406899719338],[-0.10804959350449518,-0.35500692157465796],[-0.38305796165358413,-0.917018197238038],[-0.46046990226677453,-0.5667812248171731]],"n":[579,637,676,734],"flag":[false,false,false,false]},{"focal":"immune","neighbor":"immune","mean":[0.1379870263699699,0.0683557055691724,0.2330363166838898,0.247593646736689],"mv":[[0.18399419198401343,0.09197986075592635],[0.04888798157800512,0.08782342956033976],[0.14602258121076317,0.3200500521570166],[0.22061258279941354,0.2745747106739645]],"n":[579,637,676,734],"flag":[false,false,false,false]},{"focal":"immune","neighbor":"stromal","mean":[-0.2516235110332945,-0.0786771009224498,-0.2549585035129666,-0.3957814322421726],"mv":[[-0.40943789963128124,-0.09380912243530783],[-0.07816093180354793,-0.0791932700413518],[-0.08932463590739394,-0.42059237111853937],[-0.19146894050643126,-0.6000939239779141]],"n":[579,637,676,734],"flag":[false,false,false,false]},{"focal":"stromal","neighbor":"endothelial","mean":[-0.0135028727110962,0.0866817022055883,0.0422113827438632,-0.3182754012809157],"mv":[[-0.2029870221638549,0.17598127674166247],[0.16655996259159572,0.0068034418195810145],[-0.06716285127325898,0.15158561676098548],[-0.34819255982427777,-0.2883582427375536]],"n":[163,122,132,127],"flag":[false,false,false,false]},{"focal":"stromal","neighbor":"immune","mean":[-0.192640886722,-0.126905866694687,-0.2056898868469738,-0.2230848250875258],"mv":[[-0.26299433152813195,-0.12228744191586804],[-0.18103811244385043,-0.0727736209455237],[-0.19432079666054036,-0.21705897703340735],[-0.048343998407833794,-0.39782565176721796]],"n":[163,122,132,127],"flag":[false,false,false,false]},{"focal":"stromal","neighbor":"stromal","mean":[0.5266584509568377,0.4134027383403098,0.7758151295286271,1.1134959016085355],"mv":[[0.8169125352738497,0.23640436663982567],[0.45779126025604155,0.3690142164245781],[0.7686892360906616,0.7829410229665926],[1.2392575117143316,0.9877342915027395]],"n":[163,122,132,127],"flag":[false,false,false,false]}],"Pooled":[{"focal":"endothelial","neighbor":"endothelial","mean":[0.6844892303802519,0.3881595438419184,0.5546680190401625,0.7699867825270857],"mv":[[0.509826030595168,0.8591524301653357],[0.14017479513634423,0.6361442925474926],[0.5008339608456879,0.6085020772346371],[0.6557196437003446,0.8842539213538269]],"n":[295,329,537,722],"flag":[false,false,false,false]},{"focal":"endothelial","neighbor":"immune","mean":[-0.2660706742335016,-0.1386306915317733,-0.3862999932078461,-0.6512647304246961],"mv":[[-0.20155345618337514,-0.3305878922836281],[-0.04717038260325818,-0.23009100046028844],[-0.3097515604633568,-0.4628484259523354],[-0.5875410460660397,-0.7149884147833525]],"n":[295,329,537,722],"flag":[false,false,false,false]},{"focal":"endothelial","neighbor":"stromal","mean":[0.0698855610357905,0.0512302691546056,0.1546332058892212,0.0367642220526735],"mv":[[0.05569160430127249,0.08407951777030857],[0.021399381105541754,0.08106115720366962],[0.09558561005168222,0.21368080172676032],[0.009435286834664158,0.06409315727068295]],"n":[295,329,537,722],"flag":[false,false,false,false]},{"focal":"immune","neighbor":"endothelial","mean":[-0.3025173195344222,-0.234345419425085,-0.4546713913347684,-0.7693016795335988],"mv":[[-0.2209854415095449,-0.3840491975592994],[-0.13682414185918398,-0.3318666969909861],[-0.38986879397417135,-0.5194739886953655],[-0.6052626260620116,-0.933340733005186]],"n":[1177,1275,1253,1412],"flag":[false,false,false,false]},{"focal":"immune","neighbor":"immune","mean":[0.0940837442587488,0.058926266287243,0.1784464608490253,0.3153229188880431],"mv":[[0.09242729171134327,0.09574019680615432],[0.03169651382817353,0.08615601874631267],[0.1722949833926047,0.184597938305446],[0.2724863638053505,0.3581594739707357]],"n":[1177,1275,1253,1412],"flag":[false,false,false,false]},{"focal":"immune","neighbor":"stromal","mean":[-0.1371652125758089,-0.0489827013724063,-0.2210263504361465,-0.6192711005525939],"mv":[[-0.1820851398475126,-0.09224528530410521],[-0.008728890311779675,-0.08923651243303292],[-0.2988904934087981,-0.14316220746349487],[-0.24089949239836017,-0.9976427087068277]],"n":[1177,1275,1253,1412],"flag":[false,false,false,false]},{"focal":"stromal","neighbor":"endothelial","mean":[-0.0438608398165179,0.0196697593833087,0.0442657234299904,0.0657426780154755],"mv":[[-0.06929672432222206,-0.018424955310813767],[0.020750833000551912,0.01858868576606557],[0.09619934117080738,-0.00766789431082641],[0.07759840721271094,0.053886948818240056]],"n":[296,238,207,190],"flag":[false,false,false,false]},{"focal":"stromal","neighbor":"immune","mean":[-0.1194803218543949,-0.0894130657734506,-0.1870462933583031,-0.3788538342791466],"mv":[[-0.16381410896831897,-0.07514653474047099],[-0.06892832625879178,-0.10989780528810943],[-0.27375386095681287,-0.10033872575979348],[-0.19460083837500278,-0.5631068301832906]],"n":[296,238,207,190],"flag":[false,false,false,false]},{"focal":"stromal","neighbor":"stromal","mean":[0.3945299983921916,0.3316058371130418,0.6453489276046789,0.8860449518550882],"mv":[[0.5100511082691026,0.2790088885152806],[0.23279609232335996,0.4304155819027236],[0.777423658542407,0.5132741966669507],[0.7567520089554134,1.015337894754763]],"n":[296,238,207,190],"flag":[false,false,false,false]}]}};
+var G = {"RT":[70.0,296.0,522.0],"RB":[238.0,464.0,690.0],"TPX":[[140.0,218.66666666666669,297.33333333333337,376.0],[480.0,558.6666666666666,637.3333333333334,716.0],[820.0,898.6666666666666,977.3333333333334,1056.0]],"YMIN":-2.0,"YMAX":1.4};
+var fig = document.getElementById("fig-4");
+if(!fig) return;
+var TPS = F4.tps, LIN = F4.lineages, MIN = F4.min_support;
+var REG = ["Cortex","Medulla","Pooled"];
+function yv(v,row){var t=(v-G.YMIN)/(G.YMAX-G.YMIN);return G.RB[row]-t*(G.RB[row]-G.RT[row]);}
+function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+function lerp(a,b,t){return a+(b-a)*t;}
+function gid(id){return document.getElementById(id);}
+var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function geom(region){return F4.regions[region].map(function(d){
+  return {mean:d.mean.slice(),mv:d.mv.map(function(r){return r.slice();})};});}
+var cur = geom(fig.getAttribute("data-region"));
+function tweenPanel(a,b,e){
+  return {mean:b.mean.map(function(v,i){return (v==null||a.mean[i]==null)?v:lerp(a.mean[i],v,e);}),
+    mv:b.mv.map(function(row,i){return row.map(function(v,m){
+      var av=a.mv[i]?a.mv[i][m]:null;return (v==null)?null:((av==null)?v:lerp(av,v,e));});})};}
+// data-* carry the CSV target values, set SYNCHRONOUSLY (rAF-independent value truth).
+function setData(region){var P=F4.regions[region];
+  for(var p=0;p<9;p++){var d=P[p];var flagged=false;
+    for(var i=0;i<4;i++){
+      var c=gid("f4-mean-"+p+"-"+i);
+      if(c){if(d.flag[i]){c.setAttribute("data-log2","");c.setAttribute("data-flag","1");}
+            else{c.setAttribute("data-log2",d.mean[i].toFixed(4));c.setAttribute("data-flag","0");}
+            c.setAttribute("data-n",d.n[i]);}
+      if(d.flag[i])flagged=true;
+      for(var m=0;m<2;m++){var md=gid("f4-md-"+p+"-"+i+"-"+m);
+        if(md)md.setAttribute("data-mv",(d.mv[i][m]==null)?"":d.mv[i][m].toFixed(4));}}
+    var fn=gid("f4-flag-"+p);if(fn)fn.textContent=flagged?("insufficient support (n<"+MIN+")"):"";
+    // emit-not-drop: flagged timepoints render DIMMED (never dropped, never imputed).
+    for(var i2=0;i2<4;i2++){var mc=gid("f4-mean-"+p+"-"+i2);
+      if(mc)mc.classList.toggle("f4-panel-dim",!!d.flag[i2]);
+      for(var mm=0;mm<2;mm++){var mdd=gid("f4-md-"+p+"-"+i2+"-"+mm);if(mdd)mdd.classList.toggle("f4-panel-dim",!!d.flag[i2]);}
+      var wk=gid("f4-wk-"+p+"-"+i2);if(wk)wk.classList.toggle("f4-panel-dim",!!d.flag[i2]);}
+  }}
+function draw(st,region){var P=F4.regions[region];
+  for(var p=0;p<9;p++){var row=Math.floor(p/3),col=p%3;var s=st[p],d=P[p];
+    var pts=[];
+    for(var i=0;i<4;i++){if(s.mean[i]!=null)pts.push(G.TPX[col][i].toFixed(1)+","+yv(s.mean[i],row).toFixed(1));}
+    var ln=gid("f4-line-"+p);if(ln)ln.setAttribute("points",pts.join(" "));
+    for(var i=0;i<4;i++){
+      var mc=gid("f4-mean-"+p+"-"+i);
+      if(mc){if(s.mean[i]==null){mc.style.opacity="0";}
+        else{mc.style.opacity="";mc.setAttribute("cy",yv(s.mean[i],row).toFixed(1));}}
+      var mv=s.mv[i],present=[];
+      for(var m=0;m<2;m++){var md=gid("f4-md-"+p+"-"+i+"-"+m);
+        if(md){if(mv[m]==null){md.style.opacity="0";}else{md.style.opacity="";md.setAttribute("cy",yv(mv[m],row).toFixed(1));present.push(mv[m]);}}}
+      var wk=gid("f4-wk-"+p+"-"+i);
+      if(wk){if(present.length){var lo=Math.min.apply(null,present),hi=Math.max.apply(null,present);
+        wk.style.opacity="";wk.setAttribute("y1",yv(hi,row).toFixed(1));wk.setAttribute("y2",yv(lo,row).toFixed(1));}
+        else{wk.style.opacity="0";}}
+      var ti=gid("f4-ti-"+p+"-"+i);
+      if(ti){if(d.mean[i]==null){ti.textContent=d.focal+" ↔ "+d.neighbor+" · "+region+" · "+TPS[i]+" · insufficient support (n="+d.n[i]+", <"+MIN+" or <2 mice)";}
+        else{var mvs=d.mv[i].filter(function(x){return x!=null;}).map(function(x){return Math.pow(2,x).toFixed(2)+"×";}).join(", ");
+          ti.textContent=d.focal+" ↔ "+d.neighbor+" · "+region+" · "+TPS[i]+" · "+Math.pow(2,d.mean[i]).toFixed(2)+"× (per-mouse "+mvs+"; n="+d.n[i]+", mouse-of-mouse)";}}
+    }
+    var nr=gid("f4-nrange-"+p);if(nr){var lo2=Math.min.apply(null,d.n),hi2=Math.max.apply(null,d.n);nr.textContent="n "+lo2+"–"+hi2;}
+  }}
+function readout(region){var rd=fig.querySelector(".f4-readout");if(!rd)return;
+  var P=F4.regions[region],lo=1e12,hi=0;
+  for(var p=0;p<9;p++){for(var i=0;i<4;i++){lo=Math.min(lo,P[p].n[i]);hi=Math.max(hi,P[p].n[i]);}}
+  rd.innerHTML="<b>"+region+"</b> · 10µm · 3 lineages · per-mouse points (n=2 mice) + observed spread · focal cells "+lo+"–"+hi;}
+var raf=null;
+function apply(region){fig.setAttribute("data-region",region);
+  fig.querySelectorAll("[data-set-region]").forEach(function(b){b.setAttribute("aria-checked",b.getAttribute("data-set-region")===region?"true":"false");});
+  setData(region);readout(region);
+  var target=geom(region);
+  if(reduce){cur=target;draw(cur,region);return;}
+  if(raf)cancelAnimationFrame(raf);
+  // tween from the currently displayed frame (object constancy: same marks move)
+  var from=cur.map(function(o){return {mean:o.mean.slice(),mv:o.mv.map(function(r){return r.slice();})};});
+  var t0=null,D=460;
+  function step(ts){if(t0===null)t0=ts;var t=Math.min(1,(ts-t0)/D),e=ease(t);
+    var frame=[];for(var p=0;p<9;p++)frame.push(tweenPanel(from[p],target[p],e));
+    cur=frame;draw(frame,region);
+    if(t<1){raf=requestAnimationFrame(step);}else{cur=target;draw(cur,region);raf=null;}}
+  raf=requestAnimationFrame(step);}
+fig.addEventListener("click",function(e){var b=e.target.closest("[data-set-region]");if(!b)return;apply(b.getAttribute("data-set-region"));});
+fig.addEventListener("keydown",function(e){if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName))return;
+  if(e.key==="ArrowLeft"||e.key==="ArrowRight"){var j=REG.indexOf(fig.getAttribute("data-region"));j=(j+(e.key==="ArrowRight"?1:2))%3;apply(REG[j]);e.preventDefault();}});
+setData(fig.getAttribute("data-region"));readout(fig.getAttribute("data-region"));draw(cur,fig.getAttribute("data-region"));
+})();
+</script>
+<!-- FIG4_LENS_END -->
