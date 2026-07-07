@@ -1027,6 +1027,7 @@ def build_evidence_for_neighborhood_results(nb_file: Path) -> List[Dict]:
                         shared_procs.extend(bio['shared_processes'])
 
         enrichment = result.get('enrichment_score', 0)
+        insufficient = bool(result.get('insufficient_support', False))
         fdr_col = 'fraction_significant_fdr' if 'fraction_significant_fdr' in result.index else 'fraction_significant_raw'
         frac_sig = result.get(fdr_col, 0)
 
@@ -1042,8 +1043,11 @@ def build_evidence_for_neighborhood_results(nb_file: Path) -> List[Dict]:
         # Include self-clustering (diagonal) and cross-type pairs with
         # enrichment > 1.0 (above null expectation). No significance gate —
         # all findings are exploratory (n=2 pilot). Threshold is enrichment
-        # above the permutation null, not an arbitrary cutoff.
-        if enrichment > 1.0 or (focal == neighbor):
+        # above the permutation null, not an arbitrary cutoff. A supported
+        # self-pair still grounds by identity, but an insufficient_support
+        # (pseudoreplicated) row's magnitude is treated as undefined — its
+        # enrichment must NOT drive the >1.0 gate.
+        if (focal == neighbor) or (enrichment > 1.0 and not insufficient):
             rows.append({
                 'finding_type': 'neighborhood_enrichment',
                 'finding': f"{focal} <-> {neighbor} @ {result.get('timepoint', 'all')}",
@@ -1149,7 +1153,9 @@ def main():
         print(f"\n  Skipping DA (file not found): {da_file}")
 
     # 4. Neighborhood enrichment evidence
-    nb_file = _PATHS.spatial_neighborhoods_dir / 'temporal_neighborhood_enrichments.csv'
+    # Consume the mouse-of-mouse temporal product (pure slice of the stratified product),
+    # NOT the ROI-level temporal CSV (pseudoreplicated / frozen reproduction anchor).
+    nb_file = _PATHS.spatial_neighborhoods_dir / 'temporal_neighborhood_enrichments_mouse.csv'
     nb_rows = []
     if nb_file.exists():
         print(f"\n  Processing neighborhood enrichments: {nb_file}")
@@ -1177,6 +1183,12 @@ def main():
             annotations_df = pd.DataFrame(filtered_rows)
             annotations_df.to_csv(annotations_file, index=False)
             print(f"\n  Finding annotations: {annotations_file}")
+            # Mouse-of-mouse regrounding: OLD ROI-level neighborhood-evidence row count
+            # vs the NEW mouse-of-mouse neighborhood_enrichment count in the regenerated
+            # annotations (post-filter). Recorded for P2 -> RESULTS §6.
+            new_nb_count = int((annotations_df['finding_type'] == 'neighborhood_enrichment').sum())
+            print(f"    neighborhood_enrichment rows: OLD (ROI-level) = 413  vs  "
+                  f"NEW (mouse-of-mouse) = {new_nb_count}")
         else:
             print(f"\n  No qualifying findings — annotations file not written.")
 

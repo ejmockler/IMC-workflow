@@ -8,8 +8,11 @@ LEGACY status: the `DISPLAY_NAMES` dict below hard-codes labels from a pre-Phase
 ontology (`activated_fibroblast`, `activated_immune_cd140b`, `activated_immune_cd44`,
 `resting_endothelial`) that are not in the current 15-type ontology defined in
 `config.json` / `viz.json`. The script will silently emit blank or mis-labeled
-heatmap rows when run against current `temporal_neighborhood_enrichments.csv`
-output. The reviewer-facing analysis is in `endpoint_summary.csv` (Phase 2/7); this
+heatmap rows when run against the current mouse-of-mouse
+`temporal_neighborhood_enrichments_mouse.csv` product (the canonical reporting
+product; carries support flags, not per-pair FDR significance — descriptive n=2,
+so the figure emits every pair and makes no significance claim).
+The reviewer-facing analysis is in `endpoint_summary.csv` (Phase 2/7); this
 script's output is not part of the current review packet. To revive this script,
 load labels from `viz.json` via `VizConfig.cell_type_labels` rather than the
 hard-coded dict.
@@ -35,7 +38,7 @@ from src.utils.paths import get_paths
 # ---------------------------------------------------------------------------
 _PATHS = get_paths()
 DATA_PATH = str(
-    _PATHS.spatial_neighborhoods_dir / "temporal_neighborhood_enrichments.csv"
+    _PATHS.spatial_neighborhoods_dir / "temporal_neighborhood_enrichments_mouse.csv"
 )
 OUT_DIR = str(_PATHS.figures_dir)
 OUT_FILE = os.path.join(OUT_DIR, "neighborhood_enrichment_temporal.png")
@@ -63,6 +66,12 @@ CLIM = (-2.0, 2.0)   # symmetric clip for log2 enrichment
 # 1. Load and filter
 # ---------------------------------------------------------------------------
 df = pd.read_csv(DATA_PATH)
+
+# The canonical mouse-of-mouse product carries support flags, not per-pair FDR
+# significance (descriptive n=2 — no mouse-level significance testing). Only the
+# legacy ROI-level CSV carries `fraction_significant_fdr`; guard on its presence so
+# the figure stays descriptive on the mouse product and byte-identical on the ROI CSV.
+HAS_FDR = "fraction_significant_fdr" in df.columns
 
 # Exclude 'unassigned'
 df = df[
@@ -113,7 +122,8 @@ def build_matrix(tp):
         n = row["neighbor_display"]
         if f in disp_order and n in disp_order:
             mat.loc[f, n] = row["log2_clipped"]
-            sig.loc[f, n] = row["fraction_significant_fdr"] > 0.5
+            if HAS_FDR:
+                sig.loc[f, n] = row["fraction_significant_fdr"] > 0.5
     return mat.astype(float), sig
 
 matrices = {}
@@ -311,11 +321,15 @@ fig.suptitle(
     fontweight="bold",
     y=0.99,
 )
+caption = (
+    "Enrichment = observed/expected neighbor proportion. "
+    "Self-clustering (diagonal, thick border) validates cell type spatial coherence."
+)
+if HAS_FDR:
+    caption += " Dots indicate FDR-corrected fraction significant > 0.5."
 fig.text(
     0.5, 0.005,
-    "Enrichment = observed/expected neighbor proportion. "
-    "Self-clustering (diagonal, thick border) validates cell type spatial coherence. "
-    "Dots indicate FDR-corrected fraction significant > 0.5.",
+    caption,
     ha="center",
     fontsize=6.5,
     style="italic",
