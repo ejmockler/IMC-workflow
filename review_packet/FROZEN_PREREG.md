@@ -1,12 +1,12 @@
 # Frozen pre-registration manifest
 
-Snapshot for external review. Every file referenced is pinned by SHA-256 + git commit so the reviewer can reproduce exactly what generated the one-pager and methods summary.
+Snapshot for external review. Referenced content is pinned by the SHA-256 anchors below and tied to the audited git basis recorded here.
 
 ## Reproducibility anchors
 
 | Field | Value |
 |-------|-------|
-| Git commit | (pinned at Phase 5 commit; verify with `git rev-parse HEAD` after fetching) |
+| Git basis | `35df54d051bb85f833d2047917a2d45df6305506` (clean baseline audited before the closure pass; current referenced content is pinned by the SHA-256 rows below) |
 | Branch | `main` |
 | `config.json` SHA-256 | `d12930747fa248ab71aa341849012e2462211e214e4b892cf2f79ff101f6b400` (15-type ontology; 14 of 15 gates exercise all 9 panel markers; the neutrophil gate is the named exception per Phase 7 v2 spec — its gate literal is `+CD45 +Ly6G -CD31 -CD34` (matching `analysis_plans/phase_7_celltype_endpoint_spec.md:198`), leaving CD11b, CD140a, CD140b, CD206, and CD44 free so that the Family C v2 endpoint `neutrophil_compartment_cd44_rate` is non-tautological. Verified bit-exact for all 14 full-panel gates: every labelled superpixel satisfies its gate, every unassigned superpixel fails every gate, 0.0% multi-gate ambiguity. SHA-rotation 2026-05-21: `_comment_neutrophil_exception` field updated to match spec literal `[CD31, CD34]` (was stale `[CD31, CD34, CD140a]`); gate logic and downstream artifacts unchanged. SHA-rotation 2026-07-03 (errata amendment): `_comment_neutrophil_exception` spec cross-ref §6.3→§4.6 corrected; `sham_reference` embedded `config_sha256` and `temporal_interfaces_plan.md` re-pinned in the same amendment; gate logic and pipeline outputs bit-identical — see `analysis_plans/temporal_interfaces_plan.md` §12 (2026-07-03).) |
 | `viz.json` SHA-256 | `422a14a03eff4cd7934ce1ec35138e1891d293b65e167dc8d4db498bfb6c0bd2` |
@@ -17,22 +17,24 @@ Snapshot for external review. Every file referenced is pinned by SHA-256 + git c
 | `audit_family_b_raw_markers.py` SHA-256 | (computed at commit time, see `verify_frozen_prereg.py`) |
 | Python | 3.12.10 |
 | Platform | Darwin 25.4.0 (macOS) |
-| Manifest verification script | `verify_frozen_prereg.py` (recomputes every SHA above and fails if it diverges from this table) |
+| Manifest verification script | `verify_frozen_prereg.py` (fails on divergence in the 5 gating anchors and reports the 2 informational audit-script hashes; the separate composite-track table below is checked directly during release closure) |
 
 ## Composite-lineage track (informational)
 
-A parallel Phase 1 DA + SN track operating on the 8-category interface decomposition (none, immune, endothelial, stromal, three two-way interfaces, triple-positive) derived per superpixel via `src.analysis.temporal_interface_analysis.classify_interface_per_superpixel` at threshold 0.3 — the same categorization Family A v1 uses. Captures the multi-lineage interface tissue that the strict-discrete cell-type Phase 1 track forces into `unassigned`. Equivalence with Family A v1's `interface_fractions.parquet` is verified bit-exactly at machine precision.
+A parallel Phase 1 DA + SN track operating on the 8-category interface decomposition (none, immune, endothelial, stromal, three two-way interfaces, triple-positive) derived per superpixel via `src.analysis.temporal_interface_analysis.classify_interface_per_superpixel` at threshold 0.3 — the same categorization Family A v1 uses. It assigns one of eight states to every superpixel: among the 50,206 discrete-unassigned superpixels, 39,042 receive a non-`none` composite state and 11,164 remain `none`. Mouse×timepoint equivalence with Family A v1's `interface_fractions.parquet` is verified bit-exactly at machine precision.
 
 | Artifact | SHA-256 |
 |---|---|
-| `run_composite_lineage_analysis.py` | `c4ee27132b3337b68e9e2f88a2ac0185beeab4681000ab7ede611bf2ca85e475` |
+| `run_composite_lineage_analysis.py` | `019760196301f11074983986e20a36e2867afc75d7c2c361743a1a77000d0a50` |
 | `differential_abundance_composite/temporal_differential_abundance.csv` | `80adcfff2fca232ce6dfea6bdfee5d0cd636f08a2a23fa0757fe7f54ef19c40b` |
 | `differential_abundance_composite/temporal_top_ranked_by_effect.csv` | `47182b72c365be60f7bb0b1b7e11039225262515df6c38a03b9129fda8c3bd33` |
 | `differential_abundance_composite/roi_abundances.csv` | `173bdd29a30bbd67b4844d29931d4b96be9857a7fc61ed482c0aa173c0832ac4` |
 | `spatial_neighborhoods_composite/temporal_neighborhood_enrichments.csv` | `952a6a5fe185ccddeb05e6165d6cfc5d47ae51fb06129c7caaf836cd3daaa6a1` |
-| `discrete_vs_composite_comparison.md` | `2ded1b75221d7d25c81fdbbc1842b6bfb871be23bcaad43f74967787f65bc501` |
+| `discrete_vs_composite_comparison.md` | `db917fda3876813665b629e20a2daa9be5a1f422da48a820431a85c58c258a03` |
 
 These artifacts are **informational** — derived outputs that re-running the composite-lineage script regenerates with bit-exact values given the gating anchors above. The categorization rule is pinned via the script SHA; the data dependency is the existing gating anchors (`config.json` SHA + sham_reference SHA + DISCRETE_CELL_TYPES SHA). The 8-category interface decomposition is the Family A v1 categorization; reusing it in this track preserves cross-family coherence.
+
+The comparison-document and composite-script SHAs rotated during the 2026-07-12 release-closure pass. The narrative was reconciled with the current 15-type ontology, the discrete/composite cross-tab, mouse-of-mouse neighborhood basis, and Family C v2 neutrophil endpoint. The script change repairs the Family A v1 equivalence check to align the current mouse×timepoint artifact and fail on missing/NaN comparisons; it does not change the categorization or analyses. The four numerical CSV artifacts above remained byte-identical.
 
 ## Pre-registered endpoint families (summary; full spec in `analysis_plans/temporal_interfaces_plan.md`)
 

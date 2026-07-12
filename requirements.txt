@@ -28,6 +28,7 @@ libpysal==4.13.0  # Spatial weights and autocorrelation analysis
 # Testing framework
 pytest==8.4.2
 pytest-cov==7.0.0
+hypothesis==6.140.2
 
 # Performance monitoring
 psutil==7.1.0

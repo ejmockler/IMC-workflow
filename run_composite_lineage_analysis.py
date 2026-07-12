@@ -3,8 +3,8 @@
 Parallel Phase 1 track operating on the 8-category interface decomposition
 (none, immune, endothelial, stromal, three two-way interfaces, triple-positive)
 derived per superpixel from continuous lineage_immune/endothelial/stromal
-scores. Captures the multi-lineage interface tissue that the strict-discrete
-cell-type Phase 1 track forces into `unassigned`.
+scores. Provides a named interface state for much of the tissue left
+`unassigned` by the strict-discrete cell-type Phase 1 track.
 
 Inputs (read-only):
   - results/biological_analysis/cell_type_annotations/*.parquet
@@ -37,6 +37,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.analysis import temporal_interface_analysis as tia
+from src.utils.metadata import parse_roi_metadata
 from src.utils.paths import get_paths
 from run_temporal_interface_analysis import load_annotations_with_markers
 
@@ -61,43 +62,59 @@ def load_annotations() -> pd.DataFrame:
 
 
 def verify_against_family_a_v1(df: pd.DataFrame) -> None:
-    """Sanity check: per-ROI interface proportions should match Family A v1's
-    interface_fractions.parquet exactly (within numerical precision)."""
+    """Verify mouse-timepoint proportions against Family A v1 exactly."""
     paths = get_paths()
     ifrac_path = paths.biological_analysis_dir / 'temporal_interfaces' / 'interface_fractions.parquet'
     if not ifrac_path.exists():
         print('  (interface_fractions.parquet not present — skipping equivalence check)')
         return
     fa1 = pd.read_parquet(ifrac_path)
-    # fa1 has roi_id, n_total, and one column per interface category
-    # Compute our derivation per ROI
-    our = (
-        df.groupby(['roi_id', 'interface'])
-        .size().unstack(fill_value=0)
-        .reindex(columns=list(INTERFACE_CATEGORIES), fill_value=0)
-    )
-    our_totals = our.sum(axis=1)
-    our_frac = our.div(our_totals, axis=0)
+    if 'normalization_mode' in fa1.columns:
+        fa1 = fa1[fa1['normalization_mode'] == 'per_roi_sigmoid']
+    if 'threshold' in fa1.columns:
+        fa1 = fa1[np.isclose(fa1['threshold'], LINEAGE_THRESHOLD)]
 
-    # Align with FA1 — fa1 has roi_id as a column; reset for join
-    fa1_idx = fa1.set_index('roi_id') if 'roi_id' in fa1.columns else fa1
-    cat_cols = [c for c in INTERFACE_CATEGORIES if c in fa1_idx.columns]
-    fa1_sub = fa1_idx[cat_cols].reindex(our_frac.index)
+    key_cols = ['timepoint', 'mouse']
+    required = set(key_cols) | set(INTERFACE_CATEGORIES)
+    missing = sorted(required - set(fa1.columns))
+    if missing:
+        raise AssertionError(
+            f'Family A v1 interface fractions are missing columns: {missing}'
+        )
 
-    max_diff = (our_frac[cat_cols] - fa1_sub).abs().max().max()
+    verification_df = df.copy()
+    canonical_mouse = {
+        roi_id: parse_roi_metadata(roi_id)['mouse']
+        for roi_id in verification_df['roi_id'].unique()
+    }
+    verification_df['mouse'] = verification_df['roi_id'].map(canonical_mouse)
+    ours, _ = per_mouse_interface_proportions(verification_df)
+    our_idx = ours.set_index(key_cols)[list(INTERFACE_CATEGORIES)].sort_index()
+    fa1_idx = fa1.set_index(key_cols)[list(INTERFACE_CATEGORIES)].sort_index()
+    if not our_idx.index.equals(fa1_idx.index):
+        raise AssertionError(
+            'Composite and Family A v1 mouse-timepoint keys do not match: '
+            f'{our_idx.index.tolist()} != {fa1_idx.index.tolist()}'
+        )
+
+    differences = (our_idx - fa1_idx).abs()
+    if differences.isna().any().any():
+        raise AssertionError('Family A v1 equivalence comparison produced NaN')
+    max_diff = float(differences.to_numpy().max())
     print(f'  Equivalence check: max abs(diff) = {max_diff:.2e}')
     if max_diff > 1e-6:
-        print(f'  ⚠ Non-trivial discrepancy. Spot-check:')
-        print(our_frac[cat_cols].iloc[:2])
-        print('vs')
-        print(fa1_sub.iloc[:2])
+        raise AssertionError(
+            f'Composite proportions differ from Family A v1 by {max_diff:.3e}'
+        )
 
 
 # ============================================================================
 # Differential abundance over interface categories
 # ============================================================================
 
-def per_mouse_interface_proportions(df: pd.DataFrame) -> pd.DataFrame:
+def per_mouse_interface_proportions(
+    df: pd.DataFrame,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """For each (mouse, timepoint), proportion of superpixels in each interface
     category. ROI-level proportions averaged within mouse to prevent pseudoreplication."""
     # Per-ROI fractions

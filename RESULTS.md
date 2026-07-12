@@ -52,7 +52,7 @@ Understanding the results requires understanding three methodological choices th
 
 ### Cell Type Assignment
 
-Assignment rate across 24 ROIs under the current 15-type ontology: **mean ~14%** (7,931 of 58,137 superpixels). Most superpixels lack a marker combination that satisfies any single strict gate — a direct consequence of (a) the 9-marker panel and (b) the convention that 14 of 15 gates test **all 9 panel markers** as either required positive or required negative. The neutrophil gate is the named exception (its locked Phase 7 v2 spec leaves CD44, CD11b, CD140a, CD140b, CD206 free so the Family C v2 CD44-rate endpoint is non-tautological). Ambiguity rate is **0.0%**: labels are mechanically unambiguous because each gate's full-panel coverage (or, for neutrophil, the lineage-anchor specificity of Ly6G⁺) makes simultaneous gate-satisfaction structurally impossible. The unassigned tissue is interface tissue with overlapping lineage signal; the composite-lineage track (§4b) recovers all of it as named multi-lineage interface categories.
+Assignment rate across 24 ROIs under the current 15-type ontology: **mean ~14%** (7,931 of 58,137 superpixels). Most superpixels lack a marker combination that satisfies any single strict gate — a direct consequence of (a) the 9-marker panel and (b) the convention that 14 of 15 gates test **all 9 panel markers** as either required positive or required negative. The neutrophil gate is the named exception (its locked Phase 7 v2 spec leaves CD44, CD11b, CD140a, CD140b, CD206 free so the Family C v2 CD44-rate endpoint is non-tautological). Ambiguity rate is **0.0%**: labels are mechanically unambiguous because each gate's full-panel coverage (or, for neutrophil, the lineage-anchor specificity of Ly6G⁺) makes simultaneous gate-satisfaction structurally impossible. The composite-lineage track (§4b) gives every superpixel one of eight interface states. Among the 50,206 discrete-unassigned superpixels, 39,042 (77.76%) receive a non-`none` composite state and 11,164 remain `none`; the two label systems are parallel, not nested.
 
 Pooled across all 24 ROIs (n_total = 58,137 superpixels):
 
@@ -293,7 +293,7 @@ Distinguishing these requires single-cell segmentation, an expanded panel that r
 
 ## 4b. Multi-Lineage Composite Track
 
-The discrete cell-type Phase 1 analyses in §4/§6 use the 15-type ontology, which sees ~14% of tissue under strict gating (with the neutrophil gate as the named exception that admits Ly6G⁺ tissue regardless of activation state). **The composite-lineage track parallelizes the same analyses against the 8-category interface decomposition** (none, immune, endothelial, stromal, immune+endothelial, immune+stromal, endothelial+stromal, immune+endothelial+stromal) — recovering the discrete-unassigned tissue as labelled multi-lineage interface categories at 100% tissue coverage. The 8 categories use the same `classify_interface_per_superpixel` function that Family A v1 (Temporal Interface Analysis, Pre-Registered Phase 2) already uses; equivalence verified bit-exactly. Outputs: `differential_abundance_composite/` and `spatial_neighborhoods_composite/`. Source: `run_composite_lineage_analysis.py`.
+The discrete cell-type Phase 1 analyses in §4/§6 use the 15-type ontology, which sees ~14% of tissue under strict gating (with the neutrophil gate as the named exception that admits Ly6G⁺ tissue regardless of activation state). **The composite-lineage track parallelizes the same analyses against the 8-category interface decomposition** (none, immune, endothelial, stromal, immune+endothelial, immune+stromal, endothelial+stromal, immune+endothelial+stromal), assigning one of those eight states to 100% of tissue. Of the 50,206 discrete-unassigned superpixels, 39,042 receive a non-`none` composite state and 11,164 remain `none`. The 8 categories use the same `classify_interface_per_superpixel` function that Family A v1 (Temporal Interface Analysis, Pre-Registered Phase 2) already uses; mouse×timepoint equivalence is verified bit-exactly. Outputs: `differential_abundance_composite/` and `spatial_neighborhoods_composite/`. Source: `run_composite_lineage_analysis.py`.
 
 **Composition of all 58,137 superpixels under the 8 interface categories**:
 
@@ -308,20 +308,21 @@ The discrete cell-type Phase 1 analyses in §4/§6 use the 15-type ontology, whi
 | immune only | 5.87% | single |
 | stromal only | 4.83% | single |
 
-**The single largest tissue category is the triple-positive interface at 29%** — superpixels where all three lineages score above threshold simultaneously. The discrete ontology forces this tissue into `unassigned` because no single-cell-type gate accepts a CD45⁺ CD31⁺ CD140a⁺ co-expressing region. The composite-lineage track names it as its own category.
+**The single largest tissue category is the triple-positive interface at 29%** — superpixels where all three lineages score above threshold simultaneously. Of 16,833 triple-positive superpixels, 15,489 (92.02%) are discrete-unassigned and 1,344 (7.98%) receive a discrete cell-type label. The composite-lineage track, unlike the discrete ontology, represents triple-positive identity as its own category.
 
 ### Composite-lineage DA — the largest compositional shift in the dataset
 
 | Interface | Sham → D7 | Hedges' g | CLR g | Direction |
 |---|---|---:|---:|---|
-| **endothelial+immune+stromal** | **20.3% → 38.5%** | **−3.98** | **−3.40** | ▲ doubles — triple-positive interface expands |
-| stromal (pure) | 6.4% → 2.7% | +6.75 | +6.71 | ▼ contracts (pure-stromal halves) |
+| **endothelial+immune+stromal** | **20.3% → 38.5%** | **−3.98** | **−3.40** | ▲ expands 1.90-fold |
+| stromal (pure) | 6.4% → 2.7% | +6.75 | +6.71 | ▼ falls 58% |
 | none | 24.9% → 14.4% | +3.73 | +2.39 | ▼ contracts |
-| immune (pure) | 8.0% → 4.8% | +1.65 | sparse | ▼ halves |
+| immune (pure) | 8.0% → 4.8% | +1.65 | sparse | ▼ falls 40% |
+| endothelial (pure) | 13.9% → 11.3% | +0.46 | — | ▼ falls 19% |
 | endothelial+stromal | 9.8% → 5.9% | +0.72 | — | ▼ |
 | immune+stromal | 8.7% → 11.8% | −0.67 | — | ▲ |
 
-**The dominant Sham → D7 compositional shift is the conversion of "no-lineage" and "pure-single-lineage" tissue into multi-lineage interface tissue, especially the triple-positive (E+I+S) compartment.** Triple-positive nearly doubles (20% → 38%). Pure-stromal halves (6.4% → 2.7%). No-lineage drops 25% → 14%. This finding is **invisible to the discrete ontology** but corresponds directly to the pre-registered Temporal Interface Analysis headlines `endothelial+immune+stromal_clr` (g_neut +0.99) and `triple_overlap_fraction` (g_neut +0.98) — the composite track makes the compositional shift Phase-1-visible.
+**The dominant Sham → D7 cross-sectional compositional pattern is expansion of multi-lineage interface tissue, especially the triple-positive (E+I+S) compartment, alongside contraction of no-lineage and pure-lineage categories.** Triple-positive rises 1.90-fold (20.3% → 38.5%); pure-stromal falls 58%, pure-immune 40%, pure-endothelial 19%, and no-lineage 42%. These cohort-level compositions do not track individual superpixel transitions. Triple-positive identity is absent from the discrete ontology even though 7.98% of triple-positive superpixels are absorbed into single cell-type labels; the composite result corresponds directly to the pre-registered Temporal Interface Analysis headlines `endothelial+immune+stromal_clr` (g_neut +0.99) and `triple_overlap_fraction` (g_neut +0.98).
 
 ### Composite-lineage SN — interface focalization and cross-interface avoidance
 
@@ -340,9 +341,9 @@ _**Basis note (composite track).** The composite-track self- and cross-enrichmen
 | none | 1.33× | 1.47× | 1.60× | 2.26× | ▲ |
 | **endothelial+immune+stromal (triple)** | 1.50× | 1.34× | 1.25× | **1.35×** | ▬ FLAT — diffusely distributed despite compositional growth |
 
-**The triple-positive interface, even though it more than doubles compositionally Sham → D7, does NOT focalize spatially** (self-enrichment ~1.35× across all timepoints). Every other interface category — including pure-stromal which is compositionally contracting — shows D7 self-enrichment > 2×. **Reading**: by D7 the tissue contains more triple-positive interface area but it's diffusely spread, not focal. Focal organizing principles are two-lineage interfaces (E+S, I+S) and single lineages.
+**The triple-positive interface, even though it rises 1.90-fold compositionally Sham → D7, does NOT focalize spatially** (self-enrichment 1.25–1.50× across timepoints). Every other interface category — including pure-stromal which is compositionally contracting — shows D7 self-enrichment > 2×. **Reading**: by D7 the tissue contains more triple-positive interface area but it's diffusely spread, not focal. Focal organizing principles are two-lineage interfaces (E+S, I+S) and single lineages.
 
-**Top cross-type attractions at D1** (symmetric pairs, log₂ > +0.4):
+**Selected cross-type attractions at D1** (symmetric pairs; log₂ enrichment shown):
 
 | Pair | log₂ (both directions) | Reading |
 |---|---|---|
@@ -372,11 +373,11 @@ The composite-lineage track corroborates and amplifies the discrete findings, an
 |---|---|---|---|
 | Stromal-niche emergence | activated_fibroblast_cd140b self 1.33 → 2.00× (mouse-of-mouse) | `stromal` self 1.66 → 3.57×; `endothelial+stromal` 1.44 → 3.26× | **COHERENT** (composite stronger) |
 | Repair-niche reciprocity | af_cd140b ↔ m2 symmetric under mouse-of-mouse (1.19× / 1.15×) | immune+stromal ↔ stromal symmetric (1.62/1.59×) | **COHERENT** (both symmetric) |
-| Transmigration interface avoidance | activated_myeloid_cd44 ↔ endothelial at 0.67× (mouse-of-mouse) | NOT visible at 8-cat resolution | **DISCRETE-ONLY** |
-| Triple-positive interface doubling | invisible (forced to unassigned) | g = −3.98 raw, −3.40 CLR | **COMPOSITE-ONLY** |
+| Transmigration interface avoidance | activated_myeloid_cd44 ↔ endothelial at 0.67× (mouse-of-mouse) | pure immune ↔ pure endothelial at 0.80× / 0.79× (ROI-level anchor); activated-myeloid subtype unresolved | **COHERENT AT COARSER GRAIN** |
+| Triple-positive interface expansion | no discrete triple category; 92.02% unassigned, 7.98% absorbed into single cell-type labels | 1.90-fold rise; g = −3.98 raw, −3.40 CLR | **COMPOSITE-ONLY AS AN INTERFACE STATE** |
 | Cross-interface avoidance | invisible | endothelial ↔ I+S at 0.58×, etc. | **COMPOSITE-ONLY** |
 
-**The reviewer-facing Temporal Interface Analysis (Pre-Registered, Phase 2) headlines** (endothelial+immune+stromal CLR g_neut +0.99; triple_overlap_fraction g_neut +0.98) are **the same finding as the composite-track triple-positive interface doubling**, observed from two different statistical surfaces (pre-registered CLR vs Phase-1-level compositional DA). The composite-lineage track makes the multi-lineage story Phase-1-visible without needing to defer to the Temporal Interface Analysis (Pre-Registered, Phase 2) section.
+**The reviewer-facing Temporal Interface Analysis (Pre-Registered, Phase 2) headlines** (endothelial+immune+stromal CLR g_neut +0.99; triple_overlap_fraction g_neut +0.98) align with the composite-track triple-positive interface's 1.90-fold expansion, observed from distinct statistical surfaces (pre-registered CLR/overlap endpoints vs Phase-1-level compositional DA). The composite-lineage track makes the multi-lineage story Phase-1-visible without needing to defer to the Temporal Interface Analysis (Pre-Registered, Phase 2) section.
 
 **Full machine-readable comparison**: `results/biological_analysis/discrete_vs_composite_comparison.md`.
 
@@ -607,7 +608,7 @@ Four notebooks present the analysis in a pedagogical arc:
 
 ---
 
-*Experiment: kidney_healing_2024. Config: `config.json` (`config_sha256 = 07c5b976…`). Methods: `METHODS.md`. 24 ROIs × 3 scales × 15-type ontology. 14 of 15 gates exercise all 9 panel markers as required positive or required negative; the neutrophil gate is the named Phase 7 v2 exception (`+CD45 +Ly6G −CD31 −CD34`, leaving CD44, CD11b, CD140a, CD140b, CD206 free) so the `neutrophil_compartment_cd44_rate` endpoint is non-tautological. Every labelled cell verified to satisfy its gate bit-exactly; every unassigned cell verified to fail every gate; multi-gate ambiguity = 0.0% by construction. `endpoint_summary.csv`: 840 rows × 46 cols, 263 `is_headline=True`. Phase 7 spec at `analysis_plans/phase_7_celltype_endpoint_spec.md`; see `review_packet/FROZEN_PREREG.md` for pinned reproducibility anchors (5 gating + 2 informational; all PASS). Companion artifact for the multi-lineage track: `results/biological_analysis/discrete_vs_composite_comparison.md`.*
+*Experiment: kidney_healing_2024. Config: `config.json` (`config_sha256 = d1293074…`). Methods: `METHODS.md`. 24 ROIs × 3 scales × 15-type ontology. 14 of 15 gates exercise all 9 panel markers as required positive or required negative; the neutrophil gate is the named Phase 7 v2 exception (`+CD45 +Ly6G −CD31 −CD34`, leaving CD44, CD11b, CD140a, CD140b, CD206 free) so the `neutrophil_compartment_cd44_rate` endpoint is non-tautological. Every labelled cell verified to satisfy its gate bit-exactly; every unassigned cell verified to fail every gate; multi-gate ambiguity = 0.0% by construction. `endpoint_summary.csv`: 840 rows × 46 cols, 263 `is_headline=True`. Phase 7 spec at `analysis_plans/phase_7_celltype_endpoint_spec.md`; see `review_packet/FROZEN_PREREG.md` for pinned reproducibility anchors (5/5 gating anchors PASS; 2 informational audit-script hashes reported). Companion artifact for the multi-lineage track: `results/biological_analysis/discrete_vs_composite_comparison.md`.*
 
 
 ---

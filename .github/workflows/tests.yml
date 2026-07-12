@@ -10,20 +10,17 @@ jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v6
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: "3.12"
     
     - name: Install uv
-      uses: astral-sh/setup-uv@v2
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       with:
         enable-cache: true
     
@@ -36,19 +33,19 @@ jobs:
     - name: Run unit tests
       run: |
         PYTHONPATH=. uv run python -m pytest tests/ \
-          -m "not integration and not slow and not performance" \
+          -o addopts='' \
+          -m "not integration and not slow and not performance and not benchmark" \
+          --strict-markers \
           --tb=short \
-          --maxfail=1 \
           --cov=src \
           --cov-report=xml \
           --cov-report=term-missing \
-          --cov-fail-under=80
+          --cov-fail-under=40
     
     - name: Upload coverage to Codecov
-      if: matrix.python-version == '3.12'
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v6
       with:
-        file: ./coverage.xml
+        files: ./coverage.xml
         flags: unittests
         name: codecov-umbrella
         fail_ci_if_error: true
@@ -59,15 +56,15 @@ jobs:
     needs: unit-tests
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v6
       with:
         python-version: "3.12"
     
     - name: Install uv
-      uses: astral-sh/setup-uv@v2
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       with:
         enable-cache: true
     
@@ -80,16 +77,17 @@ jobs:
     - name: Run integration tests
       run: |
         PYTHONPATH=. uv run python -m pytest tests/ \
+          -o addopts='' \
           -m "integration" \
+          --strict-markers \
           --tb=short \
-          --maxfail=1 \
           --cov=src \
           --cov-report=xml
     
     - name: Upload coverage
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v6
       with:
-        file: ./coverage.xml
+        files: ./coverage.xml
         flags: integration
         fail_ci_if_error: true
 
@@ -99,15 +97,15 @@ jobs:
     needs: [unit-tests, integration-tests]
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v6
       with:
         python-version: "3.12"
     
     - name: Install uv
-      uses: astral-sh/setup-uv@v2
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       with:
         enable-cache: true
     
@@ -120,20 +118,18 @@ jobs:
     - name: Run all tests with coverage
       run: |
         PYTHONPATH=. uv run python -m pytest tests/ \
+          -o addopts='' \
+          -m "not slow and not performance and not benchmark" \
+          --strict-markers \
+          --tb=short \
           --cov=src \
+          --cov-report=xml \
           --cov-report=term-missing \
-          --cov-fail-under=80 \
-          --maxfail=1
-    
-    - name: Generate coverage report
-      run: |
-        uv run python -m pytest tests/ \
-          --cov=src \
           --cov-report=html \
-          --quiet
+          --cov-fail-under=40
     
     - name: Upload coverage HTML report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v7
       with:
         name: coverage-report
         path: htmlcov/

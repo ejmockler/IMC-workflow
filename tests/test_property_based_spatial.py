@@ -184,16 +184,14 @@ class TestArcSinhProperties:
         orig_result = transformed_orig['test']
         scaled_result = transformed_scaled['test']
 
-        # Sorted order of the TRANSFORMED outputs must match. Under arcsinh,
-        # rank within each transformed array must equal rank in the raw input
-        # (arcsinh is strictly increasing on [0, ∞)); and the two transforms
-        # (at scale 1 and at scale s) must agree with each other.
-        assert np.array_equal(np.argsort(orig_result), np.argsort(values)), \
-            "arcsinh(values) is not order-preserving vs raw values"
-        assert np.array_equal(np.argsort(scaled_result), np.argsort(scaled_values)), \
-            "arcsinh(scaled_values) is not order-preserving vs raw scaled values"
-        assert np.array_equal(np.argsort(orig_result), np.argsort(scaled_result)), \
-            "arcsinh(x) and arcsinh(s*x) produce different argsort orders"
+        # Check the weak order rather than comparing argsort permutations:
+        # equal inputs may be permuted differently by an unstable sort even
+        # though monotonicity is perfectly preserved.
+        raw_order = np.argsort(values, kind='stable')
+        assert np.all(np.diff(orig_result[raw_order]) >= 0), \
+            "arcsinh(values) is not monotone in raw-value order"
+        assert np.all(np.diff(scaled_result[raw_order]) >= 0), \
+            "arcsinh(s*values) is not monotone in raw-value order"
     
     @given(
         values=arrays(

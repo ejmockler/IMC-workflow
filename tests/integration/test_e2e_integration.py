@@ -10,6 +10,7 @@ Validates that all critical fixes work together on real data:
 
 import json
 import numpy as np
+import pytest
 from pathlib import Path
 
 from src.config import Config
@@ -17,7 +18,7 @@ from src.analysis.main_pipeline import IMCAnalysisPipeline
 from src.validation.kidney_biological_validation import run_kidney_validation
 
 
-def test_e2e_integration():
+def run_e2e_integration(config_path: str | Path = "config.json") -> bool:
     """Run full pipeline on real data and validate results."""
 
     print("="*80)
@@ -36,7 +37,7 @@ def test_e2e_integration():
     print(f"\n📁 Testing with: {Path(roi_path).name}\n")
 
     # Load config
-    config = Config("config.json")
+    config = Config(str(config_path))
 
     # Verify critical config parameters
     print("🔧 Verifying Configuration:")
@@ -75,12 +76,12 @@ def test_e2e_integration():
     try:
         pipeline = IMCAnalysisPipeline(config)
 
-        # Get protein names from config
-        if hasattr(config, 'channels'):
-            protein_names = config.channels.protein_channels
+        # Config preserves mapping-style access for migrated JSON files.
+        channels = config.channels
+        if isinstance(channels, dict):
+            protein_names = channels.get('protein_channels', [])
         else:
-            # Fallback for dict-based config
-            protein_names = config.get('channels', {}).get('protein_channels', [])
+            protein_names = channels.protein_channels
 
         # Load ROI data
         roi_data = pipeline.load_roi_data(roi_path, protein_names)
@@ -106,7 +107,15 @@ def test_e2e_integration():
     print(f"✓ Scales analyzed: {list(multiscale_results.keys())}")
 
     # Check each scale
+    validated_scales = set()
     for scale, scale_results in multiscale_results.items():
+        if scale == 'hierarchy':
+            # The known cross-scale hierarchy summary shares this container.
+            continue
+        assert isinstance(scale, (int, float)), (
+            f"Unexpected nonnumeric multiscale result key: {scale!r}"
+        )
+        validated_scales.add(float(scale))
         print(f"\nScale {scale}μm:")
 
         # Check cluster labels
@@ -156,6 +165,14 @@ def test_e2e_integration():
                 elif n_features == 30:
                     print(f"  ✅ PERFECT: LASSO selected exactly 30 features!")
 
+    expected_scales = {
+        float(scale) for scale in config.segmentation.get('scales_um', [])
+    }
+    assert validated_scales == expected_scales, (
+        f"Validated scales {sorted(validated_scales)} do not match configured "
+        f"scales {sorted(expected_scales)}"
+    )
+
     # Run biological validation
     print("\n🧬 Running Biological Validation:")
     print("-" * 80)
@@ -199,10 +216,26 @@ def test_e2e_integration():
     return True
 
 
+@pytest.mark.integration
+def test_e2e_integration(tmp_path: Path) -> None:
+    """Fail under pytest without writing into the tracked results tree."""
+    if not any(Path("data/241218_IMC_Alun").glob("*.txt")):
+        pytest.skip("requires local IMC ROI text files under data/241218_IMC_Alun")
+
+    config_data = json.loads(Path("config.json").read_text())
+    config_data["output"]["results_dir"] = str(tmp_path / "results")
+    isolated_config = tmp_path / "config.json"
+    isolated_config.write_text(json.dumps(config_data))
+
+    assert run_e2e_integration(isolated_config), (
+        "end-to-end integration checks returned False"
+    )
+
+
 if __name__ == "__main__":
     import sys
 
-    success = test_e2e_integration()
+    success = run_e2e_integration()
 
     if not success:
         print("\n❌ Integration test FAILED")

@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 import json
 import tempfile
+import shutil
 from pathlib import Path
 from shutil import rmtree
 
@@ -75,6 +76,7 @@ def test_config():
         yield Config(str(config_path))
 
 
+@pytest.mark.integration
 class TestFullPipelineExecution:
     """Test complete pipeline execution on real data."""
     
@@ -158,13 +160,17 @@ class TestFullPipelineExecution:
             if 'multiscale_results' in results:
                 assert len(results['multiscale_results']) > 0
     
-    def test_complete_analysis_function(self):
-        """Test the high-level run_complete_analysis function."""
-        test_dir = Path("tests/data")
-        if not test_dir.exists():
-            pytest.skip("Test data directory not available")
+    def test_complete_analysis_rejects_all_qc_failed_rois(self):
+        """The high-level runner fails closed when every ROI misses QC."""
+        source_roi = Path("tests/data/test_roi_100.txt")
+        if not source_roi.exists():
+            pytest.skip("Test ROI data not available")
         
         with tempfile.TemporaryDirectory() as tmpdir:
+            test_dir = Path(tmpdir) / "input"
+            test_dir.mkdir()
+            shutil.copy2(source_roi, test_dir / source_roi.name)
+
             # Create config file for run_complete_analysis
             config_data = {
                 "data": {"raw_data_dir": str(test_dir)},
@@ -176,50 +182,34 @@ class TestFullPipelineExecution:
             with open(config_path, 'w') as f:
                 json.dump(config_data, f)
             
-            # Run complete analysis with correct signature
-            summary = run_complete_analysis(
-                config_path=str(config_path),
-                roi_directory=str(test_dir),
-                output_directory=tmpdir,
-                run_validation=False
-            )
-            
-            # Check summary structure
-            assert summary is not None
-            assert 'experiment_metadata' in summary
-            # The function may return n_rois_analyzed instead of n_rois_processed
-            metadata = summary['experiment_metadata']
-            assert 'n_rois_analyzed' in metadata or 'n_rois_processed' in metadata
-            # Check that at least some ROIs were processed/analyzed
-            n_rois = metadata.get('n_rois_analyzed', metadata.get('n_rois_processed', 0))
-            assert n_rois >= 0  # Allow 0 if no valid ROIs found
-            
-            # Check output files (allow file writing to fail gracefully)
-            output_path = Path(tmpdir)
-            summary_file = output_path / "analysis_summary.json"
-            if not summary_file.exists():
-                # File writing might fail but function should still return valid summary
-                print(f"Summary file not created at {summary_file}, but function returned valid results")
-                assert summary is not None  # At least the function succeeded
+            with pytest.raises(ValueError, match="All ROIs failed quality gates"):
+                run_complete_analysis(
+                    config_path=str(config_path),
+                    roi_directory=str(test_dir),
+                    output_directory=tmpdir,
+                    run_validation=False
+                )
 
 
 class TestPipelineRobustness:
     """Test pipeline handles edge cases and errors gracefully."""
     
-    def test_missing_proteins(self, test_config):
-        """Test pipeline correctly rejects missing protein channels."""
+    @pytest.mark.integration
+    def test_missing_proteins_are_warned_and_excluded(self, test_config):
+        """Missing optional protein channels are warned about and excluded."""
         test_file = Path("tests/data/test_roi_100.txt")
         if not test_file.exists():
             pytest.skip("Test data not available")
         
         pipeline = IMCAnalysisPipeline(test_config)
         
-        # Request non-existent proteins - should raise ValueError
-        with pytest.raises(ValueError, match="Critical error: Protein NonExistentProtein1 not found"):
-            pipeline.load_roi_data(
+        requested = ["NonExistentProtein1", "NonExistentProtein2"]
+        with pytest.warns(UserWarning, match="Protein NonExistentProtein1 not found"):
+            roi_data = pipeline.load_roi_data(
                 str(test_file),
-                ["NonExistentProtein1", "NonExistentProtein2"]
+                requested
             )
+        assert set(requested).isdisjoint(roi_data["ion_counts"])
     
     def test_single_cell_edge_case(self, test_config):
         """Test pipeline handles single cell gracefully."""
@@ -266,6 +256,7 @@ class TestPipelineRobustness:
         assert results is not None or results == {}
 
 
+@pytest.mark.integration
 class TestOutputValidation:
     """Test that pipeline outputs are valid and usable."""
     

@@ -21,6 +21,9 @@ from src.analysis.spatial_clustering import perform_spatial_clustering
 from src.analysis.multiscale_analysis import perform_multiscale_analysis
 
 
+pytestmark = pytest.mark.performance
+
+
 class TestAlgorithmicComplexity:
     """Test that algorithms scale as expected with input size."""
     

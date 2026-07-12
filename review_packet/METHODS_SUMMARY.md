@@ -61,7 +61,7 @@ Disagreement per endpoint is surfaced by two flags:
 Every run emits a `run_provenance.json` alongside the endpoint tables:
 
 - `git_commit` + `git_dirty` flag + `git_modified_critical_files` list.
-- `config_hash_sha256`, `sham_reference` artifact path + SHA256 + percentile + aggregation + n_mice/rois. (Note: the Sham-reference artifact's own `_metadata.config_sha256` field uses the shorter name; `run_provenance.json` uses `config_hash_sha256` — both refer to the same SHA-256 of the same `config.json`.)
+- `config_hash_sha256`, `sham_reference` artifact path + SHA256 + percentile + aggregation + n_mice/rois. Within a fresh run, the Sham-reference artifact's `_metadata.config_sha256` and `run_provenance.json`'s `config_hash_sha256` refer to the same `config.json` bytes. The checked-in `run_provenance.json` is the historical 2026-05-21 post-remediation run record and intentionally retains the pre-errata config/Sham hashes (`07c5b976…` / `6bfaa56b…`); the current external-review anchors are `d1293074…` / `276933bd…` (see `temporal_interfaces_plan.md` §12). Do not interpret the historical run record as current-working-tree provenance.
 - `analysis_file_sha256` for each module read by the pipeline.
 - `python_version`, `platform`, package versions (numpy, pandas, scipy).
 - `random_seeds` (bootstrap=42, join-count=42).
@@ -149,4 +149,8 @@ Expected output matches the co-headline rows in `ONE_PAGER.md`.
 - `python spatial_neighborhood_analysis.py` — k-NN enrichment.
 - `python run_temporal_interface_analysis.py` — Family A/B/C + sensitivity sweeps + endpoint_summary.
 
-Tests: `.venv/bin/python -m pytest tests/ -q --ignore=tests/test_adaptive_search.py --ignore=tests/test_performance_benchmark.py --ignore=tests/test_performance_regression.py --ignore=tests/test_performance_core.py --ignore=tests/test_pipeline_e2e.py --ignore=tests/test_optimization_regression.py` — last verified 333 pass / 8 skipped / 0 fail at commit `6563e90`; not re-verified at HEAD (the doc-only commits since `6563e90` should not have introduced test regressions, but if a reviewer needs a current count they should re-run at HEAD). The ignored test files are long-running performance regressions outside the Phase 1-3 scope.
+**Test verification (2026-07-12 closure).** The tracked-data-independent core command is:
+
+`.venv/bin/python -m pytest tests/ -o addopts='' -m "not integration and not slow and not performance and not benchmark" --strict-markers --tb=short --cov=src --cov-report=term-missing --cov-fail-under=40`
+
+Result: **369 passed / 10 skipped / 24 deselected / 0 failed**, with **41.62% `src` statement coverage** against an active 40% non-regression floor. The separately selected integration suite (`-o addopts='' -m integration --strict-markers`) passed **8/8** with the local IMC data present; its data-dependent cases explicitly skip in clean checkouts where ignored acquisition files are absent, and every writing path is isolated to temporary output. The five slow functional cases (`-m "(slow or benchmark) and not performance"`) passed **5/5**. Together those three selections cover all **392 non-performance cases** collected at closure (**382 passed / 10 skipped / 0 failed**). The nightly performance selection (`test_performance_core.py` + `test_performance_regression.py`) passed **11/11**. `pytest.ini` now uses the valid `[pytest]` section and strict marker registration. The former 80% threshold was never loaded and is not a measured claim; 80% remains a future coverage target.

@@ -339,19 +339,34 @@ class ColumnMatcher:
         # CRITICAL FIX: Build all candidates ONCE instead of repeatedly
         all_candidates = []
         
-        # For each marker, get simple regex matches only (skip expensive fuzzy matching)
+        # For each marker, get exact or simple regex matches only (skip expensive
+        # fuzzy matching). Bare marker columns are valid inputs too (for example,
+        # synthetic exports with CD45 rather than CD45(Y89Di)).
         for marker_name in marker_names:
             # Direct regex pattern match - O(m) per marker
             # Fixed pattern: Insert optional hyphens BEFORE digits to match Ki67 -> Ki-67
-            # Pattern: Ki-?67[_-]?\d*... matches both Ki67_... AND Ki-67_...
-            # But CD3[_-]?\d*... matches CD3_1841... but NOT CD38_...
+            # Pattern: Ki-?67... matches both Ki67(...) and Ki-67(...).
+            # A numeric suffix is accepted only after a separator, so CD3 can
+            # match CD3_1841(...) without stealing CD38(...).
             escaped_marker = re.escape(marker_name)
             # Insert optional hyphen before any digit in the marker name
             flexible_marker = re.sub(r'(\d)', r'-?\1', escaped_marker)
-            pattern = re.compile(f'^{flexible_marker}[_-]?\\d*[_-]?\\([^)]+\\)', re.IGNORECASE)
+            flags = 0 if self.config.case_sensitive else re.IGNORECASE
+            pattern = re.compile(
+                rf'^{flexible_marker}(?:[_-]\d+)?[_-]?\s*\([^)]+\)$',
+                flags,
+            )
 
             for col in available_columns:
-                if pattern.match(col):
+                if self._compare_strings(marker_name, col):
+                    all_candidates.append(ColumnMatch(
+                        marker_name=marker_name,
+                        matched_column=col,
+                        confidence=1.0,
+                        match_type='exact',
+                        alternatives=[]
+                    ))
+                elif pattern.match(col):
                     all_candidates.append(ColumnMatch(
                         marker_name=marker_name,
                         matched_column=col,
@@ -360,7 +375,7 @@ class ColumnMatcher:
                         alternatives=[]
                     ))
         
-        # Sort by confidence (all 0.95 here, but keeps extensibility)
+        # Exact matches outrank tagged-regex matches.
         all_candidates.sort(key=lambda m: m.confidence, reverse=True)
         
         # Greedy assignment in single pass
