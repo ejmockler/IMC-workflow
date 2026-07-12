@@ -6,7 +6,7 @@ Snapshot for external review. Referenced content is pinned by the SHA-256 anchor
 
 | Field | Value |
 |-------|-------|
-| Git basis | `35df54d051bb85f833d2047917a2d45df6305506` (clean baseline audited before the closure pass; current referenced content is pinned by the SHA-256 rows below) |
+| Git basis | `c603b2d25f19b52c38901288be00128ac4d6979d` (closure content commit containing every referenced artifact; this manifest-only follow-up records the pin) |
 | Branch | `main` |
 | `config.json` SHA-256 | `d12930747fa248ab71aa341849012e2462211e214e4b892cf2f79ff101f6b400` (15-type ontology; 14 of 15 gates exercise all 9 panel markers; the neutrophil gate is the named exception per Phase 7 v2 spec — its gate literal is `+CD45 +Ly6G -CD31 -CD34` (matching `analysis_plans/phase_7_celltype_endpoint_spec.md:198`), leaving CD11b, CD140a, CD140b, CD206, and CD44 free so that the Family C v2 endpoint `neutrophil_compartment_cd44_rate` is non-tautological. Verified bit-exact for all 14 full-panel gates: every labelled superpixel satisfies its gate, every unassigned superpixel fails every gate, 0.0% multi-gate ambiguity. SHA-rotation 2026-05-21: `_comment_neutrophil_exception` field updated to match spec literal `[CD31, CD34]` (was stale `[CD31, CD34, CD140a]`); gate logic and downstream artifacts unchanged. SHA-rotation 2026-07-03 (errata amendment): `_comment_neutrophil_exception` spec cross-ref §6.3→§4.6 corrected; `sham_reference` embedded `config_sha256` and `temporal_interfaces_plan.md` re-pinned in the same amendment; gate logic and pipeline outputs bit-identical — see `analysis_plans/temporal_interfaces_plan.md` §12 (2026-07-03).) |
 | `viz.json` SHA-256 | `422a14a03eff4cd7934ce1ec35138e1891d293b65e167dc8d4db498bfb6c0bd2` |
