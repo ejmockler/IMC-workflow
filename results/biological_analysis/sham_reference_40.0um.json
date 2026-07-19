@@ -1,0 +1,77 @@
+{
+  "_metadata": {
+    "scale_um": 40.0,
+    "marker_order": [
+      "CD45",
+      "CD11b",
+      "Ly6G",
+      "CD140a",
+      "CD140b",
+      "CD31",
+      "CD34",
+      "CD206",
+      "CD44"
+    ],
+    "percentile": 60.0,
+    "per_marker_overrides": {
+      "CD206": {
+        "method": "percentile",
+        "percentile": 50
+      },
+      "Ly6G": {
+        "method": "percentile",
+        "percentile": 70
+      }
+    },
+    "aggregation": "per_mouse",
+    "n_sham_mice": 2,
+    "n_sham_rois": 6,
+    "n_sham_superpixels": 731,
+    "n_total_rois": 24,
+    "n_total_superpixels": 2951,
+    "config_sha256": "d12930747fa248ab71aa341849012e2462211e214e4b892cf2f79ff101f6b400",
+    "generated_at_utc": "2026-07-19T13:39:52.451796+00:00",
+    "python_version": "3.12.10",
+    "generator_script": "generate_sham_reference.py",
+    "git_hash": "cbb746a1712230ecb8ee0f948b54441a6b4772d5",
+    "git_dirty": true
+  },
+  "reference": {
+    "CD45": {
+      "threshold": 1.5977528293844618,
+      "scale": 0.597905915497198
+    },
+    "CD11b": {
+      "threshold": 1.902695463063036,
+      "scale": 0.936787145076631
+    },
+    "Ly6G": {
+      "threshold": 1.7127372676060855,
+      "scale": 0.5763281161133418
+    },
+    "CD140a": {
+      "threshold": 1.7264480268269842,
+      "scale": 0.720787890670068
+    },
+    "CD140b": {
+      "threshold": 1.7215505016076706,
+      "scale": 0.7577295713426169
+    },
+    "CD31": {
+      "threshold": 1.7363464364554808,
+      "scale": 0.7377255211007627
+    },
+    "CD34": {
+      "threshold": 1.7392746461484108,
+      "scale": 0.6897179344199234
+    },
+    "CD206": {
+      "threshold": 1.5835201399430563,
+      "scale": 0.9140203811501071
+    },
+    "CD44": {
+      "threshold": 1.9067876864238151,
+      "scale": 1.0637479228334006
+    }
+  }
+}
