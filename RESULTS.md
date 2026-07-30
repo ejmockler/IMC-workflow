@@ -32,7 +32,7 @@ Nine protein markers cover five biological axes relevant to kidney injury and re
 
 All 9 markers were grounded via the INDRA knowledge graph, yielding 117 unique published molecular relationships among the 8 groundable genes (Ly6G is murine-specific with limited INDRA coverage). Five of eight genes are regulated by TGF-beta, the master regulator of kidney fibrosis. Four are regulated by VEGF. The panel sits at the intersection of six kidney-relevant pathways including nephrogenesis (WP4823), neutrophil degranulation (R-HSA-6798695), and glomerular endothelium development (GO:0072011).
 
-**What the panel cannot do**: With 9 markers under the current strict gating, approximately 86% of tissue superpixels remain unassigned to any single cell type. T cells, B cells, dendritic cells, and epithelial cells cannot be identified. Macrophage polarization is partial. Fibroblast activation states beyond CD44 positivity are invisible. The composite-lineage track (§4b) recovers 100% of tissue under an 8-category multi-lineage interface decomposition. These are the expected limitations of a 9-marker panel, not failures of the analysis.
+**What the panel cannot do**: With 9 markers under the current strict gating, approximately 86% of tissue superpixels remain unassigned to any single cell type. T cells, B cells, dendritic cells, and epithelial cells cannot be identified. Macrophage polarization is partial. Fibroblast activation states beyond CD44 positivity are invisible. The composite-lineage track (§4b) recovers 100% of tissue under an 8-category composite decomposition. These are the expected limitations of a 9-marker panel, not failures of the analysis.
 
 ---
 
@@ -293,11 +293,11 @@ Distinguishing these requires single-cell segmentation, an expanded panel that r
 
 ## 4b. Multi-Lineage Composite Track
 
-The discrete cell-type Phase 1 analyses in §4/§6 use the 15-type ontology, which sees ~14% of tissue under strict gating (with the neutrophil gate as the named exception that admits Ly6G⁺ tissue regardless of activation state). **The composite-lineage track parallelizes the same analyses against the 8-category interface decomposition** (none, immune, endothelial, stromal, immune+endothelial, immune+stromal, endothelial+stromal, immune+endothelial+stromal), assigning one of those eight states to 100% of tissue. Of the 50,206 discrete-unassigned superpixels, 39,042 receive a non-`none` composite state and 11,164 remain `none`. The 8 categories use the same `classify_interface_per_superpixel` function that Family A v1 (Temporal Interface Analysis, Pre-Registered Phase 2) already uses; mouse×timepoint equivalence is verified bit-exactly. Outputs: `differential_abundance_composite/` and `spatial_neighborhoods_composite/`. Source: `run_composite_lineage_analysis.py`.
+The discrete cell-type Phase 1 analyses in §4/§6 use the 15-type ontology, which sees ~14% of tissue under strict gating (with the neutrophil gate as the named exception that admits Ly6G⁺ tissue regardless of activation state). **The composite-lineage track parallelizes the same analyses against the 8-category composite decomposition** (none, immune, endothelial, stromal, immune+endothelial, immune+stromal, endothelial+stromal, immune+endothelial+stromal), assigning one of those eight states to 100% of tissue. Of the 50,206 discrete-unassigned superpixels, 39,042 receive a non-`none` composite state and 11,164 remain `none`. The 8 categories use the same `classify_interface_per_superpixel` function that Family A v1 (Temporal Interface Analysis, Pre-Registered Phase 2) already uses; mouse×timepoint equivalence is verified bit-exactly. Outputs: `differential_abundance_composite/` and `spatial_neighborhoods_composite/`. Source: `run_composite_lineage_analysis.py`.
 
-**Composition of all 58,137 superpixels under the 8 interface categories**:
+**Composition of all 58,137 superpixels under the 8 composite categories**:
 
-| Interface | Tissue % | Pure single-lineage? |
+| Composite category | Tissue % | Pure single-lineage? |
 |---|---:|:---:|
 | **endothelial+immune+stromal (triple)** | **28.95%** | multi |
 | none (no lineage active) | 19.22% | — |
@@ -308,11 +308,11 @@ The discrete cell-type Phase 1 analyses in §4/§6 use the 15-type ontology, whi
 | immune only | 5.87% | single |
 | stromal only | 4.83% | single |
 
-**The single largest tissue category is the triple-positive interface at 29%** — superpixels where all three lineages score above threshold simultaneously. Of 16,833 triple-positive superpixels, 15,489 (92.02%) are discrete-unassigned and 1,344 (7.98%) receive a discrete cell-type label. The composite-lineage track, unlike the discrete ontology, represents triple-positive identity as its own category.
+**The single largest tissue category is the triple-positive interface at 29%** — superpixels where all three lineages score above threshold simultaneously. Of 16,833 triple-positive superpixels, 15,489 (92.02%) are discrete-unassigned and 1,344 (7.98%) receive a discrete cell-type label. The composite-lineage track, unlike the discrete ontology, represents this triple-positive co-localization tissue-patch state as its own category.
 
 ### Composite-lineage DA — the largest compositional shift in the dataset
 
-| Interface | Sham → D7 | Hedges' g | CLR g | Direction |
+| Composite category | Sham → D7 | Hedges' g | CLR g | Direction |
 |---|---|---:|---:|---|
 | **endothelial+immune+stromal** | **20.3% → 38.5%** | **−3.98** | **−3.40** | ▲ expands 1.90-fold |
 | stromal (pure) | 6.4% → 2.7% | +6.75 | +6.71 | ▼ falls 58% |
@@ -322,15 +322,15 @@ The discrete cell-type Phase 1 analyses in §4/§6 use the 15-type ontology, whi
 | endothelial+stromal | 9.8% → 5.9% | +0.72 | — | ▼ |
 | immune+stromal | 8.7% → 11.8% | −0.67 | — | ▲ |
 
-**The dominant Sham → D7 cross-sectional compositional pattern is expansion of multi-lineage interface tissue, especially the triple-positive (E+I+S) compartment, alongside contraction of no-lineage and pure-lineage categories.** Triple-positive rises 1.90-fold (20.3% → 38.5%); pure-stromal falls 58%, pure-immune 40%, pure-endothelial 19%, and no-lineage 42%. These cohort-level compositions do not track individual superpixel transitions. Triple-positive identity is absent from the discrete ontology even though 7.98% of triple-positive superpixels are absorbed into single cell-type labels; the composite result corresponds directly to the pre-registered Temporal Interface Analysis headlines `endothelial+immune+stromal_clr` (g_neut +0.99) and `triple_overlap_fraction` (g_neut +0.98).
+**The dominant Sham → D7 cross-sectional compositional pattern is expansion of multi-lineage interface tissue, especially the triple-positive (E+I+S) compartment, alongside contraction of no-lineage and pure-lineage categories.** Triple-positive rises 1.90-fold (20.3% → 38.5%); pure-stromal falls 58%, pure-immune 40%, pure-endothelial 19%, and no-lineage 42%. These cohort-level compositions do not track individual superpixel transitions. The triple-positive tissue-patch state is absent from the discrete ontology even though 7.98% of triple-positive superpixels are absorbed into single cell-type labels; the composite result corresponds directly to the pre-registered Temporal Interface Analysis headlines `endothelial+immune+stromal_clr` (g_neut +0.99) and `triple_overlap_fraction` (g_neut +0.98).
 
 ### Composite-lineage SN — interface focalization and cross-interface avoidance
 
-**Self-enrichment by timepoint (multi-lineage tissue spatial focalization)**:
+**Self-enrichment by timepoint (within-10 µm composite-category focalization)**:
 
-_**Basis note (composite track).** The composite-track self- and cross-enrichment values in this §4b SN subsection (and the composite column of the Track-coherence table below) are **ROI-level values** read from the frozen reproduction anchor `spatial_neighborhoods_composite/temporal_neighborhood_enrichments.csv`. They are retained by design and are **not reconcilable to the discrete mouse-of-mouse product**: the 8-category interface decomposition is a distinct ontology that is absent from the discrete stratified product, and the source CSV is frozen (per-ROI recompute forbidden). The discrete-column values in Track coherence are mouse-of-mouse, as labelled there._
+_**Basis note (composite track).** The composite-track self- and cross-enrichment values in this §4b SN subsection (and the composite column of the Track-coherence table below) are **ROI-level values** read from the frozen reproduction anchor `spatial_neighborhoods_composite/temporal_neighborhood_enrichments.csv`. They are retained by design and are **not reconcilable to the discrete mouse-of-mouse product**: the 8-category composite decomposition is a distinct ontology that is absent from the discrete stratified product, and the source CSV is frozen (per-ROI recompute forbidden). The discrete-column values in Track coherence are mouse-of-mouse, as labelled there._
 
-| Interface | Sham | D1 | D3 | D7 | Trajectory |
+| Composite category | Sham | D1 | D3 | D7 | Trajectory |
 |---|---:|---:|---:|---:|---|
 | **stromal (pure)** | 1.66× | 1.66× | 2.83× | **3.57×** | ▲ stromal foci tighten progressively |
 | **endothelial+stromal** | 1.44× | 1.48× | 1.67× | **3.26×** | ▲ E+S interface tightens at D7 |
@@ -341,7 +341,9 @@ _**Basis note (composite track).** The composite-track self- and cross-enrichmen
 | none | 1.33× | 1.47× | 1.60× | 2.26× | ▲ |
 | **endothelial+immune+stromal (triple)** | 1.50× | 1.34× | 1.25× | **1.35×** | ▬ FLAT — diffusely distributed despite compositional growth |
 
-**The triple-positive interface, even though it rises 1.90-fold compositionally Sham → D7, does NOT focalize spatially** (self-enrichment 1.25–1.50× across timepoints). Every other interface category — including pure-stromal which is compositionally contracting — shows D7 self-enrichment > 2×. **Reading**: by D7 the tissue contains more triple-positive interface area but it's diffusely spread, not focal. Focal organizing principles are two-lineage interfaces (E+S, I+S) and single lineages.
+**Descriptive focalization discriminator.** The composite categories now carry a **DESCRIPTIVE within-10 µm focalization status** from `results/biological_analysis/composite_focalization.csv`, as defined in `analysis_plans/composite_focalization_spec.md`: `focal` iff D7 self-enrichment is ≥2.0×, otherwise `diffuse`. Among the four structural `interface` categories, all three two-lineage states are focal by D7—endothelial+immune at 2.03×, immune+stromal at 2.58×, and endothelial+stromal at 3.26×—whereas endothelial+immune+stromal is the **lone diffuse interface** at 1.35×. Although the triple-positive category rises 1.90-fold compositionally (20.3% → 38.5%), its self-enrichment remains 1.25–1.50× across timepoints. The largest, most-grown interface category therefore does not spatially concentrate, consistent with spatial mixing rather than a focal interface. These statuses are descriptive only and make no inferential or biological claim.
+
+**Interpretive limits.** Under the **dilution corollary**, cross-scale robustness is not evidence of interface biology: genuine focal co-expression dilutes at coarser grain, so scale-robust co-positivity indicates diffuse mixing, not a validated interface. At DNA-superpixel resolution, co-positivity is a co-localization tissue-patch state, not a cell phenotype. DNA-only SLIC segmentation, no spillover compensation, injury-driven cellularity, and n=2 mice per timepoint limit this descriptive reading. CD44 and CD140b are excluded from these lineage-only category definitions, so the neutrophil–CD44 headline remains non-tautological.
 
 **Selected cross-type attractions at D1** (symmetric pairs; log₂ enrichment shown):
 
@@ -352,7 +354,7 @@ _**Basis note (composite track).** The composite-track self- and cross-enrichmen
 | immune ↔ none | +0.42 / +0.45 | pure-immune borders no-lineage tissue |
 | endothelial+immune ↔ endothelial | +0.30 / +0.30 | E+I interface adjacent to pure-endothelial |
 
-**Pattern**: two-lineage interfaces preferentially sit next to their constituent single lineages — the expected topology of tissue interfaces touching both compartments they bridge.
+**Descriptive pattern**: two-lineage co-positive patches preferentially sit next to their constituent single-lineage patches. This describes local tissue-patch topology without establishing an interface cell phenotype.
 
 **Top cross-interface avoidances at D1** (log₂ < −0.4):
 
@@ -363,11 +365,11 @@ _**Basis note (composite track).** The composite-track self- and cross-enrichmen
 | endothelial+stromal ↔ immune | −0.57 / −0.58 |
 | none ↔ endothelial+immune+stromal | −0.51 / −0.53 |
 
-**Pattern**: cross-pair interfaces avoid each other. An endothelial-only zone is depleted near the immune+stromal interface; a stromal-only zone is depleted near the endothelial+immune interface. **Different multi-lineage interfaces don't co-reside at 100 µm² scale** — they appear to be mutually exclusive tissue zones. This finding is unique to the composite-lineage track; the discrete-cell-type analyses cannot resolve it.
+**Descriptive pattern**: endothelial-only patches are depleted near immune+stromal patches, while stromal-only patches are depleted near endothelial+immune patches. These co-localization tissue-patch states occupy different local zones at the 100 µm² superpixel scale; this does not establish mutually exclusive interface biology. The pattern is unique to the composite-lineage track because the discrete-cell-type analyses cannot resolve these categories.
 
 ### Track coherence
 
-The composite-lineage track corroborates and amplifies the discrete findings, and reveals two findings the discrete track cannot see:
+The composite-lineage track descriptively parallels the discrete findings and exposes two patterns the discrete labels cannot represent:
 
 | Finding | Discrete | Composite | Classification |
 |---|---|---|---|

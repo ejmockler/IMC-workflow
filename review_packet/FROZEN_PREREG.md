@@ -23,6 +23,10 @@ Snapshot for external review. Referenced content is pinned by the SHA-256 anchor
 
 A parallel Phase 1 DA + SN track operating on the 8-category interface decomposition (none, immune, endothelial, stromal, three two-way interfaces, triple-positive) derived per superpixel via `src.analysis.temporal_interface_analysis.classify_interface_per_superpixel` at threshold 0.3 — the same categorization Family A v1 uses. It assigns one of eight states to every superpixel: among the 50,206 discrete-unassigned superpixels, 39,042 receive a non-`none` composite state and 11,164 remain `none`. Mouse×timepoint equivalence with Family A v1's `interface_fractions.parquet` is verified bit-exactly at machine precision.
 
+### Composite focalization pointer (informational/descriptive)
+
+The pre-registered `composite_focalization` discriminator is specified in `analysis_plans/composite_focalization_spec.md`. Its informational/descriptive product `results/biological_analysis/composite_focalization.csv` is pinned in the composite-track SHA table below.
+
 | Artifact | SHA-256 |
 |---|---|
 | `run_composite_lineage_analysis.py` | `019760196301f11074983986e20a36e2867afc75d7c2c361743a1a77000d0a50` |
@@ -30,7 +34,10 @@ A parallel Phase 1 DA + SN track operating on the 8-category interface decomposi
 | `differential_abundance_composite/temporal_top_ranked_by_effect.csv` | `47182b72c365be60f7bb0b1b7e11039225262515df6c38a03b9129fda8c3bd33` |
 | `differential_abundance_composite/roi_abundances.csv` | `173bdd29a30bbd67b4844d29931d4b96be9857a7fc61ed482c0aa173c0832ac4` |
 | `spatial_neighborhoods_composite/temporal_neighborhood_enrichments.csv` | `952a6a5fe185ccddeb05e6165d6cfc5d47ae51fb06129c7caaf836cd3daaa6a1` |
-| `discrete_vs_composite_comparison.md` | `db917fda3876813665b629e20a2daa9be5a1f422da48a820431a85c58c258a03` |
+| `discrete_vs_composite_comparison.md` | `d1ad836bedd6b3aa1f606811ac64dcc5b3c46846364defdb105e8d28f0d4c0b7` |
+| `results/biological_analysis/composite_focalization.csv` *(descriptive/informational)* | `b3721c402e4912b2ac3ee9ecc5f0cae530586cb84f62f97e6183a891b71040ca` |
+| `analysis_plans/composite_focalization_spec.md` *(descriptive/informational)* | `954e97f20124d876d1accc379905ae124a316b33989b436fd00ea8cc64cca958` |
+| `classify_composite_focalization.py` *(descriptive/informational)* | `cf6cb86ea406f478697c9b50282c9b28b37eb305d0a2894ccd73e704664a64dc` |
 
 These artifacts are **informational** — derived outputs that re-running the composite-lineage script regenerates with bit-exact values given the gating anchors above. The categorization rule is pinned via the script SHA; the data dependency is the existing gating anchors (`config.json` SHA + sham_reference SHA + DISCRETE_CELL_TYPES SHA). The 8-category interface decomposition is the Family A v1 categorization; reusing it in this track preserves cross-family coherence.
 
