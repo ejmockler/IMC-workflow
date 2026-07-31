@@ -83,13 +83,15 @@ Applied per-channel across all pixels.
 
 Morphology-aware segmentation using DNA channels:
 
-1. **DNA Composite**: Average of DNA1 and DNA2 channels with arcsinh transform
+1. **DNA Composite**: **Sum** of DNA1 and DNA2 channels with arcsinh transform (`slic_segmentation.py:91`; a scale factor that cancels in the percentile-based cofactor)
 2. **SLIC Parameters** (from config.json):
    - Compactness: 10.0
    - Sigma: 1.5
    - Segment count: tissue_area / target_size^2 (scale-dependent; tissue area from eroded mask, not total image area)
    - Scales: 10um, 20um, 40um
-3. **Aggregation**: Mean protein expression within each superpixel
+3. **Aggregation**: **Sum** of ion counts within each superpixel — not a mean, and not area-normalized (`slic_segmentation.py:406-411`, `np.bincount` with weights). Superpixel area therefore enters every downstream value multiplicatively. This was previously documented as "mean"; the text is corrected here.
+
+   *Why this does not confound the temporal comparisons:* mean superpixel area at 10 µm is flat across the time course — 101.9 px (Sham), 101.9 (D1), 101.8 (D3), 100.3 (D7); overall 99.1–104.9 px, CV = 0.014 across all 24 ROIs. Because every timepoint is aggregated over near-identical superpixel areas, the missing area normalization acts as a near-constant scale factor rather than a timepoint-dependent bias. It remains a real caveat for *cross-ROI absolute* magnitudes and for any comparison against area-normalized external data.
 
 Note: No Gaussian pre-smoothing is applied — the SLIC sigma parameter controls internal smoothing.
 
@@ -160,9 +162,9 @@ Resolution selected via bootstrap stability:
 
 3. Select resolution with maximum stability (target: S >= 0.30)
 
-**Current status:** Near-zero stability scores observed across all scales and resolutions. This is reported transparently; downstream analyses that depend on cluster assignments carry this uncertainty.
+**Current status:** measured max-ARI is **0.450–0.944** across all 72 ROI×scale units (means 0.54 at 10 µm, 0.60 at 20 µm, 0.77 at 40 µm), with **0 of 72 below** the configured S≥0.30 target — i.e. the selected partitions are reproducible under resampling. An earlier statement in this document that stability was "near-zero at all scales and resolutions" was incorrect and is withdrawn. The separate limitation stands: the resolution search is an argmax over a shallow stability curve (spread ≈14% of the mean at 10 µm) evaluated on a different feature space than the final clustering, so the selected resolution is weakly identified. Downstream analyses that depend on cluster assignments carry that uncertainty.
 
-> **Stability estimation.** Graph caching is enabled (`use_graph_caching=true`): a single kNN graph is built on the full dataset and subsampled per bootstrap iteration via vertex deletion. This is faster but introduces bias: subsampled points lose neighbors (especially near subsample boundaries), producing degraded graph topology that may deflate stability scores via cluster fragmentation. Alternatively, the degraded topology could produce optimistic estimates via fewer, larger communities. The direction of bias is indeterminate. With near-zero stability observed across all scales and resolutions, the caching bias is negligible relative to the fundamental instability. The parameter can be set to `false` to rebuild the kNN graph from scratch per iteration at the cost of O(n_bootstrap × n²) graph construction.
+> **Stability estimation.** Graph caching is enabled (`use_graph_caching=true`): a single kNN graph is built on the full dataset and subsampled per bootstrap iteration via vertex deletion. This is faster but introduces bias: subsampled points lose neighbors (especially near subsample boundaries), producing degraded graph topology that may deflate stability scores via cluster fragmentation. Alternatively, the degraded topology could produce optimistic estimates via fewer, larger communities. The direction of bias is indeterminate. Because measured stability is 0.450–0.944 rather than near-zero, the earlier argument that this caching bias is "negligible relative to the fundamental instability" does not hold; the bias direction remains indeterminate and **untested** (no uncached run exists in this repo). The parameter can be set to `false` to rebuild the kNN graph from scratch per iteration at the cost of O(n_bootstrap × n²) graph construction.
 
 > **Feature space mismatch.** Stability analysis optimizes the resolution parameter using the original 9 protein features, but final clustering operates on 30 coabundance-augmented features (9 original + 21 pairwise coabundance). Re-running resolution selection on the augmented feature space would require O(n_resolutions × n_bootstrap) coabundance computations per scale, which is impractical. The selected resolution may not be optimal for the augmented space; this is an acknowledged architectural trade-off.
 
@@ -291,7 +293,7 @@ When multiple acquisition batches detected:
 
 ## Computational Implementation
 
-- **Graph Caching**: Enabled (`use_graph_caching=true`); kNN graph built once on full dataset, subsampled per bootstrap iteration. Faster but bias direction is indeterminate (see Resolution Selection section) — moot given near-zero stability baseline
+- **Graph Caching**: Enabled (`use_graph_caching=true`); kNN graph built once on full dataset, subsampled per bootstrap iteration. Faster but bias direction is indeterminate (see Resolution Selection section) and **untested** — the "moot given a near-zero stability baseline" justification previously given here was based on an incorrect stability figure and is withdrawn
 - **Random Seeds**: Fixed (random_state=42) for reproducibility
 - **Configuration**: All parameters in config.json; Config class is single source of truth
 - **Scale-adaptive parameters**: Spatial weight and resolution range use scale-dependent defaults (fine scales: w=0.2, range=[0.5, 2.0]; coarse scales: w=0.4, range=[0.2, 1.0]). These are hardcoded in `multiscale_analysis.py`; there are no corresponding config keys (the former scalar `spatial_weight` and list `resolution_range` were removed in the 2026-07-31 dead-config sweep because the runtime never read them)
@@ -301,7 +303,7 @@ When multiple acquisition batches detected:
 
 1. **Sample size (n=2 per group)**: Insufficient for frequentist hypothesis testing. Zero FDR-significant differential abundance findings. Effect sizes (Hedges' g) reported with wide CIs that typically cross zero. Pilot power analysis indicates most observed effects require n>=20 per group for 80% power. All findings are hypothesis-generating; effect sizes are provided for follow-up study design, not for confirmatory claims.
 2. **Marker panel (n=9)**: Limited to coarse lineage identification. ~86% of tissue is unassigned under strict 9-marker gating (lacks marker combination for any single discrete gate). Cannot identify specific T cell subsets, B cells, dendritic cells, or full macrophage polarization spectrum. The panel precludes pathway enrichment analysis (n=8 groundable genes). The composite-lineage track (8-category composite decomposition) recovers 100% of tissue under a coarser-than-celltype labelling.
-3. **Clustering stability**: Near-zero bootstrap ARI stability at all scales and resolutions. Cluster assignments should be interpreted cautiously; downstream analyses carry this uncertainty.
+3. **Clustering resolution selection**: bootstrap ARI is 0.450–0.944 across all 72 ROI×scale units (not near-zero, as previously stated here), but the resolution is chosen by argmax over a shallow stability curve computed on a different feature space than the final clustering, and 24 of 72 selections land on a search-window endpoint. The resolution is therefore weakly identified; cluster assignments should be interpreted cautiously.
 4. **Cross-sectional design**: No longitudinal tracking. Temporal patterns are inferred from different subjects at each timepoint.
 5. **INDRA knowledge context**: The INDRA/CoGEx-derived biological context (shared regulators, mediated paths, mechanistic narratives) contextualizes spatial findings against known biology. It does not validate that specific spatial patterns are statistically real — it provides Discussion-level interpretation, not Results-level evidence. Note: for cell types defined by marker co-expression (e.g., neutrophil = CD45+/Ly6G+), INDRA relationships between those same markers (e.g., ITGAM-Ly6G Complex) trivially "explain" self-enrichment — this circularity should be considered when interpreting INDRA context for self-enriching cell type pairs.
 

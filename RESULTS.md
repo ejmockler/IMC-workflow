@@ -162,7 +162,7 @@ Leiden community detection at 10 um scale across 18 injury ROIs:
 | Moran's I | 0.041 +/- 0.015 | 0.022 to 0.096 | Slightly better than random spatial contiguity |
 | Clusters per ROI | 14.6 +/- 7.8 | 7 to 30 | High variability |
 
-Negative silhouette scores mean clusters overlap substantially in feature space — no well-separated communities exist. Bootstrap stability analysis confirms this: near-zero ARI at all scales and resolutions. Cluster assignments should be treated as descriptive, not definitive. Cell type annotation relies on boolean gating (independent of clustering), not cluster membership.
+Negative silhouette scores mean clusters overlap substantially in feature space — the partitions are not well-separated in that sense. **Bootstrap stability does not corroborate this, and the previous claim of "near-zero ARI at all scales and resolutions" was incorrect and is withdrawn**: recomputed from the pipeline's own persisted `stability_analysis` blocks, measured max-ARI is **0.450–0.944** across all 72 ROI×scale units (means 0.54 at 10 µm, 0.60 at 20 µm, 0.77 at 40 µm), with **0 of 72 below** the configured S≥0.30 target. Separation and reproducibility are different properties: these partitions are reasonably reproducible under resampling while still overlapping in feature space. Cluster assignments should be treated as descriptive, not definitive. Cell type annotation relies on boolean gating (independent of clustering), not cluster membership.
 
 Some clusters do map to interpretable biology. In a representative D7 ROI (M2_01_24, 2,490 superpixels, 16 Leiden clusters):
 

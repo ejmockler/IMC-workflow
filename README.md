@@ -117,6 +117,6 @@ Result files are documented in `docs/DATA_SCHEMA.md`.
 
 - **n=2 per group**: Zero FDR-significant findings. Effect sizes reported for follow-up study design.
 - **9-marker panel**: ~86% of tissue unassigned under strict gating. Coarse lineage identification only.
-- **Near-zero clustering stability**: Bootstrap ARI near zero at all scales.
+- **Weakly-identified clustering resolution**: bootstrap ARI is 0.45–0.94 (not near-zero); the resolution is an argmax over a shallow curve, with a third of selections at a search-window endpoint.
 - **Cross-sectional design**: Temporal patterns inferred from different subjects.
 - See `METHODS.md` for full limitations discussion.
