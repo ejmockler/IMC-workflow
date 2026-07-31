@@ -10,7 +10,6 @@ import pytest
 from hypothesis import given, strategies as st, settings, assume
 from hypothesis.extra.numpy import arrays
 from scipy.spatial.distance import pdist, squareform
-from sklearn.metrics import pairwise_distances
 
 from src.analysis.ion_count_processing import apply_arcsinh_transform, aggregate_ion_counts
 from src.analysis.spatial_clustering import perform_spatial_clustering
@@ -31,8 +30,17 @@ class TestSpatialInvariants:
         """Triangle inequality: d(a,c) <= d(a,b) + d(b,c) for all points."""
         assume(len(coords) >= 3)  # Need at least 3 points for triangle
         
-        # Calculate pairwise distances
-        distances = pairwise_distances(coords)
+        # Use scipy's pdist, which is what the pipeline itself uses everywhere
+        # (graph_clustering.py:239, threshold_analysis.py:187, clustering_comparison.py:321,
+        # multiscale_analysis.py:799 -> cdist). It differences coordinates directly.
+        #
+        # sklearn's pairwise_distances was used here previously and is NOT equivalent for
+        # this property: it computes ||x-y||^2 = ||x||^2 + ||y||^2 - 2x.y, which suffers
+        # catastrophic cancellation for near-coincident points far from the origin. For two
+        # points 1e-8 apart at (100, 100) it returns exactly 0.0, which genuinely violates
+        # the triangle inequality by ~7e-9 -- above this test's 1e-8-floor tolerance. That
+        # was a real property of sklearn's estimator, not of any code in this repository.
+        distances = squareform(pdist(coords))
         
         # Test triangle inequality for all triplets
         n_points = len(coords)
