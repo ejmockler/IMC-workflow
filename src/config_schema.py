@@ -160,31 +160,9 @@ class CoabundanceConfig(BaseModel):
 class ClusteringConfig(BaseModel):
     """Clustering configuration with validation."""
 
-    method: str = Field(
-        ...,
-        pattern="^(leiden|hdbscan|louvain)$",
-        description="Clustering method"
-    )
-    k_neighbors: int = Field(
-        ...,
-        ge=5,
-        le=30,
-        description="Number of neighbors for graph construction"
-    )
     k_neighbors_by_scale: Optional[Dict[str, int]] = Field(
         None,
-        description="Scale-specific k_neighbors (overrides default)"
-    )
-    spatial_weight: float = Field(
-        ...,
-        ge=0.0,
-        le=1.0,
-        description="Weight for spatial component (0=feature-only, 1=spatial-only)"
-    )
-    random_state: int = Field(
-        42,
-        ge=0,
-        description="Random seed for reproducibility"
+        description="Scale-specific k_neighbors; the only clustering k that reaches the runtime"
     )
     use_coabundance_features: bool = Field(
         True,
@@ -241,53 +219,13 @@ class ClusteringConfig(BaseModel):
 
         return v
 
-    @field_validator('spatial_weight')
-    @classmethod
-    def validate_spatial_weight_reasonable(cls, v):
-        """Validate spatial weight is reasonable for IMC data.
-
-        NOTE: the scalar ``spatial_weight`` field is overridden at runtime
-        by the scale-adaptive heuristic in multiscale_analysis.py (see
-        that file around :330). It is retained in the schema for
-        backwards-compatibility with older configs; the runtime emits a
-        warning when the scalar value differs from the scale-adaptive
-        value. Validating 1.0 here is a legacy bright-line check — do not
-        add more constraints on this field; prefer deprecating it when
-        the config migration is ready.
-        """
-        if v == 1.0:
-            raise ValueError(
-                "spatial_weight=1.0 ignores all feature information. "
-                "This defeats the purpose of protein expression analysis."
-            )
-        return v
-
 
 class ProcessingConfig(BaseModel):
     """Processing configuration validation."""
 
-    background_correction: Dict[str, Any]
     dna_processing: Dict[str, Any]
     arcsinh_transform: Dict[str, Any]
     normalization: Optional[Dict[str, Any]] = None
-
-    @field_validator('dna_processing')
-    @classmethod
-    def validate_dna_processing_params(cls, v):
-        """Validate DNA processing parameters."""
-        if 'resolution_um' not in v:
-            raise ValueError("dna_processing.resolution_um is required")
-
-        resolution = v['resolution_um']
-        if resolution <= 0:
-            raise ValueError(f"resolution_um must be > 0, got {resolution}")
-        if resolution > 10:
-            raise ValueError(
-                f"resolution_um={resolution} is very high. "
-                f"Typical IMC resolution is 1-2 μm."
-            )
-
-        return v
 
     @field_validator('arcsinh_transform')
     @classmethod

@@ -924,16 +924,11 @@ class IMCAnalysisPipeline:
         else:
             config_defaults['use_slic'] = True  # Fallback
 
-        # Get clustering parameters from config
+        # Get clustering parameters from config.
+        # NOTE: resolution_range and spatial_weight are NOT config-driven — they are
+        # scale-adaptive and selected at runtime in multiscale_analysis.py.
         if hasattr(self.analysis_config, 'analysis') and hasattr(self.analysis_config.analysis, 'clustering'):
             cluster_config = self.analysis_config.analysis.clustering
-            # Use resolution_range to infer n_clusters (or pass resolution range directly)
-            # For backward compatibility, keep n_clusters but read from config if available
-            if hasattr(cluster_config, 'n_clusters'):
-                config_defaults['n_clusters'] = cluster_config.n_clusters
-            # Pass through clustering config options
-            config_defaults['clustering_method'] = cluster_config.get('method', 'leiden')
-            config_defaults['resolution_range'] = cluster_config.get('resolution_range', [0.1, 20.0])
             config_defaults['use_coabundance_features'] = cluster_config.get('use_coabundance_features', True)
             config_defaults['coabundance_options'] = cluster_config.get('coabundance_options', {})
 

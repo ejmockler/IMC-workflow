@@ -161,10 +161,6 @@ class TestClusteringConfigValidation:
     def test_valid_clustering_config(self):
         """Test valid clustering configuration."""
         config = ClusteringConfig(
-            method="leiden",
-            k_neighbors=15,
-            spatial_weight=0.5,
-            random_state=42,
             use_coabundance_features=True,
             coabundance_options=CoabundanceConfig(
                 use_feature_selection=True,
@@ -172,10 +168,6 @@ class TestClusteringConfigValidation:
                 selection_method="lasso"
             )
         )
-
-        assert config.method == "leiden"
-        assert config.k_neighbors == 15
-        assert config.spatial_weight == 0.5
 
     def test_coabundance_requires_feature_selection(self):
         """
@@ -185,10 +177,6 @@ class TestClusteringConfigValidation:
         """
         with pytest.raises(ValidationError) as exc_info:
             ClusteringConfig(
-                method="leiden",
-                k_neighbors=15,
-                spatial_weight=0.5,
-                random_state=42,
                 use_coabundance_features=True,
                 coabundance_options=CoabundanceConfig(
                     use_feature_selection=False,  # CRITICAL ERROR!
@@ -210,69 +198,18 @@ class TestClusteringConfigValidation:
         "intentionally not added. This test will be removed when the "
         "spatial_weight field is deprecated from the config migration."
     ))
-    def test_spatial_weight_zero_rejected(self):
-        """Deprecated — see skip reason."""
-        pass
-
-    def test_spatial_weight_one_rejected(self):
-        """Reject spatial_weight=1.0 (ignores feature information)."""
-        with pytest.raises(ValidationError) as exc_info:
-            ClusteringConfig(
-                method="leiden",
-                k_neighbors=15,
-                spatial_weight=1.0,  # Ignores features!
-                random_state=42,
-                use_coabundance_features=False
-            )
-
-        error_str = str(exc_info.value)
-        assert "spatial_weight=1.0" in error_str
-
-    def test_k_neighbors_out_of_range_rejected(self):
-        """Reject k_neighbors outside valid range [5, 30]."""
-        with pytest.raises(ValidationError) as exc_info:
-            ClusteringConfig(
-                method="leiden",
-                k_neighbors=3,  # Too low!
-                spatial_weight=0.5,
-                random_state=42,
-                use_coabundance_features=False
-            )
-
-        error_str = str(exc_info.value)
-        assert "k_neighbors" in error_str or "3" in error_str
-
     def test_k_neighbors_by_scale_validation(self):
         """Test scale-specific k_neighbors validation."""
         config = ClusteringConfig(
-            method="leiden",
-            k_neighbors=15,
             k_neighbors_by_scale={
                 "10.0": 10,
                 "20.0": 15,
                 "40.0": 20
             },
-            spatial_weight=0.5,
-            random_state=42,
             use_coabundance_features=False
         )
 
         assert config.k_neighbors_by_scale["10.0"] == 10
-
-    def test_invalid_clustering_method_rejected(self):
-        """Reject invalid clustering methods."""
-        with pytest.raises(ValidationError) as exc_info:
-            ClusteringConfig(
-                method="invalid_method",  # Not leiden/hdbscan/louvain
-                k_neighbors=15,
-                spatial_weight=0.5,
-                random_state=42,
-                use_coabundance_features=False
-            )
-
-        error_str = str(exc_info.value)
-        assert "pattern" in error_str.lower() or "leiden" in error_str.lower()
-
 
 class TestProcessingConfigValidation:
     """Test processing parameter validation."""
@@ -280,31 +217,17 @@ class TestProcessingConfigValidation:
     def test_valid_processing_config(self):
         """Test valid processing configuration."""
         config = ProcessingConfig(
-            background_correction={"method": "pixel_wise"},
-            dna_processing={"resolution_um": 1.0},
+            dna_processing={},
             arcsinh_transform={"optimization_method": "percentile", "percentile_threshold": 5.0}
         )
 
-        assert config.dna_processing["resolution_um"] == 1.0
-
-    def test_dna_resolution_too_high_rejected(self):
-        """Reject unrealistically high resolution values."""
-        with pytest.raises(ValidationError) as exc_info:
-            ProcessingConfig(
-                background_correction={"method": "pixel_wise"},
-                dna_processing={"resolution_um": 15.0},  # Way too high!
-                arcsinh_transform={"auto_cofactor": True}
-            )
-
-        error_str = str(exc_info.value)
-        assert "15.0" in error_str or "resolution" in error_str.lower()
+        assert config.arcsinh_transform["optimization_method"] == "percentile"
 
     def test_arcsinh_missing_method_rejected(self):
         """Reject arcsinh config without cofactor or optimization method."""
         with pytest.raises(ValidationError) as exc_info:
             ProcessingConfig(
-                background_correction={"method": "pixel_wise"},
-                dna_processing={"resolution_um": 1.0},
+                dna_processing={},
                 arcsinh_transform={}  # Missing required field!
             )
 
@@ -349,8 +272,7 @@ class TestIMCConfigIntegration:
                 "excluded_channels": []
             },
             "processing": {
-                "background_correction": {},
-                "dna_processing": {"resolution_um": 1.0},
+                "dna_processing": {},
                 "arcsinh_transform": {"auto_cofactor": True}
             },
             "quality_control": {},
@@ -417,10 +339,6 @@ class TestValidationErrorMessages:
         """Test that coabundance error explains the overfitting risk."""
         try:
             ClusteringConfig(
-                method="leiden",
-                k_neighbors=15,
-                spatial_weight=0.5,
-                random_state=42,
                 use_coabundance_features=True,
                 coabundance_options=CoabundanceConfig(
                     use_feature_selection=False,

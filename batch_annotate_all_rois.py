@@ -208,7 +208,7 @@ def main():
     protein_channels = config.channels.get('protein_channels', [])
     print(f"\n✓ Config loaded")
     print(f"  Global threshold: {config.raw['cell_type_annotation']['positivity_threshold']['percentile']}th percentile")
-    print(f"  Segmentation: {config.raw['segmentation']['slic_input_channels']}")
+    print(f"  Segmentation: DNA composite from {config.channels.get('dna_channels', [])}")
     print(f"  Cell types defined: {len(config.raw['cell_type_annotation']['cell_types'])}")
     print(f"  Protein channels : {protein_channels}")
 

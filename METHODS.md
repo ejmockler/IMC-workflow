@@ -32,7 +32,7 @@ IMC data channels classified into functional groups:
 
 1. **Protein Markers** (n=9): CD45, CD11b, Ly6G, CD140a, CD140b, CD31, CD34, CD206, CD44
 2. **DNA Channels** (n=2): DNA1(Ir191Di), DNA2(Ir193Di) — used for SLIC segmentation only
-3. **Background Channel**: 190BCKG — pixel-wise background subtraction
+3. **Background Channel**: 190BCKG — acquired and excluded from features; NOT subtracted (see Background Correction below)
 4. **Calibration Channels** (n=2): 130Ba, 131Xe — instrument stability monitoring
 5. **Carrier Gas Channel**: 80ArAr — plasma stability monitoring
 
@@ -60,11 +60,11 @@ CD44 is the only panel gene with a direct AKI disease association in INDRA (MESH
 
 ## Data Processing Pipeline
 
-### 1. Background Correction
-For each protein channel p and pixel i:
-```
-Corrected_p,i = max(0, Raw_p,i - Background_i)
-```
+### 1. Background Correction — NOT APPLIED
+The 190BCKG channel is acquired and is **excluded from the analysis feature set**, but no
+pixel-wise background subtraction is performed: no code path applies it, and the
+`processing.background_correction` config block was removed in the 2026-07-31 dead-config
+sweep because nothing read it. Ion counts enter the arcsinh transform uncorrected.
 
 ### 2. Arcsinh Transformation
 ```
@@ -221,7 +221,7 @@ At DNA-superpixel resolution, co-positivity is a co-localization tissue-patch st
 
 > **Spatial enrichment null model.** Neighborhood enrichment significance is assessed via global permutation of cell-type labels within each ROI. This null model assumes spatial homogeneity and does not preserve regional gradients (e.g., cortico-medullary axis). For tissues with strong spatial structure, enrichment p-values may be anti-conservative. Regional stratification or toroidal shift permutation would provide a more appropriate null but were not implemented in this pilot study.
 
-**Spatial weight ablation**: In prior runs, enrichment scores were identical (Pearson r=1.000) between spatial_weight=0.3 (default, X/Y coordinates appended to feature matrix) and spatial_weight=0 (coordinates omitted). Note: the co-abundance feature matrix already contains 36 spatial covariance features computed from 20μm KDTree neighborhoods (see Coabundance Feature Engineering above), so this ablation specifically tests the contribution of global position coordinates (2 dimensions) beyond the local spatial covariance structure (36 dimensions) already present in the 153-feature matrix. The result confirms that global tissue position does not influence enrichment patterns beyond local co-expression structure captured by spatial covariance features and boolean gating.
+**Spatial weight ablation** (withdrawn): this ablation was described against a `spatial_weight=0.3` "default" that was never the runtime value — the runtime uses scale-adaptive 0.2/0.4 — and no artifact for it survives in the repo. The claim is withdrawn pending a re-run. Note: the co-abundance feature matrix already contains 36 spatial covariance features computed from 20μm KDTree neighborhoods (see Coabundance Feature Engineering above), so this ablation specifically tests the contribution of global position coordinates (2 dimensions) beyond the local spatial covariance structure (36 dimensions) already present in the 153-feature matrix. The result confirms that global tissue position does not influence enrichment patterns beyond local co-expression structure captured by spatial covariance features and boolean gating.
 
 > **Spatial information encoding.** Local spatial structure enters the analysis through two channels: (1) 36 spatial covariance features computed via radius-based neighborhoods in the coabundance feature set, and (2) the `spatial_weight` parameter that blends raw spatial coordinates into the clustering feature matrix via kNN graphs. These encode related but non-identical spatial information (radius neighborhoods vs. k-nearest-neighbor graphs). The `spatial_weight=0` ablation removes channel (2) but not channel (1), so the ablation tests the marginal contribution of coordinate-based weighting beyond what is already captured by spatial covariance features.
 
@@ -294,7 +294,7 @@ When multiple acquisition batches detected:
 - **Graph Caching**: Enabled (`use_graph_caching=true`); kNN graph built once on full dataset, subsampled per bootstrap iteration. Faster but bias direction is indeterminate (see Resolution Selection section) — moot given near-zero stability baseline
 - **Random Seeds**: Fixed (random_state=42) for reproducibility
 - **Configuration**: All parameters in config.json; Config class is single source of truth
-- **Scale-adaptive parameters**: Spatial weight and resolution range use scale-dependent defaults (fine scales: w=0.2, range=[0.5, 2.0]; coarse scales: w=0.4, range=[0.2, 1.0]). The scalar `spatial_weight` and list `resolution_range` in config.json are overridden by these scale-adaptive heuristics
+- **Scale-adaptive parameters**: Spatial weight and resolution range use scale-dependent defaults (fine scales: w=0.2, range=[0.5, 2.0]; coarse scales: w=0.4, range=[0.2, 1.0]). These are hardcoded in `multiscale_analysis.py`; there are no corresponding config keys (the former scalar `spatial_weight` and list `resolution_range` were removed in the 2026-07-31 dead-config sweep because the runtime never read them)
 - **Provenance**: Software versions and parameter snapshots tracked per run
 
 ## Limitations

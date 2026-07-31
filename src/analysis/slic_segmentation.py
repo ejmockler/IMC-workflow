@@ -256,25 +256,13 @@ def perform_slic_segmentation(
     else:
         rgb_image = composite_image
     
-    # Simplified SLIC parameters - no complex adjustments
-    # Let the properly transformed DNA data guide the segmentation
-    # Only apply minimal configuration-based adjustment if specified
-    if config is not None and hasattr(config, 'dna_processing'):
-        slic_config = config.dna_processing.get('slic_adjustments', {})
-        # Default to no adjustment (multiplier = 1.0)
-        compactness_mult = slic_config.get('compactness_multiplier', 1.0)
-        sigma_mult = slic_config.get('sigma_multiplier', 1.0)
-    else:
-        compactness_mult = 1.0
-        sigma_mult = 1.0
-    
-    # Run SLIC with simplified parameters
+    # Run SLIC directly on the transformed DNA composite.
     # Don't pass mask to SLIC - let it segment naturally then post-process
     superpixel_labels = slic(
         rgb_image,
         n_segments=n_segments,
-        compactness=compactness * compactness_mult,
-        sigma=sigma * sigma_mult,
+        compactness=compactness,
+        sigma=sigma,
         start_label=0,
         channel_axis=-1 if len(rgb_image.shape) > 2 else None
     )
@@ -315,8 +303,8 @@ def perform_slic_segmentation(
         original_labels = slic(
             rgb_image,
             n_segments=n_segments,
-            compactness=compactness * compactness_mult,
-            sigma=sigma * sigma_mult,
+            compactness=compactness,
+            sigma=sigma,
             start_label=0,
             channel_axis=-1 if len(rgb_image.shape) > 2 else None
         )

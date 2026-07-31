@@ -8,11 +8,11 @@ Scoped for a kidney pathologist + spatial-proteomics methodologist + statisticia
 - **Timepoints**: Sham (no ligation) / D1 / D3 / D7, n=2 mice per timepoint.
 - **Acquisitions**: 25 regions-of-interest (ROI); 1 Test ROI excluded pre-analysis (`parse_roi_metadata` gates at `timepoint != 'Test'`). 24 analyzed.
 - **Imaging**: IMC with 9 protein channels + 2 DNA + 2 calibration beads (`130Ba`, `131Xe`) + background + carrier-gas.
-- **Segmentation**: SLIC superpixels at 10 μm (pinned a priori per plan §2), DNA-guided via `slic_input_channels=['DNA1','DNA2']`. ~2,400 superpixels per ROI.
+- **Segmentation**: SLIC superpixels at 10 μm (pinned a priori per plan §2), DNA-guided (DNA1+DNA2 composite, set by `channels.dna_channels`). ~2,400 superpixels per ROI.
 
 ## Preprocessing
 
-- Background pixel subtraction, clipped at zero.
+- Background channel excluded from features (no pixel subtraction is applied).
 - Arcsinh transform with percentile-derived cofactor (`percentile_threshold=5.0` for proteins; `cofactor_multiplier=3` for DNA).
 - No global normalization beyond arcsinh (double transformation was shown to destroy signal gradients in earlier work).
 

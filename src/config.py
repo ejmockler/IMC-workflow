@@ -26,25 +26,6 @@ def migrate_config(config_dict: Dict[str, Any]) -> Dict[str, Any]:
             del clustering['n_clusters']
             modified = True
             
-        # Ensure new parameters exist
-        if 'resolution_range' not in clustering:
-            clustering['resolution_range'] = [0.5, 2.0]
-            modified = True
-        if 'optimization_method' not in clustering:
-            clustering['optimization_method'] = 'stability'
-            modified = True
-            
-    if 'kidney_experiment' in config_dict:
-        exp = config_dict['kidney_experiment']
-        clustering = exp.get('clustering', {})
-        if 'n_clusters' in clustering:
-            warnings.warn(
-                "Removing n_clusters from kidney_experiment.clustering",
-                DeprecationWarning
-            )
-            del clustering['n_clusters']
-            modified = True
-            
     if modified:
         warnings.warn("Config was migrated to new format", UserWarning)
             

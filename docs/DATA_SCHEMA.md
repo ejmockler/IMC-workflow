@@ -94,7 +94,7 @@ Each scale contains:
 - `mean_n_clusters`: Average clusters across resolutions
 - `std_n_clusters`: Standard deviation of cluster counts
 - `coefficient_of_variation`: CV of cluster counts
-- `resolution_range`: Tested range
+- `resolution_range`: Tested range (runtime scale-adaptive value, not a config key)
 
 ### Segmentation Products
 

@@ -20,7 +20,7 @@ Every use of the descriptor must carry all of the following caveats:
 
 - **DESCRIPTIVE ONLY**: it makes no inferential or biological claim.
 - The study has **n=2 mice per timepoint**.
-- The analysis is confounded by DNA-only SLIC superpixels (`config.json` has `slic_input_channels = DNA1, DNA2`), no spillover compensation anywhere in the codebase, and injury-driven cellularity that inflates multi-lineage rates.
+- The analysis is confounded by DNA-only SLIC superpixels (segmentation uses a DNA1+DNA2 composite via `channels.dna_channels`), no spillover compensation anywhere in the codebase, and injury-driven cellularity that inflates multi-lineage rates.
 - **Dilution corollary:** cross-scale robustness is **NOT** evidence of interface biology. A genuine focal co-expression dilutes at coarser grain, so scale-robust co-positivity indicates diffuse mixing, not a validated interface.
 
 ## Amendment — kNN size (k) sensitivity outcome

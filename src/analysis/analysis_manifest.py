@@ -247,17 +247,21 @@ class AnalysisManifest:
             }
         
         if hasattr(config, 'analysis'):
+            # Record only config-resident clustering settings. Resolution range and
+            # spatial weight are scale-adaptive and chosen at runtime
+            # (multiscale_analysis.py), so they are NOT config provenance.
+            clustering_cfg = config.analysis.get('clustering', {})
             profile.clustering_params = {
-                'method': config.analysis.get('clustering', {}).get('method', 'leiden'),
-                'optimization_method': config.analysis.get('clustering', {}).get('optimization_method', 'stability'),
-                'resolution_range': config.analysis.get('clustering', {}).get('resolution_range', [0.5, 2.0])
+                k: clustering_cfg[k]
+                for k in ('k_neighbors_by_scale', 'n_resolutions', 'n_bootstrap',
+                          'adaptive_search', 'use_coabundance_features')
+                if k in clustering_cfg
             }
-        
+
         if hasattr(config, 'processing'):
             profile.processing_params = {
                 'arcsinh_transform': config.processing.get('arcsinh_transform', {}),
-                'normalization': config.processing.get('normalization', {}),
-                'background_correction': config.processing.get('background_correction', {})
+                'normalization': config.processing.get('normalization', {})
             }
         
         if hasattr(config, 'quality_control'):
@@ -800,16 +804,17 @@ def validate_manifest_compatibility(
                 'config_value': config_scales
             })
     
-    # Check clustering method
+    # Check scale-specific k_neighbors (the only clustering setting that both lives
+    # in config and reaches the runtime)
     if hasattr(config, 'analysis'):
-        manifest_method = manifest.parameter_profile.clustering_params.get('method')
-        config_method = config.analysis.get('clustering', {}).get('method')
-        
-        if manifest_method != config_method:
+        manifest_k = manifest.parameter_profile.clustering_params.get('k_neighbors_by_scale')
+        config_k = config.analysis.get('clustering', {}).get('k_neighbors_by_scale')
+
+        if manifest_k != config_k:
             results['parameter_differences'].append({
-                'parameter': 'clustering.method',
-                'manifest_value': manifest_method,
-                'config_value': config_method
+                'parameter': 'clustering.k_neighbors_by_scale',
+                'manifest_value': manifest_k,
+                'config_value': config_k
             })
-    
+
     return results

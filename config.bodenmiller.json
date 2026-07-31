@@ -40,48 +40,26 @@
     }
   },
   "processing": {
-    "background_correction": {
-      "enabled": false,
-      "method": "pixel_subtraction",
-      "clip_negative": true,
-      "_comment": "Disabled - Bodenmiller dataset is pre-processed"
-    },
     "dna_processing": {
-      "resolution_um": 1.0,
       "arcsinh_transform": {
         "enabled": true,
         "noise_floor_method": "percentile",
         "noise_floor_percentile": 10,
         "cofactor_multiplier": 3,
         "comment": "Conservative cofactor to preserve gradients while handling dynamic range"
-      },
-      "normalization": {
-        "enabled": false,
-        "comment": "Disabled - ArcSinh alone is sufficient"
-      },
-      "slic_adjustments": {
-        "compactness_multiplier": 1.0,
-        "sigma_multiplier": 1.0,
-        "comment": "No adjustment - trust SLIC with properly transformed data"
-      },
-      "tissue_threshold": 0.1,
-      "tissue_threshold_comment": "Threshold for tissue detection after ArcSinh transform"
+      }
     },
     "arcsinh_transform": {
       "optimization_method": "percentile",
       "percentile_threshold": 5.0
     },
     "normalization": {
-      "method": "standardize",
       "per_channel": true
     }
   },
   "segmentation": {
     "method": "slic",
-    "_comment_slic_channels": "DNA-based segmentation matches Steinbock approach (Cellpose uses nuclear staining). Fair comparison via morphology-driven segmentation.",
-    "slic_input_channels": ["DNA1", "DNA2"],
     "slic_params": {
-      "n_segments_per_mm2": 2500,
       "compactness": 10.0,
       "sigma": 1.5,
       "_comment": "Matched to Steinbock approximate cell density: ~2500 cells/mm² typical for tissue"
@@ -185,25 +163,6 @@
     "differential_abundance": {
       "enabled": false
     },
-    "spatial_analysis": {
-      "enabled": true,
-      "metrics": [
-        "spatial_autocorrelation",
-        "nearest_neighbor_analysis",
-        "neighborhood_enrichment"
-      ],
-      "spatial_autocorrelation": {
-        "method": "morans_i",
-        "distance_threshold_um": 50,
-        "n_permutations": 999
-      },
-      "neighborhood_enrichment": {
-        "_comment": "Key validation metric: spatial enrichments should match Steinbock",
-        "radius_um": 50,
-        "n_permutations": 1000,
-        "aggregation": "mean"
-      }
-    },
     "temporal_trajectory": {
       "enabled": false,
       "_comment": "No temporal data in Bodenmiller benchmark"
@@ -225,27 +184,20 @@
   },
   "analysis": {
     "clustering": {
-      "_comment_method": "Leiden community detection",
-      "method": "leiden",
-      "optimization_method": "stability",
-      "resolution_range": [0.1, 3.0],
       "n_resolutions": 40,
       "n_bootstrap": 100,
       "subsample_ratio": 0.85,
-      "random_state": 42,
       "adaptive_search": true,
       "adaptive_target_stability": 0.75,
       "adaptive_tolerance": 0.02,
       "adaptive_max_evaluations": 50,
       "parallel": true,
       "use_graph_caching": true,
-      "k_neighbors": 15,
       "k_neighbors_by_scale": {
         "10.0": 14,
         "20.0": 12,
         "40.0": 10
       },
-      "spatial_weight": 0.3,
       "use_coabundance_features": true,
       "coabundance_options": {
         "interaction_order": 2,

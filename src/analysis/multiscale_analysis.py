@@ -94,41 +94,22 @@ def _compute_scale_adaptive_k_neighbors(n_samples: int, scale_um: float, config:
     Returns:
         Optimal k value for this scale
     """
-    # Read the top-level config k_neighbors for reference (the "user-facing" value)
-    config_k_neighbors = 15  # default
-    if config is not None:
-        clustering = {}
-        if hasattr(config, 'analysis'):
-            analysis_section = getattr(config, 'analysis', {})
-            if isinstance(analysis_section, dict):
-                clustering = analysis_section.get('clustering', {}) or {}
-        elif isinstance(config, dict):
-            clustering = config.get('analysis', {}).get('clustering', {}) or {}
-        if 'k_neighbors' in clustering:
-            config_k_neighbors = clustering['k_neighbors']
-
-    # Extract scale-specific k values from config if provided
+    # Scale-specific k values from config (k_neighbors_by_scale is the only
+    # clustering k that reaches the runtime)
     k_params = _extract_algorithm_params(config, 'k_neighbors_by_scale')
 
-    # Check for direct scale mapping (e.g., "10.0": 14)
+    # Direct scale mapping (e.g., "10.0": 14)
     if k_params and str(scale_um) in k_params:
         k_value = int(k_params[str(scale_um)])
-        if k_value != config_k_neighbors:
-            logger.info(
-                f"k_neighbors overridden: config.analysis.clustering.k_neighbors={config_k_neighbors} "
-                f"-> {k_value} (scale-specific mapping for {scale_um}um from k_neighbors_by_scale)"
-            )
-        else:
-            logger.info(f"k_neighbors={k_value} for {scale_um}um (matches config default)")
+        logger.info(f"k_neighbors={k_value} for {scale_um}um (from k_neighbors_by_scale)")
         return k_value
 
-    # Otherwise use data-driven heuristic: 2×log(N)
+    # Otherwise use the 2×log(N) heuristic
     # This ensures graphs aren't over-connected at coarse scales
     k_heuristic = max(8, min(15, int(2 * np.log(n_samples))))
     logger.info(
-        f"k_neighbors overridden: config.analysis.clustering.k_neighbors={config_k_neighbors} "
-        f"-> {k_heuristic} (2*log(N) heuristic for {n_samples} superpixels at {scale_um}um, "
-        f"no k_neighbors_by_scale entry for this scale)"
+        f"k_neighbors={k_heuristic} (2*log(N) heuristic for {n_samples} superpixels "
+        f"at {scale_um}um; no k_neighbors_by_scale entry for this scale)"
     )
 
     return k_heuristic
@@ -335,37 +316,11 @@ def perform_multiscale_analysis(
         coarse_weight = spatial_weight_params.get('coarse_scale_weight', 0.4)
         spatial_weight = fine_weight if scale_um <= sw_threshold else coarse_weight
 
-        # Log spatial_weight override transparency
-        config_spatial_weight = None
-        if config is not None:
-            sw_clustering = {}
-            if hasattr(config, 'analysis'):
-                sw_analysis_section = getattr(config, 'analysis', {})
-                if isinstance(sw_analysis_section, dict):
-                    sw_clustering = sw_analysis_section.get('clustering', {}) or {}
-            elif isinstance(config, dict):
-                sw_clustering = config.get('analysis', {}).get('clustering', {}) or {}
-            if 'spatial_weight' in sw_clustering:
-                config_spatial_weight = sw_clustering['spatial_weight']
-
-        if config_spatial_weight is not None and spatial_weight != config_spatial_weight:
-            if spatial_weight_params:
-                logger.info(
-                    f"spatial_weight overridden: config.analysis.clustering.spatial_weight="
-                    f"{config_spatial_weight} -> {spatial_weight} "
-                    f"(scale-adaptive: {'fine' if scale_um <= sw_threshold else 'coarse'} weight "
-                    f"for {scale_um}um, threshold={sw_threshold}um)"
-                )
-            else:
-                logger.info(
-                    f"spatial_weight overridden: config.analysis.clustering.spatial_weight="
-                    f"{config_spatial_weight} -> {spatial_weight} "
-                    f"(hardcoded scale-adaptive default: {'fine' if scale_um <= sw_threshold else 'coarse'} "
-                    f"weight for {scale_um}um because config.spatial_weight is a scalar, "
-                    f"not a scale-adaptive dict)"
-                )
-        else:
-            logger.info(f"spatial_weight={spatial_weight} for {scale_um}um")
+        logger.info(
+            f"spatial_weight={spatial_weight} for {scale_um}um "
+            f"({'fine' if scale_um <= sw_threshold else 'coarse'} scale-adaptive value, "
+            f"threshold={sw_threshold}um)"
+        )
 
         # Step 4: Stability analysis for resolution selection
         stability_config = _extract_stability_config(config)
@@ -390,37 +345,11 @@ def perform_multiscale_analysis(
         coarse_range = resolution_range_params.get('coarse_scale_range', [0.2, 1.0])
         resolution_range = tuple(fine_range) if scale_um <= threshold else tuple(coarse_range)
 
-        # Log resolution_range override transparency
-        config_resolution_range = None
-        if config is not None:
-            clustering = {}
-            if hasattr(config, 'analysis'):
-                analysis_section = getattr(config, 'analysis', {})
-                if isinstance(analysis_section, dict):
-                    clustering = analysis_section.get('clustering', {}) or {}
-            elif isinstance(config, dict):
-                clustering = config.get('analysis', {}).get('clustering', {}) or {}
-            if 'resolution_range' in clustering:
-                config_resolution_range = clustering['resolution_range']
-
-        if config_resolution_range is not None and list(resolution_range) != list(config_resolution_range):
-            if resolution_range_params:
-                logger.info(
-                    f"resolution_range overridden: config.analysis.clustering.resolution_range="
-                    f"{config_resolution_range} -> {list(resolution_range)} "
-                    f"(scale-adaptive: {'fine' if scale_um <= threshold else 'coarse'} range "
-                    f"for {scale_um}um, threshold={threshold}um)"
-                )
-            else:
-                logger.info(
-                    f"resolution_range overridden: config.analysis.clustering.resolution_range="
-                    f"{config_resolution_range} -> {list(resolution_range)} "
-                    f"(hardcoded scale-adaptive default: {'fine' if scale_um <= threshold else 'coarse'} "
-                    f"range for {scale_um}um because config.resolution_range is a list, "
-                    f"not a scale-adaptive dict)"
-                )
-        else:
-            logger.info(f"resolution_range={list(resolution_range)} for {scale_um}um")
+        logger.info(
+            f"resolution_range={list(resolution_range)} for {scale_um}um "
+            f"({'fine' if scale_um <= threshold else 'coarse'} scale-adaptive range, "
+            f"threshold={threshold}um)"
+        )
 
         stability_result = stability_analysis(
             features, spatial_coords,
