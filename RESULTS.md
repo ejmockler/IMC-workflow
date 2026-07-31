@@ -154,13 +154,16 @@ The immune compartment shifts from acute (neutrophil-dominant) toward resolution
 
 ### Clustering Quality
 
-Leiden community detection at 10 um scale across 18 injury ROIs:
+Leiden community detection at 10 um scale across all **24 ROIs** (the previous "18 injury ROIs" label was wrong — the statistics below are, and always were, the 24-ROI values; the injury-only subset gives 13.7 +/- 7.0 clusters, range 7 to 28):
 
 | Metric | Mean +/- SD | Range | Interpretation |
 |--------|-------------|-------|----------------|
-| Silhouette score | -0.142 +/- 0.058 | -0.249 to -0.047 | Substantial cluster overlap |
-| Moran's I | 0.041 +/- 0.015 | 0.022 to 0.096 | Slightly better than random spatial contiguity |
-| Clusters per ROI | 14.6 +/- 7.8 | 7 to 30 | High variability |
+| Silhouette score | -0.131 +/- 0.045 | -0.213 to -0.056 | Substantial cluster overlap |
+| Clusters per ROI | 14.6 +/- 7.6 | 7 to 30 | High variability |
+
+Both rows are recomputed directly from the persisted per-ROI `features` and `cluster_labels` (`results/roi_results/*.json.gz`, scale 10.0), so they are reproducible from the shipped artifacts. The silhouette figures supersede a previously published `-0.142 +/- 0.058` whose source artifact no longer exists; sign and magnitude are unchanged, so the "substantial overlap" reading stands.
+
+**A Moran's I row has been removed.** It previously read `0.041 +/- 0.015 (0.022 to 0.096)`, described as "slightly better than random spatial contiguity". That value does not reproduce — the repository's own `compute_spatial_coherence` gives 0.345 +/- 0.065 on the same artifacts — and, more fundamentally, the statistic is computed on *nominal* cluster labels (`spatial_clustering.py:803`, `y = cluster_labels - cluster_labels.mean()`), so it is not invariant to how clusters are numbered: re-labelling one ROI's identical partition five times yields I = 0.221, 0.240, 0.252, 0.284, 0.297 against an original 0.360. A quantity that changes when nothing about the partition changes cannot support a contiguity claim, at either the old value or the new one. Spatial structure is instead reported by the permutation-based neighborhood enrichment in Section 4.
 
 Negative silhouette scores mean clusters overlap substantially in feature space — the partitions are not well-separated in that sense. **Bootstrap stability does not corroborate this, and the previous claim of "near-zero ARI at all scales and resolutions" was incorrect and is withdrawn**: recomputed from the pipeline's own persisted `stability_analysis` blocks, measured max-ARI is **0.450–0.944** across all 72 ROI×scale units (means 0.54 at 10 µm, 0.60 at 20 µm, 0.77 at 40 µm), with **0 of 72 below** the configured S≥0.30 target. Separation and reproducibility are different properties: these partitions are reasonably reproducible under resampling while still overlapping in feature space. Cluster assignments should be treated as descriptive, not definitive. Cell type annotation relies on boolean gating (independent of clustering), not cluster membership.
 
