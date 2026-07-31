@@ -23,6 +23,39 @@ Every use of the descriptor must carry all of the following caveats:
 - The analysis is confounded by DNA-only SLIC superpixels (`config.json` has `slic_input_channels = DNA1, DNA2`), no spillover compensation anywhere in the codebase, and injury-driven cellularity that inflates multi-lineage rates.
 - **Dilution corollary:** cross-scale robustness is **NOT** evidence of interface biology. A genuine focal co-expression dilutes at coarser grain, so scale-robust co-positivity indicates diffuse mixing, not a validated interface.
 
+## Amendment — kNN size (k) sensitivity outcome
+
+The kNN neighborhood size `k = 10` underlying every self-enrichment value here was never swept
+when this spec was written. It has since been swept under a pre-registered, report-either-way
+protocol (`analysis_plans/k_sensitivity_precommitment.md`, committed *before* the sweep ran;
+output `results/biological_analysis/k_sensitivity_focalization.csv`). Outcome, at 10 µm pooled D7:
+
+| category | k=5 | k=10 | k=20 | status stable? |
+|---|---|---|---|---|
+| endothelial+stromal | 3.43× | 3.05× | 2.63× | yes — focal |
+| immune+stromal | 2.99× | 2.56× | 2.16× | yes — focal |
+| **endothelial+immune** | **2.24× focal** | **1.99× diffuse** | **1.74× diffuse** | **NO — flips** |
+| endothelial+immune+stromal (triple) | 1.45× | 1.35× | 1.27× | yes — diffuse |
+
+**Consequences, per the pre-commitment (outcome 2):**
+
+1. The "lone diffuse interface" framing is **withdrawn**. At k=10 on the scale×region basis
+   endothelial+immune is *also* diffuse (1.99×), so the triple-positive is not the only one.
+2. `endothelial+immune` sits on the 2.0× cutoff and its label is basis-dependent as well as
+   k-dependent (2.03× on the temporal-composite basis vs 1.99× on the scale×region basis at the
+   same k=10). Any statement about it must carry that caveat.
+3. **The core reading survives**: the triple-positive is diffuse at every k tested, 27–35% below
+   the cutoff, while remaining the largest and most-grown interface category. The mixing
+   signature does not depend on k.
+4. The **rank order** endothelial+stromal > immune+stromal > endothelial+immune > triple-positive
+   is identical at every k. Self-enrichment magnitude declines monotonically with k for all
+   categories (larger neighborhoods dilute), so magnitudes are only comparable at fixed k.
+5. The fragile element is the **binary 2.0× cutoff**, not the measurement. The cutoff is retained
+   (changing it post hoc would be exactly the forking-paths move this spec exists to prevent),
+   but any category within ~5% of it must be reported as on-the-cutoff rather than as a status.
+
+`k = 10` remains the primary value. This sweep is a disclosure, not a re-selection.
+
 ## Category-definition exclusion
 
 Activation markers CD44 and CD140b are excluded from every category definition: the categories are lineage-only. This preserves the non-tautological neutrophil-CD44 headline.

@@ -137,7 +137,8 @@ for sid, cat, col in CATS:
             pcy = yv(pv) if pv is not None else cy
             s.append(f'      <circle id="fk-p{i}-{j}-{sid}" class="fk-mouse" cx="{XS[i]}" cy="{pcy:.1f}" r="2.4" '
                      f'fill="#fafaf7" stroke="{col}" stroke-width="1.2"/>')
-        vtxt = f"{m[i]:.1f}×" if vis else ""
+        # 2 dp: at 1 dp a 1.99x point renders as "2.0x" while sitting BELOW the 2x line
+        vtxt = f"{m[i]:.2f}×" if vis else ""
         s.append(f'      <text id="fk-v{i}-{sid}" class="fk-val" x="{XS[i]}" y="{cy-9:.1f}" text-anchor="middle" '
                  f'font-family="var(--font-mono)" font-size="10" font-weight="700" fill="{col}">{vtxt}</text>')
     # end label
@@ -171,7 +172,7 @@ s.append('''  var fig=document.getElementById("fig-4b"); if(!fig) return;
         var md=document.getElementById("fk-m"+i+"-"+c); md.setAttribute("cy",cy.toFixed(1)); md.style.opacity=vis?1:0;
         for(var j=0;j<2;j++){ var pv=s.mice[i][j], pd=document.getElementById("fk-p"+i+"-"+j+"-"+c); if(!pd)continue;
           pd.setAttribute("cy",yv(pv==null?m[i]:pv).toFixed(1)); pd.style.display=(pv==null?"none":""); }
-        var vt=document.getElementById("fk-v"+i+"-"+c); vt.setAttribute("y",(cy-9).toFixed(1)); vt.textContent=vis?m[i].toFixed(1)+"×":"";
+        var vt=document.getElementById("fk-v"+i+"-"+c); vt.setAttribute("y",(cy-9).toFixed(1)); vt.textContent=vis?m[i].toFixed(2)+"×":"";
       }
       document.getElementById("fk-ti-"+c).textContent=(LBL[c]||c)+" · "+sc+"µm · "+rg+" · "+TPS.map(function(t,i){return t+" "+(m[i]==null?"·":m[i].toFixed(2)+"×");}).join("  ");
     });
