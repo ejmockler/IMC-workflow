@@ -74,9 +74,19 @@ data/
   cd44_compartment_rates_10um.csv     168 rows   — CD44 rates by compartment (primary)
   cd44_compartment_rates_20um.csv     144 rows   — the same at 20 µm regions
   cd44_compartment_rates_40um.csv     144 rows   — the same at 40 µm regions
+  arcsinh_cofactors_per_image.csv     792 rows   — every transform cofactor actually used
+  sham_reference_sigmoid_parameters.csv  27 rows — centre/scale of every continuous score
 METHODS_FOR_MANUSCRIPT.md             paste-ready Materials & Methods text
+ANALYSIS_PARAMETERS.md                the realised parameter values (see note below)
 README.md                             this file
 ```
+
+> **Where the actual numbers live.** `METHODS_FOR_MANUSCRIPT.md` states the *rules*;
+> **`ANALYSIS_PARAMETERS.md` gives the realised values** — including the per-image arcsinh
+> cofactors and the Sham-derived centre/scale of every continuous score. Read it before
+> plotting any `lineage_*` or `activation_*` column: it documents which markers each score
+> is actually made of (for example `lineage_immune` is **CD45 alone**) and one
+> normalisation bias that affects the continuous endothelial trajectory.
 
 ### 3.1 `per_image_quantification.csv` — the main quantification matrix
 
