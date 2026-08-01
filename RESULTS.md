@@ -167,16 +167,11 @@ Both rows are recomputed directly from the persisted per-ROI `features` and `clu
 
 Negative silhouette scores mean clusters overlap substantially in feature space — the partitions are not well-separated in that sense. **Bootstrap stability does not corroborate this, and the previous claim of "near-zero ARI at all scales and resolutions" was incorrect and is withdrawn**: recomputed from the pipeline's own persisted `stability_analysis` blocks, measured max-ARI is **0.450–0.944** across all 72 ROI×scale units (means 0.54 at 10 µm, 0.60 at 20 µm, 0.77 at 40 µm), with **0 of 72 below** the configured S≥0.30 target. Separation and reproducibility are different properties: these partitions are reasonably reproducible under resampling while still overlapping in feature space. Cluster assignments should be treated as descriptive, not definitive. Cell type annotation relies on boolean gating (independent of clustering), not cluster membership.
 
-Some clusters do map to interpretable biology. In a representative D7 ROI (M2_01_24, 2,490 superpixels, 16 Leiden clusters):
+**A cluster-phenotype table previously appeared here and has been withdrawn.** It reported, for a representative D7 ROI (M2_01_24), that cluster 15 was "58.8% M2 macrophage at 6.29x enrichment — a spatially coherent macrophage niche" and cluster 13 "68.4% neutrophil". **Those values do not reproduce from the shipped artifacts.** Recomputed by joining that ROI's persisted `cluster_labels` to its cell-type annotations: cluster 15 contains **17 superpixels, 94.1% of them `unassigned`**, its only named type being a single `activated_fibroblast_cd140b` region; cluster 13 is 81.6% `unassigned` with 7.9% neutrophil; cluster 9 is 92.8% `unassigned`; cluster 8 is 56.8% `unassigned`. The figures reconcile under neither denominator (all superpixels, or the assigned subset only).
 
-| Cluster | Dominant Phenotype | Enrichment | Purity |
-|---------|-------------------|------------|--------|
-| 15 | M2 Macrophage | 6.29x | 58.8% |
-| 13 | Neutrophil | 4.45x | 68.4% |
-| 9 | Endothelial | 4.33x | 40.1% |
-| 8 | Immune (CD45+) | 6.18x | 6.5% |
+The table is **stale**: the identical numbers appear in `results/archive/pre_remediation_20260520T162027Z/RESULTS.pre.md:227`. It was carried forward from a superseded run and never re-derived after remediation changed the gating and therefore the cell-type assignments. A "spatially coherent macrophage niche" resting on 17 superpixels, 16 of which are unassigned, would not have survived scrutiny in any case.
 
-Cluster 15 is 58.8% M2 macrophage at 6.29x enrichment — a spatially coherent macrophage niche. Cluster 13 is 68.4% neutrophil — a focal immune aggregate. Others are mixed. The clustering captures real spatial structure but does not resolve it cleanly.
+No downstream result depended on it: clustering feeds none of the cell-type, abundance, neighbourhood or interface analyses in this report (`cell_type_annotation.py` consumes transformed arrays, never `cluster_labels`; no result table carries a cluster column). Cluster assignments remain descriptive only.
 
 ### Scale-Dependent Complexity
 
