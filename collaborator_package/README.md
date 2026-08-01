@@ -225,9 +225,11 @@ Because that unlabelled majority is most of the tissue, each region also carries
 
 **Each is built from a single marker (or two), not a multi-marker signature:**
 `lineage_immune` is **CD45 alone**, `lineage_stromal` is **CD140a alone**, and
-`lineage_endothelial` is the **mean of CD31 and CD34**. They are transformed marker
-intensities, not validated lineage classifiers — describe them as e.g. "CD45-based immune
-score". See `ANALYSIS_PARAMETERS.md` §2.
+`lineage_endothelial` is the **mean of CD31 and CD34**. Our methods documentation calls these
+**marker-state axes — state indices, not cell-lineage identifications** — and that is the
+wording to use. Describe them as e.g. "CD45-based immune score", not as an immune classifier.
+See `ANALYSIS_PARAMETERS.md` §2, which also reports the test showing that no trajectory
+direction depends on which markers were assigned to which axis.
 
 They are **not exclusive**: a region can score highly on more than one, which the rules
 cannot represent — that is the point of having them. But the same construction makes them

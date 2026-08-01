@@ -78,8 +78,30 @@ activation only, contributing to no lineage score.
 **We have no record of a rationale** for the single-marker composition, for the CD140b
 assignment, or for averaging CD31/CD34 rather than taking the maximum. The implementation
 accepts arbitrary marker lists and max/mean/min aggregation, so these are configuration
-conventions — not constraints, and not optimised or validated choices. They are listed among
-the untuned parameters in §7.
+conventions — not constraints, and not optimised or validated choices.
+
+**They have, however, now been tested — and no conclusion depends on them.** All three axes
+were recomputed under four marker assignments (as configured; multi-marker positives;
+CD140b added to stromal; endothelial by maximum) against the same frozen sigmoid parameters
+and the same transformed data. **The Sham → Day 7 direction is identical for every axis under
+every variant.** Absolute *levels* do shift — taking a maximum over more markers raises every
+score, including the Sham baseline — so levels are comparable only within one variant.
+
+The direction of what the current convention does is worth stating, because it is not
+uniformly flattering:
+
+| Axis | As configured | Alternative | Effect of the current choice |
+|---|---|---|---|
+| immune | +0.219 | +0.141 (add CD11b) | **increases** the apparent rise |
+| endothelial | +0.181 | +0.140 (max instead of mean) | **increases** the apparent rise |
+| stromal | +0.145 | +0.170 (add CD140b) | **decreases** it — conservative |
+
+So the stromal trajectory is understated by the current configuration, and the endothelial
+trajectory is the one flattered by *both* this convention and the cofactor drift in §3. That
+is the endpoint to caveat; the others are conservative or unaffected.
+
+Generator: `run_marker_assignment_sensitivity.py` →
+`results/biological_analysis/marker_assignment_sensitivity.csv`.
 
 Each score is `sigmoid((transformed_intensity − centre) ÷ scale × 10.0)`, so a score of 0.5
 means the region sits exactly at the reference centre for that marker. **That centre is the

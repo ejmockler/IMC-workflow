@@ -62,7 +62,10 @@ Each scale contains:
 | `transformed_arrays` | dict | `{marker: array[n_superpixels]}` | Arcsinh-transformed marker intensities per superpixel |
 | `cofactors_used` | dict | `{marker: float}` | Cofactor values used for arcsinh transformation |
 
-**Markers in transformed_arrays**:
+**Markers in transformed_arrays** (grouped by *panel biology*; these groupings are
+descriptive and are **not** the continuous lineage-axis definitions — see METHODS.md
+"marker-state axes", where immune = CD45 alone, endothelial = mean(CD31, CD34),
+stromal = CD140a alone, and CD140b/CD44 are activation overlays):
 - **Immune**: CD45, CD11b, Ly6G, CD206
 - **Stromal**: CD140a, CD140b, CD44
 - **Vascular**: CD31, CD34

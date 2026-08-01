@@ -202,9 +202,12 @@ the manuscript.
     score; 10.9% of regions score high on CD140b while below 0.3 on the stromal axis. We have
     no record of a rationale for this assignment, for using one marker per lineage, or for
     averaging rather than taking the maximum of CD31 and CD34. These are conventions, not
-    optimised or validated choices, and should be described as such. If a manuscript claim
-    depends specifically on the stromal or endothelial score, check it against a multi-marker
-    alternative first.
+    optimised or validated choices, and should be described as such. They have been tested:
+    recomputing all three axes under four marker assignments leaves the Sham → Day 7 direction
+    **identical in every case**, so no reported trajectory depends on them (absolute levels do
+    shift, so levels are comparable only within one assignment). The current choice *increases*
+    the apparent immune and endothelial rises and *decreases* the stromal one — the stromal
+    axis is conservative as configured. See `ANALYSIS_PARAMETERS.md` §2.
 12. **Normalisation bias on the continuous endothelial trajectory.** The arcsinh cofactor is
     recomputed per marker per image; CD31 and CD34 cofactors fall 32% and 58% from Sham to
     Day 7, biasing the endothelial score *upward* at Day 7 independently of biology. The
