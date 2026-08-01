@@ -26,6 +26,7 @@ Multi-scale spatial proteomics framework for Imaging Mass Cytometry data, applie
 .venv/bin/python audit_family_b_raw_markers.py         # Family B sigmoid-vs-raw-marker basis comparison (prints both headline counts)
 .venv/bin/python audit_tissue_mask_density.py          # Tissue-mask density empirical-closure audit (Phase 5.1)
 .venv/bin/python verify_frozen_prereg.py               # Recompute pinned SHAs in review_packet/FROZEN_PREREG.md; fails on drift
+.venv/bin/python verify_documented_parameters.py       # Check every parameter value stated in prose against config + data; fails on drift
 
 # 6. INDRA knowledge context
 .venv/bin/python build_indra_evidence_table.py         # Panel context + finding annotations

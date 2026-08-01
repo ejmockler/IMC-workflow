@@ -269,6 +269,7 @@ The three continuous "lineage" scores are **marker-state axes** — single/doubl
 - **5.3 Bodenmiller** — formally closed-by-design (not "tabled"). Permanent scope boundary; framework requires temporal sampling that does not exist in the Bodenmiller Patient1 dataset.
 - **5.5 Phase 1.5c factual correction** — earlier draft claimed "0 sigmoid Family B Sham→D7 headlines"; actual is 21 (audit script printed only the raw count). Audit script now prints both counts at run time.
 - **5.6 Freeze guard** — `verify_frozen_prereg.py` recomputes pinned SHAs in `review_packet/FROZEN_PREREG.md`; fails with non-zero exit on drift.
+- **Documentation coherence guard** — `verify_documented_parameters.py` derives every checked parameter value from `config.json` and the persisted outputs, then verifies each value stated in prose across METHODS/RESULTS/README/DATA_SCHEMA, the review packet and the collaborator package. 51 values checked across 9 documents; fails with non-zero exit and the exact file:line on any disagreement, in either direction (prose edited, or config edited leaving prose stale). Ground truth is never hardcoded in the checker, so the checker cannot itself go stale.
 
 ### What is explicitly out of scope
 - Object-level lineage tracing (not possible with snapshot IMC).
