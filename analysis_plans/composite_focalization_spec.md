@@ -41,9 +41,22 @@ output `results/biological_analysis/k_sensitivity_focalization.csv`). Outcome, a
 
 1. The "lone diffuse interface" framing is **withdrawn**. At k=10 on the scale×region basis
    endothelial+immune is *also* diffuse (1.99×), so the triple-positive is not the only one.
-2. `endothelial+immune` sits on the 2.0× cutoff and its label is basis-dependent as well as
-   k-dependent (2.03× on the temporal-composite basis vs 1.99× on the scale×region basis at the
-   same k=10). Any statement about it must carry that caveat.
+2. `endothelial+immune` sits on the 2.0× cutoff, and its label depends on the **estimator**
+   as well as on k. This was previously described here as a difference between a
+   "temporal-composite basis" and a "scale×region basis"; **that description was wrong**. The
+   two numbers come from the *same* per-ROI values aggregated two ways, both of which are
+   shipped side by side in
+   `spatial_neighborhoods_composite/temporal_neighborhood_enrichments.csv`:
+   `enrichment_score` is the **arithmetic** mean of the per-ROI ratios (2.026×), and
+   `log2_enrichment` is the mean of their logs, i.e. the **geometric** mean (2^0.98995 =
+   1.986×). Verified: `2**log2_enrichment` reproduces `composite_focalization_scale_region.csv`
+   at (10 µm, Pooled, D7) for all eight categories to machine precision (max |Δ| = 1.3e-15).
+   The pinned 2.0× cutoff falls between the two estimators, so `endothelial+immune` is
+   **focal under the arithmetic mean and diffuse under the geometric mean**.
+   `classify_composite_focalization.py:68` reads the arithmetic column, which is why the
+   shipped label is `focal`. The geometric mean is the more standard estimator for ratio data;
+   the arithmetic column is retained as primary only because it was pinned first. No other
+   category is close enough to the cutoff for the choice to matter.
 3. **The core reading survives**: the triple-positive is diffuse at every k tested, 27–35% below
    the cutoff, while remaining the largest and most-grown interface category. The mixing
    signature does not depend on k.

@@ -36,7 +36,7 @@ The pre-registered `composite_focalization` discriminator is specified in `analy
 | `spatial_neighborhoods_composite/temporal_neighborhood_enrichments.csv` | `952a6a5fe185ccddeb05e6165d6cfc5d47ae51fb06129c7caaf836cd3daaa6a1` |
 | `discrete_vs_composite_comparison.md` | `d1ad836bedd6b3aa1f606811ac64dcc5b3c46846364defdb105e8d28f0d4c0b7` |
 | `results/biological_analysis/composite_focalization.csv` *(descriptive/informational)* | `b3721c402e4912b2ac3ee9ecc5f0cae530586cb84f62f97e6183a891b71040ca` |
-| `analysis_plans/composite_focalization_spec.md` *(descriptive/informational)* | `954e97f20124d876d1accc379905ae124a316b33989b436fd00ea8cc64cca958` |
+| `analysis_plans/composite_focalization_spec.md` *(descriptive/informational)* | `77f02daa0c4b9270338f060ff2af2c5c6c215103591901064acd643e5d30b929` |
 | `classify_composite_focalization.py` *(descriptive/informational)* | `cf6cb86ea406f478697c9b50282c9b28b37eb305d0a2894ccd73e704664a64dc` |
 
 These artifacts are **informational** — derived outputs that re-running the composite-lineage script regenerates with bit-exact values given the gating anchors above. The categorization rule is pinned via the script SHA; the data dependency is the existing gating anchors (`config.json` SHA + sham_reference SHA + DISCRETE_CELL_TYPES SHA). The 8-category interface decomposition is the Family A v1 categorization; reusing it in this track preserves cross-family coherence.

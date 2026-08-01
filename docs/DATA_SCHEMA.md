@@ -258,7 +258,7 @@ ROI-specific metadata extracted from filename or config:
 | `hedges_g_sham_ref` | float | Family A: raw-marker Sham-ref regime g for comparison against the sigmoid path |
 | `hedges_g_no_none` | float | Family A only: g under the 7-category CLR (excluding the `none` category) — Phase 1.5a |
 | `clr_none_sensitivity` | bool | Family A only: True if `hedges_g` sign reverses when `none` is excluded from the CLR (Phase 1.5a; 0/48 flips in pilot) |
-| `support_sensitive` | bool | Family B only: True if the (endpoint, contrast, stratifier) row is missing at any of `min_support` ∈ {10, 20, 40} (Phase 1.5a; current cohort: 126/972 Family B rows flagged = 90/540 v1 composite_label + 36/432 v2 discrete_celltype) |
+| `support_sensitive` | bool | Family B only: True if the (endpoint, contrast, stratifier) row is missing at any of `min_support` ∈ {10, 20, 40} (Phase 1.5a; current cohort: 126/720 Family B rows flagged = 90/540 v1 composite_label + 36/180 v2 discrete_celltype) |
 | `composite_label` | str | Family B only: the (post-hoc descriptive) stratifier |
 | `observed_range` | float | Mouse-level max - min (context) |
 | `threshold_sensitive` | bool | Family B: endpoint sign-flips across min-support sweep {10, 20, 40} (independent of the presence-based `support_sensitive`) |

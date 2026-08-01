@@ -190,6 +190,8 @@ the manuscript.
    positive for two or more lineages, only the triple-positive class was spatially dispersed
    rather than clustered. Testing neighbourhood sizes of 5, 10 and 20 showed one two-lineage
    class changes classification depending on that choice, so the "only" claim was withdrawn.
+   That class also changes label depending on whether the per-image ratios are averaged
+   arithmetically (2.03, above the cutoff) or geometrically (1.99, below it).
    What holds at every neighbourhood size tested: triple-positive regions are dispersed, and
    the ordering among classes is unchanged. **Do not cite the earlier phrasing.**
 10. **Exploratory clustering is not reported.** Unsupervised (Leiden) clustering was run

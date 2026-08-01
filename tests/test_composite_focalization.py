@@ -72,12 +72,21 @@ def test_immune_category_has_pure_lineage_type(classified: pd.DataFrame) -> None
     assert category_types == {"pure_lineage"}
 
 
-def test_triple_is_only_diffuse_interface(classified: pd.DataFrame) -> None:
+def test_triple_positive_is_diffuse(classified: pd.DataFrame) -> None:
+    """The triple-positive interface is diffuse — the claim that survived scrutiny.
+
+    This test previously asserted that it was the ONLY diffuse interface. That framing was
+    withdrawn (see analysis_plans/composite_focalization_spec.md, k-sensitivity amendment):
+    endothelial+immune sits on the 2.0x cutoff and flips to diffuse at k=10/20, and also flips
+    depending on whether the per-ROI ratios are averaged arithmetically or geometrically. The
+    test asserted the withdrawn claim and passed green, because the shipped classifier reads
+    the arithmetic column. Assert only what is robust: triple-positive is diffuse (it clears
+    the cutoff downward by ~33%, on every estimator and every k tested).
+    """
     interface_rows = classified.loc[classified["category_type"].eq("interface")]
     assert set(interface_rows["category"]) == EXPECTED_INTERFACE_CATEGORIES
-    assert set(
-        interface_rows.loc[interface_rows["status"].eq("diffuse"), "category"]
-    ) == {"endothelial+immune+stromal"}
+    diffuse = set(interface_rows.loc[interface_rows["status"].eq("diffuse"), "category"])
+    assert "endothelial+immune+stromal" in diffuse
 
 
 def test_processed_categories_exclude_activation_markers(
