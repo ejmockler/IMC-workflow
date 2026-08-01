@@ -54,10 +54,16 @@ version** for journals with tight Methods limits. Use one or the other, not both
 > superpixels per image received a label (range 8.9–18.8%); the large unassigned fraction
 > reflects the absence of tubular epithelial markers from the panel together with the
 > negative-marker requirements, which exclude regions co-expressing markers of more than
-> one lineage. Second, three continuous, non-exclusive lineage scores (immune, endothelial
-> and stromal, each on a 0–1 scale referenced to the Sham distribution) were computed for
+> one lineage. Second, three continuous, non-exclusive lineage scores were computed for
 > every superpixel, allowing description of regions carrying signal from more than one
-> lineage.
+> lineage. Each score is a single- or two-marker intensity rather than a multi-marker
+> signature: the immune score derives from CD45 alone, the stromal score from CD140a alone,
+> and the endothelial score from the mean of CD31 and CD34; CD11b, Ly6G and CD206 contribute
+> only to within-immune subtype assignment, and CD44 and CD140b only to activation overlays,
+> each marker being used in exactly one role. Scores are logistic functions centred on the
+> 60th percentile of the Sham distribution for that marker and scaled by its interquartile
+> range, so 0.5 corresponds to that 60th-percentile point rather than to typical uninjured
+> tissue.
 >
 > For the compartment-level CD44 analysis, positivity was instead called using a single
 > fixed threshold per marker derived from the Sham animals only (75th percentile of the
@@ -99,7 +105,9 @@ version** for journals with tight Methods limits. Use one or the other, not both
 > within-image percentiles, discrete results describe marker co-occurrence rather than
 > absolute abundance. Superpixels received both a discrete cell-type label from 15
 > positive/negative marker rules (mean 13.6% labelled) and three continuous, non-exclusive
-> lineage scores (immune, endothelial, stromal). Compartment-level CD44 rates used a fixed
+> lineage scores derived from single markers (immune = CD45, stromal = CD140a,
+> endothelial = mean of CD31 and CD34), centred on the Sham 60th percentile.
+> Compartment-level CD44 rates used a fixed
 > Sham-derived threshold (75th percentile) applied to all images. Spatial organisation was
 > assessed against 1,000 within-image label permutations using 10 nearest neighbours.
 > Proportions were averaged within each animal and differences reported as Hedges' *g*
@@ -130,7 +138,7 @@ reviewers.
 | | CD206 | 50th percentile | **Post-hoc**: lowered from the 65th, at which no region satisfied the M2-like rule. CD206 enters 14 of 15 rules (positive in 3, negative in 11) — see §D |
 | Positivity (CD44 compartments) | Sham-derived fixed threshold | 75th percentile of pooled Sham distribution | Applied unchanged to all images so rates are comparable across timepoints |
 | Annotation | Discrete types | 15 positive/negative marker rules, fixed priority, first match wins; else `unassigned` | Defined a priori from panel design |
-| | Continuous scores | 3 non-exclusive lineage scores, 0–1, Sham-referenced | — |
+| | Continuous scores | 3 non-exclusive lineage scores, 0–1, Sham-referenced; immune = CD45, stromal = CD140a, endothelial = mean(CD31, CD34) | Each marker assigned exactly one role (lineage / subtype / activation) so no marker double-counts. **The single-marker composition is not otherwise justified in our records** — see §D.11 |
 | Spatial | Neighbourhood | 10 nearest regions | Convention; sensitivity subsequently tested at 5, 10, 20 |
 | | Null model | 1,000 within-image label permutations | Standard permutation null |
 | Statistics | Unit of analysis | Animal (images averaged within animal) | Avoids pseudoreplication |
@@ -187,6 +195,22 @@ the manuscript.
 10. **Exploratory clustering is not reported.** Unsupervised (Leiden) clustering was run
     during method development but contributes to none of the results presented and should
     not appear in the manuscript.
+11. **The continuous scores are single-marker, and the marker-to-role assignment is a
+    convention.** The immune score is CD45 alone, the stromal score CD140a alone. Notably
+    CD140b (PDGFRβ) — a canonical pericyte/mural marker, described as stromal elsewhere in
+    our own documentation — is treated as an activation overlay and contributes to no lineage
+    score; 10.9% of regions score high on CD140b while below 0.3 on the stromal axis. We have
+    no record of a rationale for this assignment, for using one marker per lineage, or for
+    averaging rather than taking the maximum of CD31 and CD34. These are conventions, not
+    optimised or validated choices, and should be described as such. If a manuscript claim
+    depends specifically on the stromal or endothelial score, check it against a multi-marker
+    alternative first.
+12. **Normalisation bias on the continuous endothelial trajectory.** The arcsinh cofactor is
+    recomputed per marker per image; CD31 and CD34 cofactors fall 32% and 58% from Sham to
+    Day 7, biasing the endothelial score *upward* at Day 7 independently of biology. The
+    observed rise (+0.180) runs in the same direction as that bias and should not be presented
+    as a standalone quantitative result. The immune (+0.220) and stromal (+0.144) rises run
+    *against* their biases and are therefore conservative. See `ANALYSIS_PARAMETERS.md` §3.
 
 ---
 

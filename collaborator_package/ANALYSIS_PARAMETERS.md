@@ -60,13 +60,32 @@ that uses these columns.
 | `activation_cd140b` | **CD140b only** | — |
 
 So `lineage_immune` is a transformed CD45 intensity, not a multi-marker immune signature.
-There are **no negative markers** in these definitions — that is deliberate, and it is why a
-region can score highly on two lineages at once (which the discrete rules forbid). Describe
-them as, for example, "CD45 score" or "CD45-based immune score", rather than implying an
-independently validated immune classifier.
+Describe them as, for example, "CD45 score" or "CD45-based immune score", rather than
+implying an independently validated immune classifier.
+
+**The construction cuts both ways.** There are no negative markers — deliberately, so that a
+region can score highly on two lineages at once, which the discrete rules forbid. That makes
+the scores *permissive*. But each axis is also built from a single marker, which makes them
+*narrow*: across all 58,137 regions, 19.3% score high on CD206, 12.7% on Ly6G and 10.1% on
+CD11b while scoring below 0.3 on the immune axis, and 10.9% score high on CD140b while
+scoring below 0.3 on the stromal axis. Some of that is the CD45 requirement correctly
+rejecting spillover — CD45 is the canonical pan-leukocyte marker and there is no spillover
+compensation in this pipeline. But the CD140b case is a genuine gap: PDGFRβ is a canonical
+pericyte/mural marker, and our own repository documentation classifies it as stromal
+(`METHODS.md`, `RESULTS.md`, `docs/DATA_SCHEMA.md`) while this configuration treats it as
+activation only, contributing to no lineage score.
+
+**We have no record of a rationale** for the single-marker composition, for the CD140b
+assignment, or for averaging CD31/CD34 rather than taking the maximum. The implementation
+accepts arbitrary marker lists and max/mean/min aggregation, so these are configuration
+conventions — not constraints, and not optimised or validated choices. They are listed among
+the untuned parameters in §7.
 
 Each score is `sigmoid((transformed_intensity − centre) ÷ scale × 10.0)`, so a score of 0.5
-means the region sits exactly at the Sham reference centre for that marker.
+means the region sits exactly at the reference centre for that marker. **That centre is the
+Sham 60th percentile, not the Sham median** — so 0.5 is not "typical uninjured tissue".
+By construction only ~40% of uninjured regions exceed it, and the median uninjured region
+scores well below: Sham medians are 0.17 (immune), 0.35 (endothelial) and 0.16 (stromal).
 
 ---
 
@@ -175,6 +194,9 @@ group, tuning against these data would fit sampling noise rather than biology, s
 - The neighbourhood size (10) was a convention; it has **since** been tested at 5, 10 and 20
   (one spatial classification proved sensitive to it — see `METHODS_FOR_MANUSCRIPT.md` §D.9).
 - The sigmoid steepness (10.0) was never varied.
+- **The marker-to-role assignment itself was never varied or justified in our records** —
+  which marker defines which lineage axis, CD140b being activation rather than stromal, and
+  `mean` rather than `max` for endothelial. See §2.
 - The **only** parameter chosen after seeing an outcome is the CD206 threshold
   (`METHODS_FOR_MANUSCRIPT.md` §D.4).
 

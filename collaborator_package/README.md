@@ -133,7 +133,7 @@ One row per image, 24 rows, 55 columns.
 | `subtype` | **A third, independent labelling** (§4c) — not a rollup of `cell_type`. |
 | `gating_confidence` | **Binary (0.0 or 1.0), not a graded score.** It is exactly `cell_type != 'unassigned'` (1.0 for 7,931 regions, 0.0 for 50,206). Do not use it as a quality filter — it would just re-select the labelled set. |
 | `lineage_immune`, `lineage_endothelial`, `lineage_stromal` | **Continuous** 0–1 scores (§4b) |
-| `activation_cd44`, `activation_cd140b` | **Continuous** 0–1 scores for the two injury/activation markers |
+| `activation_cd44`, `activation_cd140b` | **Continuous** 0–1 scores for CD44 and CD140b. Note CD140b (PDGFRβ) is a pericyte/mural marker and is described as *stromal* elsewhere in our documentation and used as a *compartment* in §3.3; in these continuous scores it is treated as an activation overlay and contributes to **no** lineage score. See `ANALYSIS_PARAMETERS.md` §2. |
 
 > ### Warning: three different labellings, never to be mixed
 >
@@ -221,10 +221,24 @@ mean a region co-expressing markers from two lineages fails every rule.
 ### (b) Continuous lineage scores
 
 Because that unlabelled majority is most of the tissue, each region also carries three
-0–1 scores — `lineage_immune`, `lineage_endothelial`, `lineage_stromal` — for how strongly
-it resembles each lineage. These are **not exclusive**: a region can score highly on more
-than one, which the rules cannot represent. They are scaled against the Sham (uninjured)
-distribution, so ~0.5 is typical of uninjured tissue.
+0–1 scores — `lineage_immune`, `lineage_endothelial`, `lineage_stromal`.
+
+**Each is built from a single marker (or two), not a multi-marker signature:**
+`lineage_immune` is **CD45 alone**, `lineage_stromal` is **CD140a alone**, and
+`lineage_endothelial` is the **mean of CD31 and CD34**. They are transformed marker
+intensities, not validated lineage classifiers — describe them as e.g. "CD45-based immune
+score". See `ANALYSIS_PARAMETERS.md` §2.
+
+They are **not exclusive**: a region can score highly on more than one, which the rules
+cannot represent — that is the point of having them. But the same construction makes them
+*narrower* than their names suggest: CD11b, Ly6G and CD206 do not contribute to
+`lineage_immune`, so a CD45-dim but CD11b-bright region scores low on it.
+
+**Scale:** each score is a logistic function centred on the **60th percentile of the Sham
+(uninjured) distribution** for that marker. So a score of 0.5 marks that 60th-percentile
+point — by construction only ~40% of uninjured regions exceed it, and the *median*
+uninjured region scores well below 0.5 (Sham medians: 0.17 immune, 0.35 endothelial,
+0.16 stromal). Do not read 0.5 as "normal tissue".
 
 ### (c) Subtype
 
